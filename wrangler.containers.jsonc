@@ -1,0 +1,59 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "opencae",
+  "main": "apps/opencae-web/worker/index.ts",
+  "compatibility_date": "2026-04-27",
+  "assets": {
+    "directory": "apps/opencae-web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "r2_buckets": [
+    {
+      "binding": "FEA_ARTIFACTS",
+      "bucket_name": "opencae-fea-artifacts"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "FEA_RUN_QUEUE",
+        "queue": "opencae-fea-runs"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "opencae-fea-runs",
+        "dead_letter_queue": "opencae-fea-runs-dlq",
+        "max_batch_size": 1,
+        "max_retries": 2
+      }
+    ]
+  },
+  "containers": [
+    {
+      "class_name": "OpenCaeFeaContainer",
+      "image": "opencae/opencae-fea:latest",
+      "instance_type": "standard-1",
+      "max_instances": 5
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "FEA_CONTAINER",
+        "class_name": "OpenCaeFeaContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["OpenCaeFeaContainer"]
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
