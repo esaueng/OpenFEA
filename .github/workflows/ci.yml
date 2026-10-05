@@ -12,4 +12,4 @@ jobs:
   checks:
     permissions:
       contents: read
-    uses: esaueng/OpenCAE/.github/workflows/fleet-ci.yml@eee46069f84f57fd086380218e4bc130dac6b88a
+    uses: esaueng/OpenFEA/.github/workflows/fleet-ci.yml@13775d95b6db2c99958c310526b21081f9ed7336
