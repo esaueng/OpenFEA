@@ -53,6 +53,28 @@ function report(overrides: Partial<Parameters<typeof buildReportData>[0]> = {}) 
 }
 
 describe("buildReportData", () => {
+  test.each(["SI", "US"] as const)("reports thermal material and boundary physics in %s reports", (unitSystem) => {
+    const baseStudy = bracketDemoProject.studies[0]!;
+    const study = { ...baseStudy, type: "steady_state_thermal" as const,
+      constraints: baseStudy.constraints.map((support) => ({ ...support, type: "prescribed_temperature" as const, parameters: { value: 20, units: "°C" } })),
+      loads: baseStudy.loads.map((load) => ({ ...load, type: "heat_flux" as const }))
+    };
+    const data = report({ unitSystem, study, resultSummary: {
+      analysisType: "steady_state_thermal", minTemperature: 20, maxTemperature: 24,
+      temperatureUnits: "°C", maxHeatFlux: 10, heatFluxUnits: "W/m^2",
+      appliedHeat: 8, generatedHeat: 0, reactionHeat: -8, heatRateUnits: "W",
+      energyBalanceRelativeError: 0, provenance: productionSummary.provenance
+    } });
+    expect(data.materials.headers).toEqual(["Material / target", "Thermal conductivity (W/(m K))"]);
+    expect(data.materials.rows[0]?.[1]).toBe("167");
+    expect(data.boundaryFigure.markerKey.join(" ")).toContain("prescribed temperature");
+    expect(data.boundaryFigure.markerKey[0]).toMatch(/^PD 1 — prescribed temperature/);
+    expect(data.boundaryFigure.markerKey.join(" ")).toContain("surface heat flux");
+    expect(data.boundaryFigure.markerKey.join(" ")).not.toContain("fixed support");
+    expect(data.figures.stress.caption).toContain("Undeformed geometry");
+    expect(data.figures.displacement.caption).not.toContain("Deformed shape");
+    expect(data.includeSmoothingDisclaimer).toBe(false);
+  });
   test("captions the figure with the exaggeration applied, not the emphasis slider", () => {
     // The reported defect: the caption printed the panel's slider value (1-4) and called it
     // the exaggeration, while the shape was auto-fitted to 8% of model extent and THEN

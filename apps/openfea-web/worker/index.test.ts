@@ -254,6 +254,28 @@ describe("Cloudflare local-first worker", () => {
     await expect(response.text()).resolves.toBe("<html></html>");
   });
 
+  test.each([undefined, "private, no-store", "public, max-age=0, no-transform"])("preserves HTML cache policy while preventing script injection (%s)", async (cacheControl) => {
+    const env = createEnv();
+    env.ASSETS.fetch = async () => new Response("<html></html>", { headers: {
+      "content-type": "text/html; charset=utf-8", ...(cacheControl ? { "cache-control": cacheControl } : {})
+    } });
+    const response = await dispatchWorker(new Request("https://example.test/"), env);
+    expect(response.headers.get("cache-control")).toBe(cacheControl?.includes("no-transform") ? cacheControl : `${cacheControl ?? "public, max-age=0, must-revalidate"}, no-transform`);
+    expect(response.headers.get("content-security-policy")).not.toContain("script-src 'unsafe-inline'");
+  });
+
+  test("leaves immutable asset caching intact and protects the directly served HTML shell", async () => {
+    const env = createEnv();
+    env.ASSETS.fetch = async () => new Response("const a=1", { headers: { "content-type": "text/javascript", "cache-control": "public, max-age=31556952, immutable" } });
+    const response = await dispatchWorker(new Request("https://example.test/assets/app.js"), env);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31556952, immutable");
+    const headers = readFileSync(resolve(__dirname, "../public/_headers"), "utf8");
+    for (const route of ["/", "/index.html"]) {
+      const block = headers.split(/\r?\n\r?\n/).find((entry) => entry.split(/\r?\n/).includes(route));
+      expect(block).toContain("Cache-Control: public, max-age=0, must-revalidate, no-transform");
+    }
+  });
+
   test("asset responses include browser security headers", async () => {
     const response = await dispatchWorker(new Request("https://fea.esau.app/"), createEnv("<html></html>"));
 

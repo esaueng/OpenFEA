@@ -27,7 +27,7 @@ import { resetDisplayModelOrientation, type RotationAxis } from "./modelOrientat
 import { buildLocalProjectFile, portableResultBundle, suggestedProjectFilename, type LocalResultBundle, type SolverSurfaceMesh } from "./projectFile";
 import type { ConvergenceProbe } from "./meshConvergence";
 import { prepareBlobSaveToDisk, type SaveFilePickerHandle } from "./lib/fileSave";
-import { BOUNDARY_CAPTURE_REVISION, captureResultViews, createCaptureQueue, type CaptureQueue, type ResultViewCaptures } from "./report/captureResultViews";
+import { reportCapturesAreCurrent, captureResultViews, createCaptureQueue, type CaptureQueue, type ResultViewCaptures } from "./report/captureResultViews";
 import { isPreviewOnlyGeometry } from "./geometryFormats";
 import { workspaceNoticeFor, type WorkspaceNoticeTone } from "./workspaceNotice";
 import { geometryReplacementLosses } from "./geometryReplacement";
@@ -194,6 +194,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   // the results it describes, never outliving them.
   const [solveElapsedMs, setSolveElapsedMs] = useState<number | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [modelImportError, setModelImportError] = useState<string | null>(null);
   // Set when a study edit clears the last results (with the edit named), so
   // the loss is announced on every step instead of one line in the collapsed
   // log drawer (2026-09 review D4).
@@ -309,7 +310,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   // mid-capture does not re-trigger (and cancel) the capture effect.
   const [captureViewMode, setCaptureViewMode] = useState<ViewMode | null>(null);
   const stepPreviewMeasureWaitersRef = useRef<Array<() => void>>([]);
-  const reportStateRef = useRef({ viewMode, resultMode, resultSummary, completedRunId, resultPlaybackPlaying });
+  const reportStateRef = useRef({ viewMode, resultMode, stressComponent, resultSummary, completedRunId, resultPlaybackPlaying });
   const initialActionConsumedRef = useRef(false);
   if (!resultPlaybackFrameControllerRef.current) {
     resultPlaybackFrameControllerRef.current = createResultPlaybackFrameController();
@@ -546,7 +547,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   }, [resultPlaybackCacheState]);
   const solverRunning = Boolean(processingRunId) || (runProgress > 0 && runProgress < 100);
   const runButtonProgress = Math.min(100, Math.max(0, Math.round(runProgress)));
-  reportStateRef.current = { viewMode, resultMode, resultSummary, completedRunId, resultPlaybackPlaying };
+  reportStateRef.current = { viewMode, resultMode, stressComponent, resultSummary, completedRunId, resultPlaybackPlaying };
   const runReadiness = useMemo(() => readinessForStudy(study, project?.customMaterials), [project?.customMaterials, study]);
   const canRunSimulation = runReadiness.every((item) => item.done) && !solverRunning && !convergenceBusy;
   const missingRunItems = runReadiness.filter((item) => !item.done).map((item) => item.label);
@@ -567,7 +568,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   // One notice for the whole workspace (2026-09 review D7): a failed mesh or
   // run, or results cleared by an edit, used to be visible only on the panel
   // where it happened and as a footer pill.
-  const workspaceNotice = workspaceNoticeFor({ meshError, meshing: meshPhaseProgress !== null, runError, solverRunning, resultsOutdatedBy, resultsOutdatedSequence, openNote, dismissedKey: dismissedNoticeKey });
+  const workspaceNotice = workspaceNoticeFor({ importError: modelImportError, meshError, meshing: meshPhaseProgress !== null, runError, solverRunning, resultsOutdatedBy, resultsOutdatedSequence, openNote, dismissedKey: dismissedNoticeKey });
   const stepNotices: Partial<Record<StepId, WorkspaceNoticeTone>> = workspaceNotice?.step ? { [workspaceNotice.step]: workspaceNotice.tone } : {};
   // The generated volume mesh's boundary, for the Mesh step's viewer. "Toggle
   // mesh" used to draw nothing for uploads and a decorative box for samples
@@ -1386,6 +1387,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     setProcessingRunId(null);
     setRunTiming(null);
     invalidateCompletedRunState();
+    setModelImportError(null);
     setHomeRequested(false);
     stepFaceHealNotifiedRef.current = false;
     // Keep the imperative snapshot in sync immediately. The effect below is
@@ -1479,6 +1481,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
 
   function performUploadModel(file: File) {
     if (!project) return;
+    setModelImportError(null);
+    setDismissedNoticeKey(null);
     const sourceProject = project;
     const actionHandle = beginProjectAction(sourceProject);
     const importStartedAt = Date.now();
@@ -1494,7 +1498,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       generation: actionHandle.generation
     }), { actionHandle }).catch((error: unknown) => {
       if (isAbortError(error)) return;
-      pushMessage(error instanceof Error ? error.message : "Could not upload model.");
+      if (projectRef.current !== sourceProject) return;
+      const message = error instanceof Error ? error.message : "Could not upload model.";
+      setModelImportError(`${message} The current model, study, and results were kept.`);
+      pushMessage(message);
     }).finally(() => {
       const remainingIndicatorMs = Math.max(0, MODEL_IMPORT_INDICATOR_MIN_MS - (Date.now() - importStartedAt));
       window.setTimeout(() => {
@@ -1737,8 +1744,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     // Recapture when the run predates the boundary-conditions figure (or a
     // framing revision of it) so older saved results gain the current figure
     // the next time their results view is open.
-    const boundaryCurrent = reportCaptures?.captures.boundary?.revision === BOUNDARY_CAPTURE_REVISION;
-    const capturesComplete = reportCaptures?.runId === runId && (boundaryCurrent || !captureBoundaryView);
+    const capturesComplete = reportCaptures?.runId === runId && reportCapturesAreCurrent(reportCaptures.captures, resultFields, captureBoundaryView);
     if (capturesComplete || reportCaptureInFlightRef.current === runId) return;
     const sourceSummary = resultSummary;
     const capture = viewerCaptureRef.current;
@@ -1749,6 +1755,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       getViewMode: () => reportStateRef.current.viewMode,
       getResultMode: () => reportStateRef.current.resultMode,
       setResultMode,
+      getStressComponent: () => reportStateRef.current.stressComponent,
+      setStressComponent,
       getResultFrameIndex: () => resultFrameIndexRef.current,
       setResultFrameIndex: handleResultFrameChange,
       getPlaybackPlaying: () => reportStateRef.current.resultPlaybackPlaying,
@@ -1773,12 +1781,17 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           }
         : {})
     })).then(async (captures) => {
-      if (cancelled) return;
-      await saveRunReportCaptures(runId, captures);
       if (cancelled || reportStateRef.current.completedRunId !== runId) return;
       setReportCaptures({ runId, captures });
       setReportError(null);
-      pushMessage("Report images saved with simulation results.");
+      try {
+        await saveRunReportCaptures(runId, captures);
+        if (reportStateRef.current.completedRunId === runId) pushMessage("Report images saved with simulation results.");
+      } catch {
+        // Portable projects have their fields in memory even when the original
+        // run is absent from this browser's IndexedDB. Their report stays usable.
+        if (reportStateRef.current.completedRunId === runId) pushMessage("Report images are ready in this session. Save the project file to keep them.");
+      }
     }).catch((error) => {
       if (cancelled) return;
       const message = errorMessage(error, "Could not save report images with the simulation results.");
@@ -1811,7 +1824,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     const sourceSummary = resultSummary;
     const sourceRunId = completedRunId;
     const captures = reportCaptures?.runId === sourceRunId ? reportCaptures.captures : null;
-    if (!captures) {
+    if (!captures || !reportCapturesAreCurrent(captures, resultFields, boundaryConditionCount > 0)) {
       setReportError("Report images are still being saved with this simulation. Wait for image preparation to finish, then generate the report again.");
       return;
     }
