@@ -299,6 +299,7 @@ describe("app persistence", () => {
   test("restores report captures saved with completed simulation results", async () => {
     const { parseResultBundle } = await import("./appPersistence");
     const reportCaptures = {
+      revision: 1,
       stress: {
         png: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
         fieldId: "field-1",
@@ -338,6 +339,25 @@ describe("app persistence", () => {
     expect(bundle?.fields[0]).toMatchObject({ min: 0, max: 100 });
     expect(bundle?.surfaceMesh).toBeUndefined();
     expect(bundle?.reportCaptures).toBeUndefined();
+  });
+
+  test("retains a surface whose node map references interior volume-node numbering", async () => {
+    const { parseResultBundle } = await import("./appPersistence");
+    const surfaceMesh = {
+      id: "surface-1", nodes: [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+      triangles: [[0, 1, 2]], nodeMap: [0, 4, 7], volumeNodeCount: 8
+    };
+    const bundle = parseResultBundle({ summary, fields, surfaceMesh });
+    expect(bundle?.surfaceMesh).toEqual(expect.objectContaining(surfaceMesh));
+    // Legacy surface maps without a recorded volume count remain readable.
+    const { volumeNodeCount: _count, ...legacy } = surfaceMesh;
+    expect(parseResultBundle({ summary, fields, surfaceMesh: legacy })?.surfaceMesh?.nodeMap).toEqual([0, 4, 7]);
+    for (const invalid of [
+      { nodeMap: [0, 4, 8] }, { nodeMap: [0, 4] },
+      { nodeMap: [0, 4, -1] }, { volumeNodeCount: 2 }, { volumeNodeCount: 8.5 }
+    ]) {
+      expect(parseResultBundle({ summary, fields, surfaceMesh: { ...surfaceMesh, ...invalid } })?.surfaceMesh).toBeUndefined();
+    }
   });
 
   test("builds a reloadable snapshot with project, model, results, and UI state", () => {

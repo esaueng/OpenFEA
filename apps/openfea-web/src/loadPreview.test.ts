@@ -2,6 +2,12 @@ import { describe, expect, test } from "vitest";
 import type { DisplayFace, DisplayModel, Load, NamedSelection, Study } from "@openfea/schema";
 import { createViewerLoadMarkers, directionLabelForLoad, directionVectorForLabel, directionLabelForVector, loadMagnitudeError, loadMarkerDisplayLabel, loadMarkerFromLoad, loadMarkerViewportPresentation, payloadObjectForLoad, unitsForLoadType } from "./loadPreview";
 
+test("labels thermal inputs as heat rather than force in viewer and report captures", () => {
+  const marker = { id: "heat", faceId: "face", value: 10, units: "W/m²", direction: [0, 0, -1] as [number, number, number], directionLabel: "-Z", labelIndex: 0, stackIndex: 0 };
+  expect(loadMarkerDisplayLabel({ ...marker, type: "heat_flux" })).toBe("L1 Heat flux 10 W/m²");
+  expect(loadMarkerDisplayLabel({ ...marker, type: "heat_generation", units: "W/m³" })).toBe("L1 Heat generation 10 W/m³");
+});
+
 const face: DisplayFace = {
   id: "face-side",
   label: "Side face",
