@@ -9,7 +9,7 @@ import { resetVertexResultMappingStatsForTests, vertexResultMappingBuildCountFor
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const cadViewerSource = readFileSync(resolve(__dirname, "CadViewer.tsx"), "utf8");
+const cadViewerSource = readFileSync(resolve(__dirname, "CadViewer.tsx"), "utf8").replace(/\r\n/g, "\n");
 
 const samples: FaceResultSample[] = [
   {

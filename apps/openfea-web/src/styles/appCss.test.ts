@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { STRESS_RAMP } from "../resultColorScale";
 
-const css = readFileSync(resolve(__dirname, "app.css"), "utf8");
+const css = readFileSync(resolve(__dirname, "app.css"), "utf8").replace(/\r\n/g, "\n");
 const tokens = readFileSync(resolve(__dirname, "../theme/tokens.css"), "utf8");
 const cadViewer = readFileSync(resolve(__dirname, "../components/CadViewer.tsx"), "utf8");
 const appSource = readFileSync(resolve(__dirname, "../WorkspaceApp.tsx"), "utf8");

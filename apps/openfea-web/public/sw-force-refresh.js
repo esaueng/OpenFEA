@@ -11,8 +11,14 @@
     event.waitUntil(
       (async () => {
         const windowClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-        await Promise.all(
-          windowClients.map(async (client) => {
+        // Navigations in this scope wait for activation to finish. Awaiting
+        // them in activate.waitUntil therefore deadlocks the new app shell.
+        // Listen for the actual lifecycle transition instead of guessing a delay.
+        const worker = self.registration.active;
+        const refreshClients = () => {
+          if (worker && worker.state !== "activated") return;
+          worker?.removeEventListener("statechange", refreshClients);
+          windowClients.forEach((client) => {
             if (typeof client.navigate !== "function") return;
             let url;
             try {
@@ -24,12 +30,14 @@
             if (url.searchParams.get(refreshParam) === refreshVersion) return;
             url.searchParams.set(refreshParam, refreshVersion);
             try {
-              await client.navigate(url.href);
+              void client.navigate(url.href).catch(() => {});
             } catch {
               // Navigation can fail if the tab closes during activation.
             }
-          })
-        );
+          });
+        };
+        worker?.addEventListener("statechange", refreshClients);
+        refreshClients();
       })()
     );
   });

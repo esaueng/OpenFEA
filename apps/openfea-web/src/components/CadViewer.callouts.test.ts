@@ -214,7 +214,7 @@ describe("CadViewer callouts", () => {
 });
 
 describe("assigned faces and load callouts (2026-09 review F2, D20)", () => {
-  const source = readFileSync(resolve(__dirname, "CadViewer.tsx"), "utf8");
+  const source = readFileSync(resolve(__dirname, "CadViewer.tsx"), "utf8").replace(/\r\n/g, "\n");
 
   test("tints faces that carry a support or load in the marker colour", () => {
     expect(source).toContain("export interface ViewerFaceTint");

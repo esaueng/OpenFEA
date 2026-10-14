@@ -41,6 +41,20 @@ function typedResultField(frameIndex: number, type: ResultField["type"], values:
 }
 
 describe("result playback cache", () => {
+  test("selects the requested stress component on the matching solver surface during playback", () => {
+    const fields: ResultField[] = [0, 1].flatMap((frameIndex) => [
+      resultField(frameIndex, [99]),
+      { ...resultField(frameIndex, [90, 90]), location: "node" as const, surfaceMeshRef: "other" },
+      { ...resultField(frameIndex, [frameIndex, 20 + frameIndex]), location: "node" as const, surfaceMeshRef: "surface", component: "von_mises" as const },
+      { ...resultField(frameIndex, [-10 - frameIndex, 30 + frameIndex]), location: "node" as const, surfaceMeshRef: "surface", component: "principal_max" as const }
+    ]);
+    const packed = preparePlaybackFrames({ fields, frameIndexes: [0, 1], playbackFps: 30, budgetBytes: 100_000 }).packed!;
+    const ordinal = packedPreparedPlaybackFrameOrdinal(packed, 1);
+    const slot = packedPreparedPlaybackFieldSlot(packed, ordinal, "stress", "node", "principal_max", "surface")!;
+    expect(Array.from(slot.values.slice(slot.offset, slot.offset + slot.length))).toEqual([-11, 31]);
+    expect(slot.descriptor.surfaceMeshRef).toBe("surface");
+    expect(packedPreparedPlaybackFieldSlot(packed, ordinal, "stress", "node", "principal_min", "surface")).toBeNull();
+  });
   test("uses the desktop memory budget unless device memory is constrained", () => {
     expect(playbackMemoryBudgetBytes(8)).toBe(192 * 1024 * 1024);
     expect(playbackMemoryBudgetBytes(2)).toBe(64 * 1024 * 1024);
