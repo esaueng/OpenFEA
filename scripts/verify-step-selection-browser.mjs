@@ -33,6 +33,13 @@ function chromeBinary() {
 }
 
 function spawnChild(command, args, options = {}) {
+  if (process.platform === "win32" && /msedge\.exe$/i.test(command)) args = [...args, "--edge-skip-compat-layer-relaunch"];
+  // Windows cannot spawn pnpm.cmd directly without a shell. Run the pnpm
+  // entry point inherited from the parent pnpm script with this Node runtime.
+  if (process.platform === "win32" && command === "pnpm" && process.env.npm_execpath) {
+    args = [process.env.npm_execpath, ...args];
+    command = process.execPath;
+  }
   const child = spawn(command, args, { detached: true, stdio: "ignore", ...options });
   children.push(child);
   return child;
@@ -52,7 +59,7 @@ function killChild(child) {
 
 function cleanup() {
   for (const child of children) killChild(child);
-  rmSync(profileDir, { recursive: true, force: true });
+  rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
 process.on("exit", cleanup);
@@ -189,6 +196,8 @@ async function run() {
   if (consoleErrors.length) gates.push(`browser console errors: ${consoleErrors.join(" | ")}`);
   if (pageErrors.length) gates.push(`uncaught page errors: ${pageErrors.join(" | ")}`);
   if (gates.length) throw new Error(gates.join(" | "));
+  await cdp.send("Browser.close");
+  await sleep(1000);
 }
 
 try {
