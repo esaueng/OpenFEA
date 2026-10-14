@@ -28,9 +28,46 @@ describe("file saving", () => {
     const abort = Object.assign(new Error("cancelled"), { name: "AbortError" });
     vi.stubGlobal("window", { showSaveFilePicker: vi.fn().mockRejectedValue(abort) });
     vi.stubGlobal("navigator", { webdriver: false });
+    const createElement = vi.fn();
+    vi.stubGlobal("document", { createElement });
 
     await expect(saveBlobToDisk(new Blob(), "report.pdf", { description: "PDF report", accept: { "application/pdf": [".pdf"] } }))
       .resolves.toBe("cancelled");
+    expect(createElement).not.toHaveBeenCalled();
+  });
+
+  test("waits for the native file write and close before reporting success", async () => {
+    const order: string[] = [];
+    let finishClose!: () => void;
+    const closed = new Promise<void>((resolve) => { finishClose = resolve; });
+    vi.stubGlobal("window", { showSaveFilePicker: vi.fn(async () => ({
+      createWritable: async () => ({
+        write: async (blob: Blob) => { order.push(await blob.text()); },
+        close: async () => { order.push("close"); await closed; }
+      })
+    })) });
+    const saved = saveBlobToDisk(new Blob(["six modal fields"]), "modes.openfea.json", {
+      description: "OpenFEA project", accept: { "application/json": [".json"] }
+    }).then((result) => { order.push(result); });
+    await vi.waitFor(() => expect(order).toEqual(["six modal fields", "close"]));
+    finishClose();
+    await saved;
+    expect(order).toEqual(["six modal fields", "close", "saved"]);
+  });
+
+  test("surfaces a native write failure without downloading a second copy", async () => {
+    const denied = new DOMException("Write permission denied", "NotAllowedError");
+    const close = vi.fn();
+    const createElement = vi.fn();
+    vi.stubGlobal("document", { createElement });
+    vi.stubGlobal("window", { showSaveFilePicker: vi.fn(async () => ({
+      createWritable: async () => ({ write: vi.fn().mockRejectedValue(denied), close })
+    })) });
+    await expect(saveBlobToDisk(new Blob(), "modes.csv", {
+      description: "CSV", accept: { "text/csv": [".csv"] }
+    })).rejects.toBe(denied);
+    expect(close).not.toHaveBeenCalled();
+    expect(createElement).not.toHaveBeenCalled();
   });
 
   test("uses the anchor fallback when the picker API is unavailable", async () => {
