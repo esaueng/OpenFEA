@@ -9,6 +9,7 @@ import {
   type ManufacturingProcess
 } from "@openfea/materials";
 import { inferGlobalCriticalPrintAxis } from "@openfea/study-core";
+import { supportDisplayLabel } from "../supportLabels";
 import type { SolverMeshSummary } from "../resultFields";
 import { formatDeformationFactor, type ResolvedDeformation } from "../resultDeformation";
 import { fieldWithOwnValueRange, formatResultValue } from "../resultFields";
@@ -342,7 +343,7 @@ function buildThermalReportData(input: BuildReportDataInput, summary: ThermalRes
       rows: input.project.geometryFiles.map((geometry) => [geometry.filename, geometryFormat(geometry.filename), geometryFileSize(geometry.metadata)]),
       emptyMessage: "No geometry file recorded."
     },
-    materials: materialTable(input.study, input.unitSystem, undefined, input.project.customMaterials),
+    materials: thermalMaterialTable(input.study, input.project.customMaterials),
     manufacturing: manufacturingTable(input.study, input.project.customMaterials),
     supports: supportTable(input.study),
     loads: loadTable(input.study, input.unitSystem),
@@ -369,7 +370,7 @@ function buildThermalReportData(input: BuildReportDataInput, summary: ThermalRes
     loadCapacity: [],
     transientResults: [],
     diagnostics: [...diagnostics],
-    includeSmoothingDisclaimer: provenance?.kind === "opencae_core_fea",
+    includeSmoothingDisclaimer: false,
     footerDisclaimer: FOOTER_DISCLAIMER
   };
 }
@@ -432,6 +433,22 @@ function geometryRows(project: Project, displayModel: DisplayModel | null): Repo
       ? `${displayModel.dimensions.x} × ${displayModel.dimensions.y} × ${displayModel.dimensions.z} ${displayModel.dimensions.units}`
       : MISSING }
   ];
+}
+
+function thermalMaterialTable(study: Study, customMaterials: Project["customMaterials"]): ReportTable {
+  return {
+    headers: ["Material / target", "Thermal conductivity (W/(m K))"],
+    rows: study.materialAssignments.map((assignment) => {
+      const material = tryResolveReportMaterial(assignment.materialId, customMaterials);
+      const effective = material ? effectiveMaterialProperties(material, assignment.parameters ?? {}) : undefined;
+      const conductivity = effective?.thermalConductivity ?? material?.thermalConductivity;
+      return [
+        `${material ? reportMaterialName(material) : assignment.materialId} / ${selectionLabel(study, assignment.selectionRef)}`,
+        typeof conductivity === "number" && Number.isFinite(conductivity) ? formatResultNumber(conductivity) : MISSING
+      ];
+    }),
+    emptyMessage: "No material assignments recorded."
+  };
 }
 
 function materialTable(
@@ -552,6 +569,18 @@ function loadTable(study: Study, unitSystem: UnitSystem): ReportTable {
 }
 
 function boundaryFigureData(study: Study, capture: CapturedBoundaryView | undefined): ReportBoundaryFigure {
+  if (study.type === "steady_state_thermal") {
+    return {
+      title: "Thermal boundary conditions on model",
+      ...(capture ? { png: capture.png } : {}),
+      unavailableLabel: "Not captured for this run — open the Results view once, then regenerate the report.",
+      caption: "Prescribed temperature, surface heat flux, and heat generation as placed in the study, shown on the undeformed model.",
+      markerKey: [
+        ...study.constraints.map((support, index) => `${supportDisplayLabel(support, index + 1)} — prescribed temperature on the constrained face`),
+        ...(study.loads.length ? [`L n — surface heat flux or volumetric heat generation (${study.loads.length} in this study)`] : [])
+      ]
+    };
+  }
   const supportCount = study.constraints.length;
   const loadCount = study.loads.length;
   const hasPayloadMass = study.loads.some((load) => load.type === "gravity");
@@ -674,7 +703,7 @@ function figureData(
   const frameCaption = capture?.selection === "peak" && capture.frameIndex !== undefined
     ? ` Automatically selected peak ${lowercaseFirst(title)} frame (${framePositionLabel(fields, capture.frameIndex)}${capture.timeSeconds === undefined ? "" : `, ${capture.timeSeconds.toFixed(4)} s`}).`
     : "";
-  const deformationCaption = deformationCaptionFor(input);
+  const deformationCaption = input.study.type === "steady_state_thermal" ? "Undeformed geometry" : deformationCaptionFor(input);
   return {
     title,
     ...(capture?.png ? { png: capture.png } : {}),

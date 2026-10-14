@@ -19,6 +19,7 @@ export interface WorkspaceNotice {
 }
 
 export interface WorkspaceNoticeInputs {
+  importError?: string | null;
   meshError: string | null;
   meshing: boolean;
   runError: string | null;
@@ -42,7 +43,10 @@ export function workspaceNoticeFor(inputs: WorkspaceNoticeInputs): WorkspaceNoti
   return notice;
 }
 
-function rawNoticeFor({ meshError, meshing, runError, solverRunning, resultsOutdatedBy, resultsOutdatedSequence, openNote }: WorkspaceNoticeInputs): WorkspaceNotice | null {
+function rawNoticeFor({ importError, meshError, meshing, runError, solverRunning, resultsOutdatedBy, resultsOutdatedSequence, openNote }: WorkspaceNoticeInputs): WorkspaceNotice | null {
+  if (importError) {
+    return { key: `import:${importError}`, tone: "error", title: "Model import failed", message: importError, step: "model", stepLabel: "Model" };
+  }
   if (meshError && !meshing) {
     return { key: `mesh:${meshError}`, tone: "error", title: "Mesh generation failed", message: meshError, step: "mesh", stepLabel: "Mesh" };
   }

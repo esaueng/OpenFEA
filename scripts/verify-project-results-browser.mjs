@@ -24,6 +24,12 @@ function chromeBinary() {
 }
 
 function spawnChild(command, args, options = {}) {
+  if (process.platform === "win32" && /msedge\.exe$/i.test(command)) args = [...args, "--edge-skip-compat-layer-relaunch"];
+  // Use the current pnpm entry point rather than shelling out to pnpm.cmd.
+  if (process.platform === "win32" && command === "pnpm" && process.env.npm_execpath) {
+    args = [process.env.npm_execpath, ...args];
+    command = process.execPath;
+  }
   const child = spawn(command, args, { detached: true, stdio: "ignore", ...options });
   children.push(child);
   return child;
@@ -43,7 +49,7 @@ function killChild(child) {
 
 function cleanup() {
   for (const child of children) killChild(child);
-  rmSync(profileDir, { recursive: true, force: true });
+  rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
 process.on("exit", cleanup);
@@ -205,6 +211,8 @@ async function run() {
   if (resaved.results.variants.length !== 2 || resaved.results.activeVariantId !== 'Side') throw new Error('Reopened cases were lost when switching');
   if (errors.length) throw new Error(errors.join('\n'));
   console.log('Portable results: both cases survive save, storage deletion, reopen, repeated switching, and resave.');
+  await cdp.send("Browser.close");
+  await sleep(1000);
 }
 
 try {

@@ -61,14 +61,14 @@ describe("StepBar", () => {
   });
 
   test("does not visually hide the collapsed utility footer", () => {
-    const css = readFileSync(resolve(__dirname, "../styles/app.css"), "utf8");
+    const css = readFileSync(resolve(__dirname, "../styles/app.css"), "utf8").replace(/\r\n/g, "\n");
 
     expect(css).not.toContain(".stepbar.collapsed .stepbar-footer,\n.stepbar.collapsed .step > span:not(.step-icon)");
     expect(css).toMatch(/\.stepbar\.collapsed\s+\.stepbar-footer\s*\{[\s\S]*?display:\s*grid;/);
   });
 
   test("does not underline workflow utility links", () => {
-    const css = readFileSync(resolve(__dirname, "../styles/app.css"), "utf8");
+    const css = readFileSync(resolve(__dirname, "../styles/app.css"), "utf8").replace(/\r\n/g, "\n");
 
     expect(css).toMatch(/\.stepbar-link\s*\{[\s\S]*?text-decoration:\s*none;/);
     expect(css).toMatch(/\.stepbar-link:hover,\n\.stepbar-link:focus-visible\s*\{[\s\S]*?text-decoration:\s*none;/);

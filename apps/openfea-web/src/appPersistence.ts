@@ -539,7 +539,7 @@ function parseResultViewCaptures(value: unknown): LocalResultBundle["reportCaptu
       }
     : undefined;
   return stress || displacement || boundary
-    ? { ...(stress ? { stress } : {}), ...(displacement ? { displacement } : {}), ...(boundary ? { boundary } : {}) }
+    ? { ...(typeof value.revision === "number" && Number.isInteger(value.revision) ? { revision: value.revision } : {}), ...(stress ? { stress } : {}), ...(displacement ? { displacement } : {}), ...(boundary ? { boundary } : {}) }
     : undefined;
 }
 
@@ -584,7 +584,14 @@ function parseSolverSurfaceMesh(value: unknown): LocalResultBundle["surfaceMesh"
   );
   if (nodes.length !== value.nodes.length || triangles.length !== value.triangles.length) return undefined;
   if (triangles.some((triangle) => triangle.some((node) => node >= nodes.length))) return undefined;
-  if (Array.isArray(value.nodeMap) && value.nodeMap.some((node) => !Number.isInteger(node) || node < 0 || node >= nodes.length)) return undefined;
+  const volumeNodeCount = value.volumeNodeCount;
+  if (volumeNodeCount !== undefined && (!Number.isSafeInteger(volumeNodeCount) || (volumeNodeCount as number) < nodes.length)) return undefined;
+  // nodeMap maps surface-node ordinals to volume-node ids. Interior nodes
+  // make those ids larger than nodes.length; they are not surface indices.
+  if (Array.isArray(value.nodeMap) && (
+    value.nodeMap.length !== nodes.length ||
+    value.nodeMap.some((node) => !Number.isInteger(node) || node < 0 || (typeof volumeNodeCount === "number" && node >= volumeNodeCount))
+  )) return undefined;
   return {
     id: value.id,
     nodes,
@@ -594,8 +601,8 @@ function parseSolverSurfaceMesh(value: unknown): LocalResultBundle["surfaceMesh"
     nodeMap: Array.isArray(value.nodeMap) && value.nodeMap.every((node) => Number.isInteger(node) && node >= 0)
       ? value.nodeMap
       : undefined,
-    volumeNodeCount: typeof value.volumeNodeCount === "number" && Number.isFinite(value.volumeNodeCount)
-      ? value.volumeNodeCount
+    volumeNodeCount: typeof volumeNodeCount === "number"
+      ? volumeNodeCount
       : undefined
   };
 }
