@@ -6,16 +6,19 @@ import type { Project, Study, StudyRun } from "@openfea/schema";
 import { SQLiteDatabaseProvider } from ".";
 
 const tempDirs: string[] = [];
+const tempProviders: SQLiteDatabaseProvider[] = [];
 
 function tempProvider(): SQLiteDatabaseProvider {
   const dir = mkdtempSync(join(tmpdir(), "openfea-db-"));
   tempDirs.push(dir);
   const provider = new SQLiteDatabaseProvider(join(dir, "openfea.test.sqlite"));
+  tempProviders.push(provider);
   provider.migrate();
   return provider;
 }
 
 afterEach(() => {
+  for (const provider of tempProviders.splice(0)) provider.close();
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 

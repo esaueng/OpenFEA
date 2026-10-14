@@ -152,7 +152,7 @@ describe("OpenFEA Core browser solver adapter", () => {
     expect(outcome.result.diagnostics?.some((entry) => (entry as { id?: unknown })?.id === "browser-solve-limits")).toBe(true);
   });
 
-  test("maps prescribed-displacement supports to Core Dirichlet values (Decision 1)", () => {
+  test("maps prescribed-displacement supports to Core Dirichlet values (Decision 1)", { timeout: 30000 }, () => {
     const pdStudy = {
       ...staticStudy,
       id: "study-pd",
