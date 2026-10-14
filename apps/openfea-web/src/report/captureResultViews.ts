@@ -1,7 +1,8 @@
 import type { ResultField } from "@openfea/schema";
-import type { ResultMode, ViewMode } from "../workspaceViewTypes";
+import type { ResultMode, StressComponent, ViewMode } from "../workspaceViewTypes";
 
 export interface ResultViewCaptures {
+  revision?: number;
   stress?: CapturedResultView;
   displacement?: CapturedResultView;
   boundary?: CapturedBoundaryView;
@@ -21,9 +22,11 @@ export interface CapturedBoundaryView {
   revision?: number;
 }
 
-// Revision 3: dimension overlay hidden during the capture, and the capture
-// cropped to its content so the figure fills its frame.
-export const BOUNDARY_CAPTURE_REVISION = 3;
+// Revision 4: thermal input labels identify heat instead of force. Preserve
+// the hidden dimensions and content crop introduced in revision 3.
+export const BOUNDARY_CAPTURE_REVISION = 4;
+// Older captures can contain neutral contours from a discarded surface mesh.
+export const REPORT_CAPTURE_REVISION = 1;
 
 export interface CaptureQueue {
   enqueue: <T>(task: () => T | Promise<T>) => Promise<T>;
@@ -44,6 +47,8 @@ export interface CaptureResultViewsOptions {
   getViewMode: () => ViewMode;
   getResultMode: () => ResultMode;
   setResultMode: (mode: ResultMode) => void;
+  getStressComponent?: () => StressComponent;
+  setStressComponent?: (component: StressComponent) => void;
   getResultFrameIndex: () => number;
   setResultFrameIndex: (frameIndex: number) => void;
   getPlaybackPlaying: () => boolean;
@@ -74,6 +79,12 @@ const REPORT_RESULT_CAPTURES = [
   { mode: "heat_flux", slot: "displacement" }
 ] as const satisfies ReadonlyArray<{ mode: ResultMode; slot: "stress" | "displacement" }>;
 
+export function reportCapturesAreCurrent(captures: ResultViewCaptures | null | undefined, fields: ResultField[], includeBoundary: boolean): boolean {
+  return captures?.revision === REPORT_CAPTURE_REVISION
+    && REPORT_RESULT_CAPTURES.every(({ mode, slot }) => !fields.some((field) => field.type === mode) || Boolean(captures[slot]))
+    && (!includeBoundary || captures.boundary?.revision === BOUNDARY_CAPTURE_REVISION);
+}
+
 export async function captureResultViews(options: CaptureResultViewsOptions): Promise<ResultViewCaptures> {
   if (options.getViewMode() !== "results") {
     throw new Error("Open the Results view before generating a report.");
@@ -86,10 +97,11 @@ export async function captureResultViews(options: CaptureResultViewsOptions): Pr
   }
 
   const originalMode = options.getResultMode();
+  const originalStressComponent = options.getStressComponent?.();
   const originalFrameIndex = options.getResultFrameIndex();
   const originalPlaybackPlaying = options.getPlaybackPlaying();
   const waitForFrame = options.waitForAnimationFrame ?? nextAnimationFrame;
-  const captures: ResultViewCaptures = {};
+  const captures: ResultViewCaptures = { revision: REPORT_CAPTURE_REVISION };
 
   try {
     if (originalPlaybackPlaying) options.setPlaybackPlaying(false);
@@ -98,6 +110,7 @@ export async function captureResultViews(options: CaptureResultViewsOptions): Pr
       const peakField = peakResultField(options.resultFields, mode, options.surfaceMeshRef);
       if (!peakField) continue;
       options.setResultMode(mode);
+      if (mode === "stress") options.setStressComponent?.("von_mises");
       if (peakField.frameIndex !== undefined) options.setResultFrameIndex(peakField.frameIndex);
       await waitForFrame();
       await waitForFrame();
@@ -117,6 +130,7 @@ export async function captureResultViews(options: CaptureResultViewsOptions): Pr
   } finally {
     options.setResultFrameIndex(originalFrameIndex);
     options.setResultMode(originalMode);
+    if (originalStressComponent) options.setStressComponent?.(originalStressComponent);
     if (originalPlaybackPlaying) options.setPlaybackPlaying(true);
   }
 }
@@ -138,7 +152,7 @@ async function captureBoundaryView(options: CaptureResultViewsOptions, waitForFr
 }
 
 export function peakResultField(fields: ResultField[], mode: "stress" | "displacement" | "temperature" | "heat_flux", surfaceMeshRef?: string): ResultField | undefined {
-  const modeFields = fields.filter((field) => field.type === mode);
+  const modeFields = fields.filter((field) => field.type === mode && (mode !== "stress" || (field.component ?? "von_mises") === "von_mises"));
   if (!modeFields.length) return undefined;
 
   const surfaceFields = surfaceMeshRef

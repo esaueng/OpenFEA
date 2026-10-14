@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 import type { ResultField } from "@openfea/schema";
-import type { ResultMode } from "../workspaceViewTypes";
-import { BOUNDARY_CAPTURE_REVISION, captureResultViews, createCaptureQueue, peakResultField } from "./captureResultViews";
+import type { ResultMode, StressComponent } from "../workspaceViewTypes";
+import { BOUNDARY_CAPTURE_REVISION, REPORT_CAPTURE_REVISION, reportCapturesAreCurrent, captureResultViews, createCaptureQueue, peakResultField } from "./captureResultViews";
 
 const staticFields = [
   { id: "stress", runId: "run", type: "stress", location: "node", values: [1], min: 1, max: 1, units: "MPa" },
@@ -23,6 +23,27 @@ const thermalFields = [
 ] satisfies ResultField[];
 
 describe("captureResultViews", () => {
+  test("rejects legacy blue screenshots and outdated thermal boundary captures", () => {
+    const figures = { stress: { png: "png", fieldId: "stress", selection: "static" as const }, displacement: { png: "png", fieldId: "displacement", selection: "static" as const } };
+    expect(reportCapturesAreCurrent(figures, staticFields, false)).toBe(false);
+    expect(reportCapturesAreCurrent({ ...figures, revision: REPORT_CAPTURE_REVISION }, staticFields, false)).toBe(true);
+    expect(reportCapturesAreCurrent({ ...figures, revision: REPORT_CAPTURE_REVISION, boundary: { png: "png", revision: 3 } }, staticFields, true)).toBe(false);
+    expect(reportCapturesAreCurrent({ ...figures, revision: REPORT_CAPTURE_REVISION, boundary: { png: "png", revision: BOUNDARY_CAPTURE_REVISION } }, staticFields, true)).toBe(true);
+  });
+
+  test("uses von Mises for reports even when a larger principal measure is selected", async () => {
+    let component: StressComponent = "principal_max";
+    const captures = await captureResultViews({
+      getViewMode: () => "results", getResultMode: () => "stress", setResultMode: () => {},
+      getStressComponent: () => component, setStressComponent: (next) => { component = next; },
+      getResultFrameIndex: () => 0, setResultFrameIndex: () => {}, getPlaybackPlaying: () => false, setPlaybackPlaying: () => {},
+      resultFields: [...dynamicFields, { ...dynamicFields[0]!, id: "principal-peak", component: "principal_max", values: [999, 1000] }],
+      surfaceMeshRef: "surface", capture: () => `data:image/png;base64,${component}`, isCurrent: () => true, waitForAnimationFrame: async () => {}
+    });
+    expect(captures.stress?.fieldId).toBe("stress-surface-1");
+    expect(captures.stress?.png).toBe("data:image/png;base64,von_mises");
+    expect(component).toBe("principal_max");
+  });
   test("serializes automatic and manual capture tasks and continues after failures", async () => {
     const queue = createCaptureQueue();
     const events: string[] = [];
@@ -73,6 +94,7 @@ describe("captureResultViews", () => {
     });
 
     expect(result).toEqual({
+      revision: REPORT_CAPTURE_REVISION,
       stress: {
         png: "data:image/png;base64,stress-1",
         fieldId: "stress-surface-1",

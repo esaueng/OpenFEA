@@ -32,6 +32,10 @@ export class SQLiteDatabaseProvider implements DatabaseProvider {
     this.db.exec(migrationSql);
   }
 
+  close(): void {
+    this.db.close();
+  }
+
   seed(): void {
     for (const material of starterMaterials) {
       this.db

@@ -5198,6 +5198,7 @@ function usePackedSolverSurfacePlaybackGeometry({
   playbackCache?: PackedPreparedPlaybackCache | null;
 }): THREE.BufferGeometry {
   const { invalidate } = useThree();
+  const stressComponent = useContext(StressComponentContext);
   // A live clone that playback ticks mutate in place: positions/colors are
   // rewritten per frame without rebuilding the geometry, recomputing normals,
   // or reallocating buffers. The static geometry stays untouched so pausing
@@ -5231,9 +5232,9 @@ function usePackedSolverSurfacePlaybackGeometry({
     const applySnapshot = (snapshot: ResultPlaybackFrameSnapshot) => {
       const latest = stateRef.current;
       const frameOrdinal = packedPreparedPlaybackFrameOrdinal(snapshot.cache, snapshot.framePosition);
-      const slot = packedPreparedPlaybackFieldSlot(snapshot.cache, frameOrdinal, latest.resultMode);
-      if (!slot || slot.descriptor.location !== "node") return;
-      const displacementSlot = packedPreparedPlaybackFieldSlot(snapshot.cache, frameOrdinal, latest.resultMode === "mode_shape" ? "mode_shape" : "displacement");
+      const slot = packedPreparedPlaybackFieldSlot(snapshot.cache, frameOrdinal, latest.resultMode, "node", stressComponent, surfaceMesh.id);
+      if (!slot || slot.length !== surfaceMesh.nodes.length) return;
+      const displacementSlot = packedPreparedPlaybackFieldSlot(snapshot.cache, frameOrdinal, latest.resultMode === "mode_shape" ? "mode_shape" : "displacement", "node", undefined, surfaceMesh.id);
       const nodeCount = surfaceMesh.nodes.length;
       const position = playbackGeometry.getAttribute("position");
       const color = playbackGeometry.getAttribute("color");
@@ -5274,13 +5275,16 @@ function usePackedSolverSurfacePlaybackGeometry({
     const snapshot = playbackController.getSnapshot();
     if (snapshot) applySnapshot(snapshot);
     return playbackController.subscribe(applySnapshot);
-  }, [invalidate, playbackCache, playbackController, playbackGeometry, surfaceMesh.nodes]);
+  }, [invalidate, playbackCache, playbackController, playbackGeometry, surfaceMesh, stressComponent, resultMode, showDeformed, deformationScale, displacementPeakMagnitude, resultColorScale]);
   useEffect(() => () => {
     playbackGeometry.dispose();
   }, [playbackGeometry]);
   // Render the static geometry when no playback cache is driving; the live
   // clone only takes over while a controller + packed cache are attached.
-  return playbackController && playbackCache ? playbackGeometry : staticGeometry;
+  const packedScalar = playbackCache && packedPreparedPlaybackFieldSlot(playbackCache, 0, resultMode, "node", stressComponent, surfaceMesh.id);
+  // Derived tensor measures and recovered element contours may have no
+  // corresponding packed nodal slot. Keep their selected-frame geometry.
+  return playbackController && packedScalar?.length === surfaceMesh.nodes.length ? playbackGeometry : staticGeometry;
 }
 
 function packedSlotVectorPeak(slot: { vectors: Float32Array; vectorOffset: number; vectorLength: number }): number {
@@ -5371,7 +5375,8 @@ function usePackedPlaybackGeometry(
     options.resultPlaybackFrameController,
     options.showDeformed,
     options.stressExaggeration,
-    resultColorScale
+    resultColorScale,
+    stressComponent
   ]);
 }
 

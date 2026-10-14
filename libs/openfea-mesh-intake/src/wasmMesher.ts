@@ -1017,6 +1017,19 @@ async function inspectStepGeometrySession(
 
     const volumeCount = entityTags(gmsh, 3).length;
     const surfaceCount = entityTags(gmsh, 2).length;
+    if (volumeCount === 0 && surfaceCount === 0) {
+      return { inspection: {
+        status: "invalid",
+        volumeCount: 0,
+        surfaceCount: 0,
+        orphanSurfaceCount: 0,
+        openBoundaryCurveCount: 0,
+        surfaceMeshValid: false,
+        repairable: false,
+        issue: "import_failed",
+        message: "The STEP file contains no usable solid or surface geometry."
+      } };
+    }
     const orphanSurfaceCount = orphanSurfaceTags(gmsh).length;
     const openBoundaryCurveCount = openBoundaryCurveTags(gmsh).length;
     let surfaceMeshValid = true;

@@ -276,6 +276,9 @@ async function uploadModelWithGeometry(
   assertCurrentModelMutation(mutationOptions);
   const stepGeometry = knownStepGeometry ?? await inspectStepGeometryForUpload(file.name, contentBase64);
   assertCurrentModelMutation(mutationOptions);
+  if (stepGeometry?.status === "invalid") {
+    throw new Error(stepGeometry.message ?? "The STEP file contains invalid geometry.");
+  }
   void projectId;
   if (!currentProject) throw new Error("Could not upload model without an open project.");
   const data = createLocalUploadResponse(currentProject, embeddedModel, undefined, { stepDisplayFaces, stepDimensions });
