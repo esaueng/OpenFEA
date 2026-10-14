@@ -4,6 +4,12 @@ import { workspaceNoticeFor } from "./workspaceNotice";
 const quiet = { meshError: null, meshing: false, runError: null, solverRunning: false, resultsOutdatedBy: null, dismissedKey: null };
 
 describe("workspaceNoticeFor", () => {
+  test("shows a rejected import without mislabeling the retained simulation as failed", () => {
+    const message = "Invalid STEP geometry. The current model, study, and results were kept.";
+    const notice = workspaceNoticeFor({ ...quiet, importError: message });
+    expect(notice).toMatchObject({ tone: "error", title: "Model import failed", step: "model", message });
+    expect(workspaceNoticeFor({ ...quiet, importError: message, dismissedKey: notice!.key })).toBeNull();
+  });
   test("is silent when nothing needs attention", () => {
     expect(workspaceNoticeFor(quiet)).toBeNull();
   });

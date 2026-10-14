@@ -25,6 +25,15 @@ let solidWithOrphanSheetStep: string;
 let trayWithDisconnectedPayloadStep: string;
 
 describe("STEP geometry inspection and repair", () => {
+  it("rejects malformed and empty STEP files instead of offering shell repair", async () => {
+    for (const step of [
+      "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nTHIS IS AN INVALID QA FIXTURE\n",
+      "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;"
+    ]) {
+      const inspection = await inspectStepGeometry(step);
+      expect(inspection).toMatchObject({ status: "invalid", repairable: false, volumeCount: 0, surfaceCount: 0, issue: "import_failed" });
+    }
+  }, 60_000);
   beforeAll(async () => {
     healthyBoxWithBoreStep = await createStep((gmsh) => {
       const box = gmsh.model.occ.addBox(0, 0, 0, 24, 18, 10);

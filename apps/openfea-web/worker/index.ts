@@ -236,6 +236,12 @@ function isRetiredCloudSolveRoute(pathname: string): boolean {
 
 function withSecurityHeaders(response: Response): Response {
   const secured = new Response(response.body, response);
+  if (secured.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() === "text/html") {
+    const cacheControl = secured.headers.get("cache-control") ?? "public, max-age=0, must-revalidate";
+    if (!cacheControl.split(",").some((directive) => directive.trim().toLowerCase() === "no-transform")) {
+      secured.headers.set("cache-control", `${cacheControl}, no-transform`);
+    }
+  }
   for (const [key, value] of Object.entries(securityHeaders())) {
     secured.headers.set(key, value);
   }

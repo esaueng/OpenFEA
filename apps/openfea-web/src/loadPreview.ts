@@ -188,6 +188,10 @@ export function loadMarkerOrdinalLabel(marker: ViewerLoadMarker) {
 }
 
 export function loadMarkerDisplayLabel(marker: ViewerLoadMarker) {
+  if (marker.type === "heat_flux" || marker.type === "heat_generation") {
+    const kind = marker.type === "heat_flux" ? "Heat flux" : "Heat generation";
+    return `${loadMarkerOrdinalLabel(marker)} ${kind} ${formatLoadMarkerValue(marker.value)} ${marker.units}`;
+  }
   const kind = marker.type === "pressure" || marker.type === "surface_traction" ? "P" : marker.type === "gravity" ? "G" : "F";
   return `${loadMarkerOrdinalLabel(marker)} ${kind} ${formatLoadMarkerValue(marker.value)} ${marker.units} ${marker.directionLabel}`;
 }

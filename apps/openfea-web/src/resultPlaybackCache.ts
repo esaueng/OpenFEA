@@ -577,10 +577,15 @@ export function packedPreparedPlaybackFieldSlot(
   frameOrdinal: number,
   type: ResultField["type"],
   location?: ResultField["location"],
-  component?: ResultField["component"]
+  component?: ResultField["component"],
+  surfaceMeshRef?: string
 ): PackedPreparedPlaybackFieldSlot | null {
   const clampedFrameOrdinal = Math.max(0, Math.min(cache.frameCount - 1, Math.floor(frameOrdinal)));
-  const fieldOrdinal = packedPreparedPlaybackFieldOrdinal(cache.fieldDescriptors, type, location, component);
+  const fieldOrdinal = surfaceMeshRef === undefined
+    ? packedPreparedPlaybackFieldOrdinal(cache.fieldDescriptors, type, location, component)
+    : cache.fieldDescriptors.findIndex((descriptor) => descriptor.type === type
+      && descriptor.location === location && descriptor.surfaceMeshRef === surfaceMeshRef
+      && (type !== "stress" || (descriptor.component ?? "von_mises") === (component ?? "von_mises")));
   if (fieldOrdinal < 0) return null;
   const slot = clampedFrameOrdinal * cache.fieldCount + fieldOrdinal;
   const offset = cache.fieldOffsets[slot] ?? 0;
