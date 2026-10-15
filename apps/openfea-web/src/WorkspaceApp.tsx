@@ -42,7 +42,7 @@ import { buildResultViewerHtml, suggestedResultHtmlFilename } from "./resultView
 import { buildAutosavedWorkspace, buildAutosavedWorkspaceUiSnapshot, flushAutosavedWorkspace, installAutosavePageHideFlush, localRunIdForResultsRestore, parseAutosavedWorkspacePayload, readAutosavedWorkspace, scheduleAutosavedUiSnapshotWrite, scheduleAutosavedWorkspaceWrite, WORKSPACE_LOG_LIMIT } from "./appPersistence";
 import type { AutosavedWorkspace, WorkspaceUiSnapshot } from "./appPersistence";
 import { readCloudBackupPreference, requestPersistentBrowserStorage, restoreEncryptedCloudBackup, saveEncryptedCloudBackup, writeCloudBackupPreference, type CloudBackupPreference } from "./cloudBackup";
-import { isAnalyticsEnabled, setAnalyticsEnabled } from "./analytics";
+import { isAnalyticsEnabled, setAnalyticsEnabled, trackUsage } from "./analytics";
 import {
   canNavigateToStep,
   isEditableShortcutTarget,
@@ -223,6 +223,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const [overflowRecoveryRequest, setOverflowRecoveryRequest] = useState(0);
   const [cloudBackupPreference, setCloudBackupPreference] = useState<CloudBackupPreference | null>(() => readCloudBackupPreference());
   const [analyticsEnabled, setAnalyticsEnabledState] = useState(() => isAnalyticsEnabled());
+  useEffect(() => {
+    const update = () => setAnalyticsEnabledState(isAnalyticsEnabled());
+    window.addEventListener("glimpse-consent-changed", update);
+    return () => window.removeEventListener("glimpse-consent-changed", update);
+  }, []);
   const [overflowRecoveryNeeded, setOverflowRecoveryNeeded] = useState(false);
   const [storageRecoveryNoticeOpen, setStorageRecoveryNoticeOpen] = useState(false);
   const [cloudBackupBusy, setCloudBackupBusy] = useState(false);
@@ -1637,9 +1642,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         return capture();
       });
       await saveTarget.save(pngDataUrlToBlob(png));
+      trackUsage("export_completed");
       pushMessage(`Exported ${suggestedName}.`);
     } catch (error) {
       const message = errorMessage(error, "Could not export the current result image.");
+      trackUsage("export_failed");
       setPngExportError(message);
       pushMessage(message);
     } finally {
@@ -1676,9 +1683,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       if (blob.size > 50 * 1024 * 1024 && !window.confirm(`The offline viewer is ${(blob.size / 1024 / 1024).toFixed(1)} MB. Save it anyway?`)) return;
       await saveTarget.save(blob);
+      trackUsage("export_completed");
       pushMessage(`Exported ${suggestedName}.`);
     } catch (error) {
       const message = errorMessage(error, "Could not export the offline result viewer.");
+      trackUsage("export_failed");
       setHtmlExportError(message);
       pushMessage(message);
     } finally {
@@ -1725,9 +1734,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       if (saveTarget === "cancelled") return;
       const exported = buildSelectedResultExport(exportInput, format);
       await saveTarget.save(new Blob(exported.parts, { type: exported.mimeType }));
+      trackUsage("export_completed");
       pushMessage(`Exported ${suggestedName} (${exported.selectedFields.length} canonical fields, selected state only).`);
     } catch (error) {
       const message = errorMessage(error, `Could not export the selected result as ${format.toUpperCase()}.`);
+      trackUsage("export_failed");
       setDataExportError(message);
       pushMessage(message);
     } finally {
@@ -1872,7 +1883,9 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       const { renderReportPdf } = await import("./report/reportPdf");
       const blob = await renderReportPdf(reportData);
       await saveTarget.save(blob);
+      trackUsage("export_completed");
     } catch (error) {
+      trackUsage("export_failed");
       setReportError(error instanceof Error ? error.message : "Could not generate the simulation report.");
     } finally {
       setReportBusy(false);
@@ -1970,6 +1983,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     // generateMesh rethrows quality-gate and STEP topology rejections so the
     // primary failure remains visible without starting another heavy CAD job.
     void updateStudy(generateMesh(study.id, preset, study, displayModel ?? undefined, pushMessage, setMeshPhaseProgress), shouldAutoAdvanceAfterMeshGeneration() ? "run" : undefined)
+      .then(() => trackUsage("feature_used"))
       .catch((error: unknown) => {
         setMeshPhaseProgress(null);
         if (isAbortError(error)) {
@@ -2085,6 +2099,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   }
 
   function applyStep(step: StepId) {
+    if (step !== activeStep) trackUsage(step === "model" ? "workflow_model" : step === "mesh" ? "workflow_mesh" : step === "run" ? "workflow_run" : step === "results" ? "workflow_results" : "workflow_setup");
     setActiveStep(step);
     if (step === "results") {
       setViewMode("results");
@@ -2387,6 +2402,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     }
     setResultPlaybackPlaying(false);
     setRunError(null);
+    const analyticsStarted = isAnalyticsEnabled() ? performance.now() : null;
     pushMessage("Starting simulation run.");
     pushMessage(runDiagnosticsMessage(study, displayModel ?? undefined));
     let response: Awaited<ReturnType<typeof runSimulation>>;
@@ -2415,6 +2431,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       setRunTiming(null);
       setResultPlaybackPlaying(false);
       const message = errorMessage(error, "Could not start simulation.");
+      trackUsage("solver_failed");
       setRunError(message);
       pushMessage(message);
       return;
@@ -2430,6 +2447,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       setRunTiming(timingFromRunEvent(event));
       pushMessage(messageWithEta(event));
       if (event.type === "complete") {
+        trackUsage("solver_completed");
+        if (analyticsStarted !== null) trackUsage("operation_latency", performance.now() - analyticsStarted);
         source.close();
         if (activeRunSourceRef.current === source) activeRunSourceRef.current = null;
         const completedElapsedMs = timingFromRunEvent(event)?.elapsedMs;
@@ -2497,6 +2516,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         setResultPlaybackPlaying(false);
         setRunProgress(0);
         setRunTiming(null);
+        if (event.type === "error") trackUsage("solver_failed");
         if (event.type === "error") setRunError(event.message || "Simulation run failed.");
       }
     });
@@ -2531,10 +2551,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
 
   function handleAnalyticsEnabledChange(enabled: boolean) {
     if (!setAnalyticsEnabled(enabled)) {
-      pushMessage("OpenFEA could not save the analytics choice in this browser. The current setting was not changed.");
+      setAnalyticsEnabledState(isAnalyticsEnabled());
+      pushMessage("Could not save the analytics choice. Analytics are off in this page; clear this site’s stored data if withdrawal cannot be saved.");
       return;
     }
-    setAnalyticsEnabledState(enabled);
+    setAnalyticsEnabledState(isAnalyticsEnabled());
   }
 
   function handleToggleSingleKeyShortcuts() {
@@ -3384,6 +3405,7 @@ async function saveProjectToLocalDisk(project: Project, displayModel: DisplayMod
     type: "application/json"
   });
   await target.save(blob);
+  trackUsage("export_completed");
   return { savedAt, ...(target.handle ? { handle: target.handle } : {}) };
 }
 

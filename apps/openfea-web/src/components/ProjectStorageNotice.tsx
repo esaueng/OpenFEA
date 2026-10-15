@@ -92,11 +92,11 @@ export function ProjectStorageNotice({ preference, busy, recoveryNeeded, analyti
           onChange={(event) => onAnalyticsEnabledChange(event.currentTarget.checked)}
         />
         <span>
-          <strong>Anonymous usage analytics</strong>
-          <small>Page views and outbound-link clicks go to Plausible — never project, geometry, or simulation data. Turning this off applies from the next app launch.</small>
+          <strong>Optional usage analytics</strong>
+          <small>Allow Glimpse to count feature use, workflow steps, exports, solver outcomes, and coarse timings. No model contents, geometry, filenames, project names, or identity. Off by default. Withdraw here to stop collection immediately; existing anonymous totals cannot be attributed or removed.</small>
         </span>
       </label>
-      <small className="storage-recovery-footnote">Remembered in this browser. Change it anytime from Storage in the toolbar.</small>
+      <small className="storage-recovery-footnote">Remembered in this browser. Change it anytime from Storage in the toolbar. Basic server counters measure API reliability separately; local operations require the optional choice above.</small>
     </aside>
   );
 }
