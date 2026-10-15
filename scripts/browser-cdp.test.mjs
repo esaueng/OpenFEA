@@ -73,6 +73,19 @@ test("long solve requests can use a bounded deadline longer than ordinary comman
   socket.onclose();
 });
 
+test("unknown notification names and non-callable targets cannot dispatch", () => {
+  const socket = { send: vi.fn() };
+  const client = createCdpClient(socket);
+  const handler = vi.fn();
+  client.on("Runtime.exceptionThrown", handler);
+  client.on("invalid-target", {});
+  for (const method of ["constructor", "__proto__", "get", "unregistered", "invalid-target"]) {
+    expect(() => socket.onmessage({ data: JSON.stringify({ method, params: {} }) })).not.toThrow();
+  }
+  expect(handler).not.toHaveBeenCalled();
+  socket.onclose();
+});
+
 test("socket and synchronous send errors reject outstanding requests", async () => {
   const socket = { send: vi.fn() };
   const client = createCdpClient(socket);
