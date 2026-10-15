@@ -1,4 +1,5 @@
 /// <reference types="./worker-configuration" />
+import { handleGlimpseUsage, countApi } from "./glimpse";
 
 // Local-first Cloudflare Worker: serves the built web app from Workers Static
 // Assets with security headers and stores only explicitly approved,
@@ -24,62 +25,78 @@ const PROJECT_BACKUP_RETENTION_DAYS = 30;
 const BACKUP_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const BACKUP_TOKEN_PATTERN = /^[A-Za-z0-9_-]{40,64}$/u;
 
+async function handleAppRequest(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+
+  if (url.pathname === "/healthz") {
+    const headers = {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    };
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      return new Response(null, { status: 405, headers: { ...headers, allow: "GET, HEAD" } });
+    }
+    return new Response(
+      request.method === "HEAD" ? null : JSON.stringify({ status: "ok", service: "openfea" }),
+      { headers },
+    );
+  }
+
+  if (url.pathname === "/health") {
+    return Response.json(
+      {
+        ok: true,
+        mode: "cloudflare-worker",
+        service: "openfea-web",
+        solverRuntime: "browser-openfea-core"
+      },
+      { headers: jsonHeaders }
+    );
+  }
+
+  if (isRetiredCloudSolveRoute(url.pathname)) {
+    return Response.json(
+      {
+        error: CLOUD_SOLVE_RETIRED_MESSAGE,
+        retired: true,
+        solverRuntime: "browser-openfea-core",
+        route: url.pathname
+      },
+      { status: 410, headers: jsonHeaders }
+    );
+  }
+
+  const backupId = projectBackupId(url.pathname);
+  if (backupId) return handleProjectBackup(request, env, backupId);
+
+  if (url.pathname.startsWith("/api/")) {
+    return Response.json(
+      {
+        error: "The Cloudflare Worker serves the local-first web app only. Simulations run in the browser with OpenFEA Core."
+      },
+      { status: 404, headers: jsonHeaders }
+    );
+  }
+
+  return withSecurityHeaders(await env.ASSETS.fetch(request));
+}
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/healthz") {
-      const headers = {
-        "content-type": "application/json; charset=utf-8",
-        "cache-control": "no-store",
-        "x-content-type-options": "nosniff",
-      };
-      if (request.method !== "GET" && request.method !== "HEAD") {
-        return new Response(null, { status: 405, headers: { ...headers, allow: "GET, HEAD" } });
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+    const path = new URL(request.url).pathname;
+    if (path === "/api/glimpse/usage") return handleGlimpseUsage(request, env);
+    const started = performance.now();
+    let status = 500;
+    try {
+      const response = await handleAppRequest(request, env);
+      status = response.status;
+      return response;
+    } finally {
+      if (path.startsWith("/api/") && !path.startsWith("/api/glimpse/")) {
+        ctx?.waitUntil(countApi(env, status, performance.now() - started));
       }
-      return new Response(
-        request.method === "HEAD" ? null : JSON.stringify({ status: "ok", service: "openfea" }),
-        { headers },
-      );
     }
-
-    if (url.pathname === "/health") {
-      return Response.json(
-        {
-          ok: true,
-          mode: "cloudflare-worker",
-          service: "openfea-web",
-          solverRuntime: "browser-openfea-core"
-        },
-        { headers: jsonHeaders }
-      );
-    }
-
-    if (isRetiredCloudSolveRoute(url.pathname)) {
-      return Response.json(
-        {
-          error: CLOUD_SOLVE_RETIRED_MESSAGE,
-          retired: true,
-          solverRuntime: "browser-openfea-core",
-          route: url.pathname
-        },
-        { status: 410, headers: jsonHeaders }
-      );
-    }
-
-    const backupId = projectBackupId(url.pathname);
-    if (backupId) return handleProjectBackup(request, env, backupId);
-
-    if (url.pathname.startsWith("/api/")) {
-      return Response.json(
-        {
-          error: "The Cloudflare Worker serves the local-first web app only. Simulations run in the browser with OpenFEA Core."
-        },
-        { status: 404, headers: jsonHeaders }
-      );
-    }
-
-    return withSecurityHeaders(await env.ASSETS.fetch(request));
   },
 
   // Inert queue handler for stale legacy Workers Builds consumers.
@@ -258,7 +275,7 @@ function securityHeaders(): Record<string, string> {
       "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
-      "connect-src 'self' https://plausible.io https://cdn.jsdelivr.net",
+      "connect-src 'self' https://cdn.jsdelivr.net",
       "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",

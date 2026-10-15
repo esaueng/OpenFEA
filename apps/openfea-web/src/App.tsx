@@ -1,4 +1,5 @@
-import { lazy, Suspense, useState } from "react";
+import { trackUsage } from "./analytics";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { hasAutosavedWorkspace, readAutosavedThemeMode } from "./autosaveStorage";
 import { StartScreen } from "./components/StartScreen";
 
@@ -57,6 +58,7 @@ export function App() {
 }
 
 function WorkspaceRoute() {
+  useEffect(() => { trackUsage("workspace_opened"); }, []);
   const [{ hasRestoredWorkspace, restoredThemeMode }] = useState(() => {
     const hasWorkspace = hasAutosavedWorkspace();
     return {

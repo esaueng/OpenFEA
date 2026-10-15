@@ -68,7 +68,7 @@ describe("ProjectStorageNotice", () => {
     expect(workspaceSource).toContain("readCloudBackupPreference()");
     expect(workspaceSource).toContain("writeCloudBackupPreference(preference)");
     expect(workspaceSource).toContain("if (!setAnalyticsEnabled(enabled))");
-    expect(workspaceSource).toContain("The current setting was not changed.");
+    expect(workspaceSource).toContain("Analytics are off in this page");
     expect(workspaceSource).toContain('title="Review project storage choice"');
     expect(workspaceSource.match(/\{renderStorageRecoveryNotice\(\)\}/g)).toHaveLength(2);
     expect(workspaceSource).not.toContain("storageRecoveryAvailable");
@@ -89,7 +89,7 @@ describe("ProjectStorageNotice", () => {
     expect(withoutHandler).not.toContain("Download project file");
   });
 
-  test("discloses anonymous analytics with an opt-out toggle", () => {
+  test("discloses optional analytics with an explicit opt-in and immediate withdrawal", () => {
     const html = renderToStaticMarkup(
       <ProjectStorageNotice preference="local" busy={false} recoveryNeeded={false} analyticsEnabled={true} onChooseCloud={vi.fn()} onChooseLocal={vi.fn()} onAnalyticsEnabledChange={vi.fn()} onDismiss={vi.fn()} />
     );
@@ -97,12 +97,12 @@ describe("ProjectStorageNotice", () => {
       <ProjectStorageNotice preference="local" busy={false} recoveryNeeded={false} analyticsEnabled={false} onChooseCloud={vi.fn()} onChooseLocal={vi.fn()} onAnalyticsEnabledChange={vi.fn()} onDismiss={vi.fn()} />
     );
 
-    expect(html).toContain("Anonymous usage analytics");
-    expect(html).toContain("Page views and outbound-link clicks go to Plausible");
-    expect(html).toContain("never project, geometry, or simulation data");
-    expect(html).toContain("next app launch");
+    expect(html).toContain("Optional usage analytics");
+    expect(html).toContain("Allow Glimpse to count feature use");
+    expect(html).toContain("No model contents, geometry, filenames, project names, or identity.");
+    expect(html).toContain("stop collection immediately");
     expect(html).toContain('type="checkbox"');
-    expect(optedOut).toContain("Anonymous usage analytics");
+    expect(optedOut).toContain("Optional usage analytics");
   });
 
   test("routes the local project export through the storage card and Results menu, not the top bar", () => {
