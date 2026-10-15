@@ -42,7 +42,7 @@ import { buildResultViewerHtml, suggestedResultHtmlFilename } from "./resultView
 import { buildAutosavedWorkspace, buildAutosavedWorkspaceUiSnapshot, flushAutosavedWorkspace, installAutosavePageHideFlush, localRunIdForResultsRestore, parseAutosavedWorkspacePayload, readAutosavedWorkspace, scheduleAutosavedUiSnapshotWrite, scheduleAutosavedWorkspaceWrite, WORKSPACE_LOG_LIMIT } from "./appPersistence";
 import type { AutosavedWorkspace, WorkspaceUiSnapshot } from "./appPersistence";
 import { readCloudBackupPreference, requestPersistentBrowserStorage, restoreEncryptedCloudBackup, saveEncryptedCloudBackup, writeCloudBackupPreference, type CloudBackupPreference } from "./cloudBackup";
-import { isAnalyticsEnabled, setAnalyticsEnabled, trackUsage } from "./analytics";
+import { hasAnalyticsConsent, isAnalyticsEnabled, setAnalyticsEnabled, trackUsage, trackDetail, trackSize, trackParts, durationBucket } from "./analytics";
 import {
   canNavigateToStep,
   isEditableShortcutTarget,
@@ -222,9 +222,9 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const [dataExportError, setDataExportError] = useState<string | null>(null);
   const [overflowRecoveryRequest, setOverflowRecoveryRequest] = useState(0);
   const [cloudBackupPreference, setCloudBackupPreference] = useState<CloudBackupPreference | null>(() => readCloudBackupPreference());
-  const [analyticsEnabled, setAnalyticsEnabledState] = useState(() => isAnalyticsEnabled());
+  const [analyticsEnabled, setAnalyticsEnabledState] = useState(() => hasAnalyticsConsent());
   useEffect(() => {
-    const update = () => setAnalyticsEnabledState(isAnalyticsEnabled());
+    const update = () => setAnalyticsEnabledState(hasAnalyticsConsent());
     window.addEventListener("glimpse-consent-changed", update);
     return () => window.removeEventListener("glimpse-consent-changed", update);
   }, []);
@@ -1454,14 +1454,17 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   }
 
   function handleCreateProject() {
+    trackDetail("feature_category", "create");
     const actionHandle = beginProjectAction(projectRef.current);
     void openProjectResponse(createProject(), { actionHandle });
   }
 
   function handleOpenProject(file: File) {
+    trackDetail("feature_category", "import");
     const actionHandle = beginProjectAction(projectRef.current);
     void openProjectResponse(importLocalProject(file), { actionHandle }).catch((error: unknown) => {
       if (isAbortError(error)) return;
+      trackDetail("error_import");
       pushMessage(error instanceof Error ? error.message : "Could not open local project.");
     });
   }
@@ -1504,6 +1507,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     }), { actionHandle }).catch((error: unknown) => {
       if (isAbortError(error)) return;
       if (projectRef.current !== sourceProject) return;
+      trackDetail("error_import");
       const message = error instanceof Error ? error.message : "Could not upload model.";
       setModelImportError(`${message} The current model, study, and results were kept.`);
       pushMessage(message);
@@ -1601,6 +1605,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       pushMessage("Project saved to local disk.");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
+      trackDetail("error_storage");
       pushMessage(error instanceof Error ? error.message : "Could not save project.");
     }
   }
@@ -1646,7 +1651,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       pushMessage(`Exported ${suggestedName}.`);
     } catch (error) {
       const message = errorMessage(error, "Could not export the current result image.");
-      trackUsage("export_failed");
+      trackUsage("export_failed"); trackDetail("error_export");
       setPngExportError(message);
       pushMessage(message);
     } finally {
@@ -1687,7 +1692,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       pushMessage(`Exported ${suggestedName}.`);
     } catch (error) {
       const message = errorMessage(error, "Could not export the offline result viewer.");
-      trackUsage("export_failed");
+      trackUsage("export_failed"); trackDetail("error_export");
       setHtmlExportError(message);
       pushMessage(message);
     } finally {
@@ -1738,7 +1743,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       pushMessage(`Exported ${suggestedName} (${exported.selectedFields.length} canonical fields, selected state only).`);
     } catch (error) {
       const message = errorMessage(error, `Could not export the selected result as ${format.toUpperCase()}.`);
-      trackUsage("export_failed");
+      trackUsage("export_failed"); trackDetail("error_export");
       setDataExportError(message);
       pushMessage(message);
     } finally {
@@ -1885,7 +1890,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       await saveTarget.save(blob);
       trackUsage("export_completed");
     } catch (error) {
-      trackUsage("export_failed");
+      trackUsage("export_failed"); trackDetail("error_export");
       setReportError(error instanceof Error ? error.message : "Could not generate the simulation report.");
     } finally {
       setReportBusy(false);
@@ -1979,17 +1984,20 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       pushMessage(message);
       return;
     }
+    const analyticsStarted = isAnalyticsEnabled() ? performance.now() : null;
+    trackDetail("feature_category", "mesh");
     setMeshPhaseProgress({ phase: "load", phaseIndex: 0, phaseCount: 8, message: "Loading gmsh WebAssembly module..." });
     // generateMesh rethrows quality-gate and STEP topology rejections so the
     // primary failure remains visible without starting another heavy CAD job.
     void updateStudy(generateMesh(study.id, preset, study, displayModel ?? undefined, pushMessage, setMeshPhaseProgress), shouldAutoAdvanceAfterMeshGeneration() ? "run" : undefined)
-      .then(() => trackUsage("feature_used"))
+      .then(() => { trackUsage("feature_used"); if(analyticsStarted!==null){const bucket=durationBucket(performance.now()-analyticsStarted);if(bucket)trackDetail("mesh_latency",bucket);} })
       .catch((error: unknown) => {
         setMeshPhaseProgress(null);
         if (isAbortError(error)) {
           pushMessage(error.message || "Mesh generation cancelled.");
           return;
         }
+        trackDetail("error_mesh");
         const meshFailure = error instanceof Error ? error.message : String(error);
         setMeshError(meshFailure);
         pushMessage(`Mesh generation failed: ${meshFailure}`);
@@ -2403,6 +2411,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     setResultPlaybackPlaying(false);
     setRunError(null);
     const analyticsStarted = isAnalyticsEnabled() ? performance.now() : null;
+    trackDetail("feature_category", "solve");
     pushMessage("Starting simulation run.");
     pushMessage(runDiagnosticsMessage(study, displayModel ?? undefined));
     let response: Awaited<ReturnType<typeof runSimulation>>;
@@ -2431,7 +2440,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       setRunTiming(null);
       setResultPlaybackPlaying(false);
       const message = errorMessage(error, "Could not start simulation.");
-      trackUsage("solver_failed");
+      trackUsage("solver_failed"); trackDetail("error_solver");
       setRunError(message);
       pushMessage(message);
       return;
@@ -2449,6 +2458,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       if (event.type === "complete") {
         trackUsage("solver_completed");
         if (analyticsStarted !== null) trackUsage("operation_latency", performance.now() - analyticsStarted);
+        if (analyticsStarted !== null) { const bucket=durationBucket(performance.now()-analyticsStarted); if(bucket)trackDetail("solver_latency",bucket); }
         source.close();
         if (activeRunSourceRef.current === source) activeRunSourceRef.current = null;
         const completedElapsedMs = timingFromRunEvent(event)?.elapsedMs;
@@ -2493,6 +2503,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           setViewMode("results");
           setActiveStep("results");
           if (results.summary.diagnostics?.some((diagnostic) => diagnostic.id === "local-results-persistence")) {
+            trackDetail("error_storage");
             pushMessage("Completed results exceeded or could not use IndexedDB storage.");
             setOverflowRecoveryRequest((request) => request + 1);
           }
@@ -2516,7 +2527,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         setResultPlaybackPlaying(false);
         setRunProgress(0);
         setRunTiming(null);
-        if (event.type === "error") trackUsage("solver_failed");
+        if (event.type === "error") { trackUsage("solver_failed"); trackDetail("error_solver"); }
         if (event.type === "error") setRunError(event.message || "Simulation run failed.");
       }
     });
@@ -2551,11 +2562,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
 
   function handleAnalyticsEnabledChange(enabled: boolean) {
     if (!setAnalyticsEnabled(enabled)) {
-      setAnalyticsEnabledState(isAnalyticsEnabled());
+      setAnalyticsEnabledState(hasAnalyticsConsent());
       pushMessage("Could not save the analytics choice. Analytics are off in this page; clear this site’s stored data if withdrawal cannot be saved.");
       return;
     }
-    setAnalyticsEnabledState(isAnalyticsEnabled());
+    setAnalyticsEnabledState(hasAnalyticsConsent());
   }
 
   function handleToggleSingleKeyShortcuts() {
@@ -3400,11 +3411,16 @@ async function saveProjectToLocalDisk(project: Project, displayModel: DisplayMod
     accept: { "application/json": [".json", ".openfea", ".opencae"] }
   });
   if (target === "cancelled") return null;
+  const analyticsStarted = isAnalyticsEnabled() ? performance.now() : null;
   const savedResults = results?.fields.length ? await portableResultBundle(results, getRunVariant) : undefined;
   const blob = new Blob([JSON.stringify(buildLocalProjectFile(project, displayModel, savedAt, savedResults), null, 2)], {
     type: "application/json"
   });
   await target.save(blob);
+  if (analyticsStarted !== null) { const bucket=durationBucket(performance.now()-analyticsStarted); if(bucket)trackDetail("export_latency",bucket); }
+  trackSize("project_size", blob.size);
+  trackParts(displayModel.bodyCount);
+  trackDetail("feature_category", "export");
   trackUsage("export_completed");
   return { savedAt, ...(target.handle ? { handle: target.handle } : {}) };
 }
