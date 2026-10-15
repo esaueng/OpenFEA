@@ -20,7 +20,6 @@
     "@openfea/step": "workspace:*",
     "@openfea/study-core": "workspace:*",
     "@openfea/units": "workspace:*",
-    "@plausible-analytics/tracker": "^0.4.5",
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.17.10",
     "jspdf": "^4.2.1",

@@ -2,13 +2,11 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
-import { initPlausibleAnalytics } from "./analytics";
 import { registerOfflineCaching } from "./lib/registerOfflineCaching";
 import "./theme/fonts.css";
 import "./theme/tokens.css";
 import "./styles/app.css";
 
-initPlausibleAnalytics();
 registerOfflineCaching();
 
 // Debug/verification harnesses (plan A-M2). The production proof harnesses are

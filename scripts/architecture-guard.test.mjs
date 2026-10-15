@@ -48,13 +48,14 @@ function webSourceFiles() {
 }
 
 describe("local-first architecture guard", () => {
-  test("only the encrypted-backup module calls the Worker API surface", () => {
+  test("only encrypted recovery and consent-gated analytics call their approved Worker routes", () => {
     const offenders = [];
     for (const absolute of webSourceFiles()) {
       const relative = absolute.slice(WEB_SRC.length + 1);
       if (FETCH_API_ALLOWLIST.has(relative)) continue;
       const source = readFileSync(absolute, "utf8");
       for (const match of source.matchAll(/fetch\(\s*["'`](\/api\/[^"'`]*)/g)) {
+        if (relative === "analytics.ts" && match[1] === "/api/glimpse/usage") continue;
         offenders.push(`${relative}: fetch("${match[1]}")`);
       }
       // CLOUD_BACKUP_PATH-style indirection: a non-allowlisted file
