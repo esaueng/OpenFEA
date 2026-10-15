@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createCdpClient } from "./browser-cdp.mjs";
 
 const PORT = Number(process.env.PORT ?? 5199);
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9337);
@@ -81,31 +82,7 @@ async function connectCdp() {
     socket.onopen = resolve;
     socket.onerror = reject;
   });
-  let nextId = 1;
-  const pending = new Map();
-  const handlers = new Map();
-  socket.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    if (message.id && pending.has(message.id)) {
-      pending.get(message.id)(message);
-      pending.delete(message.id);
-      return;
-    }
-    const handler = handlers.get(message.method);
-    if (typeof handler === "function") handler(message.params);
-  };
-  return {
-    send(method, params = {}) {
-      const id = nextId++;
-      return new Promise((resolve) => {
-        pending.set(id, resolve);
-        socket.send(JSON.stringify({ id, method, params }));
-      });
-    },
-    on(method, handler) {
-      handlers.set(method, handler);
-    }
-  };
+  return createCdpClient(socket);
 }
 
 async function evaluate(cdp, expression) {
@@ -128,7 +105,7 @@ async function callInPage(cdp, fn, ...args) {
     arguments: args.map(value => ({ value })),
     awaitPromise: true,
     returnByValue: true
-  });
+  }, { timeoutMs: 240_000 }); // Includes the real modal solve's 180-second deadline.
   if (response.error || response.result?.exceptionDetails) {
     throw new Error(JSON.stringify(response.error ?? response.result.exceptionDetails).slice(0, 800));
   }
