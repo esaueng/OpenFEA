@@ -71,6 +71,25 @@ describe("block shift-invert modal solver", () => {
     expect(Math.abs(dot(first.modes[0].vector, first.modes[1].vector))).toBeLessThan(1e-10);
   });
 
+  test("converges all six requested modes including nearly repeated pairs", () => {
+    const eigenvalues = [4, 4 + 1e-8, 16, 16 + 1e-8, 64, 100, 256, 1024];
+    const system = diagonalSystem(eigenvalues, eigenvalues.map(() => 1));
+    const solved = solveModalSubspace(system, 6);
+    expect(solved.ok).toBe(true);
+    if (!solved.ok) return;
+    expect(solved.requestedModeCount).toBe(6);
+    expect(solved.modes).toHaveLength(6);
+    expect(solved.warning).toBeUndefined();
+    solved.modes.forEach((mode, index) => {
+      expect(mode.modeIndex).toBe(index + 1);
+      expect(mode.eigenvalue).toBeCloseTo(eigenvalues[index], 7);
+      expect(mode.scaledResidual).toBeLessThanOrEqual(1e-6);
+      for (let other = 0; other < solved.modes.length; other += 1) {
+        expect(massDot(system.mass, mode.vector, solved.modes[other].vector)).toBeCloseTo(index === other ? 1 : 0, 9);
+      }
+    });
+  });
+
   test("maps singular constrained systems to the supports-step diagnostic", () => {
     const solved = solveModalSubspace(diagonalSystem([4, 0, 9], [1, 1, 1]), 2);
     expect(solved.ok).toBe(false);

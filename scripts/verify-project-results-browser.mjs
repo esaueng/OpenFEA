@@ -1,10 +1,12 @@
 // Regression: history must invalidate results; portable files must contain all dynamic cases.
 // Run with: node scripts/verify-project-results-browser.mjs (Chrome; ports 5199 and 9337).
 import { spawn, spawnSync } from "node:child_process";
+import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createCdpClient } from "./browser-cdp.mjs";
 
 const PORT = Number(process.env.PORT ?? 5199);
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9337);
@@ -80,31 +82,7 @@ async function connectCdp() {
     socket.onopen = resolve;
     socket.onerror = reject;
   });
-  let nextId = 1;
-  const pending = new Map();
-  const handlers = new Map();
-  socket.onmessage = (event) => {
-    const message = JSON.parse(event.data);
-    if (message.id && pending.has(message.id)) {
-      pending.get(message.id)(message);
-      pending.delete(message.id);
-      return;
-    }
-    const handler = handlers.get(message.method);
-    if (typeof handler === "function") handler(message.params);
-  };
-  return {
-    send(method, params = {}) {
-      const id = nextId++;
-      return new Promise((resolve) => {
-        pending.set(id, resolve);
-        socket.send(JSON.stringify({ id, method, params }));
-      });
-    },
-    on(method, handler) {
-      handlers.set(method, handler);
-    }
-  };
+  return createCdpClient(socket);
 }
 
 async function evaluate(cdp, expression) {
@@ -127,7 +105,7 @@ async function callInPage(cdp, fn, ...args) {
     arguments: args.map(value => ({ value })),
     awaitPromise: true,
     returnByValue: true
-  });
+  }, { timeoutMs: 240_000 }); // Includes the real modal solve's 180-second deadline.
   if (response.error || response.result?.exceptionDetails) {
     throw new Error(JSON.stringify(response.error ?? response.result.exceptionDetails).slice(0, 800));
   }
@@ -160,7 +138,7 @@ async function run() {
     project.studies[0].loads[0].parameters.value = 500;
     return { project, previous, displayModel, active, other, results: { completedRunId: 'run-local-history-proof', summary, fields: active.fields, variants: [active], variantRefs: [active, other].map(({id,name,kind,caseId}) => ({id,name,kind,caseId,persistedSeparately:true})), activeVariantId: active.id } };
   })()`));
-  async function restore(projectFile, ui) {
+  async function restore(projectFile, ui, readySelector = ".result-variant-selector select") {
     const token = `${Date.now()}-${Math.random()}`;
     await callInPage(cdp, (projectFile, ui, token) => {
       sessionStorage.setItem('openfea-test-fixture', JSON.stringify({ projectFile, ui, token }));
@@ -173,7 +151,7 @@ async function run() {
       localStorage.setItem('opencae.workspace.autosave.v1', JSON.stringify({ version: 1, savedAt: new Date().toISOString(), projectFile: fixture.projectFile, ui: fixture.ui }));
     })()` });
     await cdp.send("Page.reload");
-    await waitFor("restored results", () => callInPage(cdp, token => window.__projectFixtureToken === token && Boolean(document.querySelector(".result-variant-selector select")), token));
+    await waitFor("restored results", () => callInPage(cdp, (token, selector) => window.__projectFixtureToken === token && Boolean(document.querySelector(selector)), token, readySelector));
     await cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: injection.result.identifier });
     await evaluate(cdp, `(() => {
       window.__savedProject = null;
@@ -211,6 +189,90 @@ async function run() {
   if (resaved.results.variants.length !== 2 || resaved.results.activeVariantId !== 'Side') throw new Error('Reopened cases were lost when switching');
   if (errors.length) throw new Error(errors.join('\n'));
   console.log('Portable results: both cases survive save, storage deletion, reopen, repeated switching, and resave.');
+  // Exercise a real six-mode browser solve, rather than fabricating modal fields.
+  const modalFile = await callInPage(cdp, async () => {
+    const api = await import('/src/lib/api.ts');
+    const { buildLocalProjectFile } = await import('/src/projectFile.ts');
+    const { project, displayModel } = await api.loadSampleProject('cantilever', 'modal_analysis');
+    const study = project.studies[0];
+    study.meshSettings.preset = 'coarse';
+    study.solverSettings.modeCount = 6;
+    const { run } = await api.runSimulation(study.id, study, displayModel);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { stream.close(); void api.cancelRun(run.id); reject(new Error('Six-mode solve timed out')); }, 180_000);
+      const stream = api.subscribeToRun(run.id, event => {
+        if (event.type !== 'complete' && event.type !== 'error' && event.type !== 'cancelled') return;
+        clearTimeout(timer);
+        stream.close();
+        if (event.type === 'complete') resolve();
+        else reject(new Error(event.message));
+      });
+    });
+    const results = await api.getResults(run.id);
+    if (results.summary.convergedModeCount !== 6 || results.fields.length !== 6) throw new Error('Six-mode solve omitted a mode');
+    if (results.summary.modes.some(mode => mode.scaledResidual > 1e-6)) throw new Error('Modal residual exceeded tolerance');
+    study.runs = [{ ...run, status: 'complete' }];
+    return buildLocalProjectFile(project, displayModel, new Date().toISOString(), { ...results, completedRunId: run.id });
+  });
+  const modalUi = { ...ui, undoStack: [], redoStack: [], sampleModel: 'cantilever', sampleAnalysisType: 'modal_analysis', resultMode: 'mode_shape', showDeformed: true, selectedModeIndex: 1, completedRunId: modalFile.results.completedRunId };
+  await restore(modalFile, modalUi, '.modal-mode-table');
+  const modalBaseline = await save();
+  const canonicalModes = fields => fields.map(({ id, modeIndex, frequencyHz, eigenvalue, scaledResidual, values, vectors, units, surfaceMeshRef, location }) => ({ id, modeIndex, frequencyHz, eigenvalue, scaledResidual, values, vectors, units, surfaceMeshRef, location }));
+  // Import deliberately reclassifies provenance; numerical modal data must survive intact.
+  assert.deepEqual(canonicalModes(modalBaseline.results.fields), canonicalModes(modalFile.results.fields));
+  async function renderedModeHash() {
+    return callInPage(cdp, nodeCount => {
+      const canvas = document.querySelector('canvas');
+      if (!canvas) return null;
+      let fiber = canvas[Object.keys(canvas).find(key => key.startsWith('__reactFiber'))];
+      let store;
+      while (fiber && !store) {
+        let hook = fiber.memoizedState;
+        while (hook) { store = hook.memoizedState?.current?.__r3f?.root; if (store) break; hook = hook.next; }
+        fiber = fiber.return;
+      }
+      let hash = null;
+      store?.getState().scene.traverse(object => {
+        const geometry = object.geometry;
+        const position = geometry?.getAttribute('position');
+        if (!object.isMesh || geometry?.getAttribute('color')?.count !== nodeCount || !position) return;
+        const bytes = new Uint8Array(position.array.buffer, position.array.byteOffset, position.array.byteLength);
+        let value = 2166136261;
+        for (const byte of bytes) value = Math.imul(value ^ byte, 16777619);
+        hash = value >>> 0;
+      });
+      return hash;
+    }, modalFile.results.surfaceMesh.nodes.length);
+  }
+  const renderedModes = new Set();
+  for (const mode of modalFile.results.summary.modes) {
+    await callInPage(cdp, modeIndex => document.querySelector(`[aria-label^="Mode ${modeIndex},"]`).click(), mode.modeIndex);
+    await waitFor(`mode ${mode.modeIndex}`, () => callInPage(cdp, modeIndex => document.querySelector(`[aria-label^="Mode ${modeIndex},"]`)?.getAttribute('aria-pressed') === 'true', mode.modeIndex));
+    const phase = await evaluate(cdp, `(() => {
+      const range = document.querySelector('[aria-label="Mode phase"]');
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(range, '12');
+      range.dispatchEvent(new Event('input', { bubbles: true }));
+      range.dispatchEvent(new Event('change', { bubbles: true }));
+      return Number(range.max);
+    })()`);
+    if (phase !== 23) throw new Error('Modal phase frames were lost');
+    await waitFor('half-cycle phase', () => evaluate(cdp, `document.querySelector('[aria-label="Mode phase"]').value === '12'`));
+    const renderedHash = await waitFor(`rendered mode ${mode.modeIndex}`, async () => {
+      const hash = await renderedModeHash();
+      return hash !== null && !renderedModes.has(hash) ? hash : null;
+    });
+    renderedModes.add(renderedHash);
+    const modalSaved = await save();
+    assert.deepEqual(modalSaved.results.fields, modalBaseline.results.fields, 'Mode selection or phase altered canonical saved fields');
+  }
+  const modalSaved = await save();
+  await restore(modalSaved, { ...modalUi, selectedModeIndex: 6 }, '.modal-mode-table');
+  const reopenedModal = await save();
+  if (reopenedModal.results.fields.length !== 6 || reopenedModal.results.summary.convergedModeCount !== 6) throw new Error('Reopen lost modal modes');
+  assert.deepEqual(canonicalModes(reopenedModal.results.fields), canonicalModes(modalFile.results.fields));
+  if (errors.length) throw new Error(errors.join('\n'));
+  console.log('Modal results: six converged modes survive selection, phase changes, save, reopen, and resave without modifying canonical fields.');
   await cdp.send("Browser.close");
   await sleep(1000);
 }
