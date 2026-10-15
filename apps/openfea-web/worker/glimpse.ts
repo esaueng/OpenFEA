@@ -1,3 +1,4 @@
+import { expandedMetric } from './glimpseContract';
 // Deliberately duplicated small wire contract; Glimpse revalidates at its RPC boundary.
 export interface GlimpseBinding { record(value: { level: 'basic' | 'optional'; event: string; bucket: string }): Promise<void> }
 export interface GlimpseEnv {
@@ -17,7 +18,8 @@ const BUCKETS = new Set(['lt_100ms', '100ms_1s', '1s_10s', '10s_60s', 'gte_60s']
 export function parseUsage(value: unknown): {level: 'optional'; event: string; bucket: string} | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const v = value as Record<string, unknown>;
-  if (Object.keys(v).length !== 2 || typeof v.event !== 'string' || typeof v.bucket !== 'string' || !EVENTS.has(v.event)) return null;
+  if (Object.keys(v).length !== 2 || typeof v.event !== 'string' || typeof v.bucket !== 'string' || (!EVENTS.has(v.event) && !expandedMetric(v.event, v.bucket, 'openfea'))) return null;
+  if (expandedMetric(v.event, v.bucket, 'openfea')) return {level:'optional',event:v.event,bucket:v.bucket};
   if (v.event === 'operation_latency' ? !BUCKETS.has(v.bucket) : v.bucket !== 'none') return null;
   return {level:'optional', event:v.event, bucket:v.bucket};
 }

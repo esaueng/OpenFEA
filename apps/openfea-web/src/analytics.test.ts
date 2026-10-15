@@ -31,7 +31,7 @@ describe('Glimpse explicit consent', () => {
     expect(url).toBe('/api/glimpse/usage');
     expect(options.credentials).toBe('omit'); expect(options.referrerPolicy).toBe('no-referrer');
     expect(JSON.parse(typeof options.body === 'string' ? options.body : '')).toEqual({event:'export_completed',bucket:'none'});
-    expect([...store.values()]).toEqual(['granted-v1']);
+    expect([...store.values()]).toEqual(['granted-v2']);
     analytics.trackUsage('operation_latency',1234);
     expect(JSON.parse(send.mock.calls[1]![1]!.body as string)).toEqual({event:'operation_latency',bucket:'1s_10s'});
   });
@@ -76,4 +76,29 @@ describe('Glimpse explicit consent', () => {
     expect(send).toHaveBeenCalledOnce();
   });
 
+});
+
+it('requires fresh consent for expanded diagnostics and never includes raw data in reports', () => {
+    store.set('openfea.glimpse.consent.v1','granted-v1');
+    analytics.trackDetail('error_runtime');
+    expect(send).not.toHaveBeenCalled();
+    analytics.setAnalyticsEnabled(true);
+    analytics.trackDetail('error_runtime');
+    analytics.trackDetail('private.step');
+    analytics.trackDetail('project_size','private-project');
+    expect(analytics.diagnosticReport()).toEqual({schema:2,app:'openfea',rows:[{event:'error_runtime',bucket:'none',count:1}]});
+    expect(send).toHaveBeenCalledOnce();
+    analytics.setAnalyticsEnabled(false);
+    expect(analytics.diagnosticReport().rows).toEqual([]);
+});
+it('records only coarse validated size and part observations', () => {
+    analytics.setAnalyticsEnabled(true);
+    analytics.trackSize('project_size',1048576);
+    analytics.trackParts(7);
+    analytics.trackParts(-1); analytics.trackParts(Infinity);
+    analytics.trackSize('project_size',NaN);
+    expect(analytics.diagnosticReport().rows).toEqual([
+      {event:'project_size',bucket:'1_10mib',count:1},
+      {event:'part_count',bucket:'2_10',count:1}
+    ]);
 });

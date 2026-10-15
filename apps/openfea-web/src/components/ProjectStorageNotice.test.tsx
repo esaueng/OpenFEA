@@ -98,9 +98,12 @@ describe("ProjectStorageNotice", () => {
     );
 
     expect(html).toContain("Optional usage analytics");
-    expect(html).toContain("Allow Glimpse to count feature use");
+    expect(html).toContain("Allow Glimpse to count feature categories");
     expect(html).toContain("No model contents, geometry, filenames, project names, or identity.");
     expect(html).toContain("stop collection immediately");
+    expect(html).toContain("This expanded scope requires a fresh choice");
+    expect(html).toContain("Download diagnostic report");
+    expect(html).toContain("No automatic upload");
     expect(html).toContain('type="checkbox"');
     expect(optedOut).toContain("Optional usage analytics");
   });
