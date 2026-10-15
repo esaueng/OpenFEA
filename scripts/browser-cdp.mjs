@@ -15,8 +15,12 @@ export function createCdpClient(socket, { timeoutMs = 30_000 } = {}) {
   }
   socket.onmessage = (event) => {
     const message = JSON.parse(event.data);
-    if (message.id) finish(message.id, null, message);
-    else handlers.get(message.method)?.(message.params);
+    if (message.id) {
+      finish(message.id, null, message);
+      return;
+    }
+    const handler = handlers.get(message.method);
+    if (typeof handler === "function") handler(message.params);
   };
   socket.onclose = () => {
     closed = true;
