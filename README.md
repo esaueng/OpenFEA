@@ -1,178 +1,131 @@
 # OpenFEA
 
+[![CI](https://github.com/esaueng/OpenFEA/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/esaueng/OpenFEA/actions/workflows/ci.yml)
 [![Production health](https://github.com/esaueng/OpenFEA/actions/workflows/production-health.yml/badge.svg?branch=main)](https://github.com/esaueng/OpenFEA/actions/workflows/production-health.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-OpenFEA is an engineering-preview, local-first browser CAD/CAE workspace for structural and thermal simulation. Import CAD or create an analytic STEP part, define a study, mesh and solve it in the browser with OpenFEA Core, inspect the results, and export a self-contained project or report.
+**Local-first browser CAD and finite element analysis for static, dynamic, modal, and thermal studies.**
 
-The workspace supports linear static stress, transient structural dynamics, modal analysis, and steady-state thermal conduction. Built-in samples, local `.openfea.json` project files, STEP/STP/STL/OBJ uploads, browser-local solves, selected-state CSV/VTU export, and HTML/PDF reports work without a production API or cloud solver.
+Import CAD or create an analytic STEP part, assign materials and boundary conditions, mesh and solve in your browser, then inspect and share the results. OpenFEA Core runs locally; no cloud solver or account is required.
 
-**Privacy:** projects, geometry, meshes, and results never leave the browser. The only optional server flow is the consent-gated, client-side-encrypted 30-day recovery backup (the server stores ciphertext it cannot read). Glimpse replaces the previous tracker with aggregate backend counters and optional, explicitly opted-in usage analytics. Both deployment switches default off pending setup; optional analytics also require consent in Storage. Withdrawal stops collection immediately. See [Glimpse setup and privacy](docs/glimpse.md) for the allowlist, metadata limits, and verification status.
+[Open the app](https://fea.esau.app) · [User guide](docs/user-guide/README.md) · [Validation](docs/validation/README.md) · [Local development](docs/local-development/README.md)
 
-## OpenFEA rename and compatibility
+> OpenFEA is an engineering preview. Results are development-oriented analysis outputs, not certified analysis. Review the assumptions, material data, mesh quality, and validation evidence for each study.
 
-The application, workspace folders, package scope (`@openfea/*`), reports, and installable PWA are named OpenFEA. Health responses identify the service as `openfea` / `openfea-web` and the solver runtime as `browser-openfea-core`; health-monitor consumers must use the updated contract. New project downloads use `.openfea.json` and the `openfea-local-project` envelope; existing `.opencae` / `.opencae.json` files and browser autosaves remain readable. Package consumers and local scripts must use the new `@openfea/*` names and `apps/openfea-*`, `libs/openfea-*`, `services/openfea-*`, and `runners/openfea-*` paths.
+## What you can do
 
-Persisted browser storage keys, the local SQLite filename, Core model schema and solver provenance IDs, backup request headers, and archived cloud fixtures retain their original identifiers for compatibility. The deployment target matches the existing `openfea` Worker at `fea.esau.app`, verified in the Cloudflare dashboard. The R2 backup bucket (`opencae-project-backups`), recorded Durable Object migrations, and feedback form URL retain their existing resource identities. Renaming those retained resources requires a separate infrastructure migration. Historical plans and protected agent instructions retain their original wording. If an existing local reference-backend checkout has ignored `data/` directories inside the renamed workspaces, move that local data from each old `opencae-*` directory to the corresponding `openfea-*` directory before starting the reference backend.
+| Area | Capabilities |
+| --- | --- |
+| Studies | Linear static stress, transient structural dynamics, modal analysis, and steady-state thermal conduction. |
+| Geometry | STEP/STP, STL, and OBJ import; analytic parametric STEP parts; bracket, beam, and cantilever samples; face selection, dimensions, orientation, and open sections. |
+| Materials and boundaries | Starter and project-specific materials, additive-manufacturing print settings, structural supports, prescribed temperatures, and thermal loads. |
+| Structural loads | Total face force, pressure, surface traction, volume force, remote force, payload mass, and static equivalent bolt preload. Load cases, static combinations, and envelopes. |
+| Meshing | Browser WebAssembly volume meshing, coarse through ultra presets, multi-body connections, and a static mesh-convergence ladder. |
+| Results | Stress, displacement, safety factor, dynamic playback, natural frequencies and mode shapes, temperature, and heat flux as applicable. |
+| Sharing | Portable `.openfea.json` projects with geometry and saved results, an offline HTML result viewer, selected-state CSV/VTU, and HTML/PDF reports. |
 
-## Local Development
+The [user guide](docs/user-guide/README.md) explains each workflow and its limits, including the initially closed linear contact approximation, equivalent bolt preload, and the guarded 150,000-DOF browser solve ceiling. The WebGPU package supports development benchmarks; automatic large-model GPU routing is currently disabled.
 
-Install dependencies and start the API and web app from the repo root:
+## Quick start
+
+Use Node.js 22 and the pnpm version pinned in `package.json`. From the repository root:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm dev
+pnpm build:core
+pnpm --filter @openfea/web dev
 ```
 
-OpenFEA Core packages live in this monorepo under `packages/*`; no sibling checkout or pin bootstrap is required.
+Open [localhost:5173](http://localhost:5173), choose **Load sample project** to try a prepared study, or create a project and import your own geometry. OpenFEA Core packages live in this monorepo under `packages/*`; no sibling checkout is needed.
 
-`pnpm dev` starts:
+The full product runs in the web app. For the optional reference backend, `pnpm dev` starts both the web app and the Fastify API at [localhost:4317](http://localhost:4317). The API creates and seeds a local SQLite database; the web app's simulation workflow does not use it. The reference API has no authentication or tenant isolation and must remain bound to loopback. See [local development](docs/local-development/README.md).
 
-- API: `http://localhost:4317`
-- Web: `http://localhost:5173`
+## Local storage and privacy
 
-The API creates and seeds the local SQLite database if needed. The web app can create a blank project, open a local `.openfea.json` project file, load bracket/beam/cantilever samples, or upload STEP, STP, STL, and OBJ models for the local viewer.
+- Geometry processing, meshing, solving, result inspection, and reports run in the browser. Workspace state uses localStorage and IndexedDB; **Save project** writes a portable `.openfea.json` file.
+- After the app reports **Offline-ready**, its service worker has cached the app and analysis assets for offline use.
+- If browser autosave runs out of space, OpenFEA asks before uploading a recovery snapshot. It encrypts the snapshot in the browser; the server stores ciphertext without the decryption key. Recovery backups expire after 30 days. Saving a local file remains available.
+- Production enables Glimpse aggregate backend statistics. Browser usage analytics require an explicit opt-in under **Storage → Optional usage analytics** and remain off until granted. Withdrawal stops future collection; DNT/GPC suppress browser sends. Metrics use fixed categories and coarse buckets without model contents, filenames, project names, or visitor identifiers. See [Glimpse collection and controls](docs/glimpse.md) for payload limits and deployment/verification details.
 
-**The web app does not call the API.** Since the July 2026 local-first move ([docs/cloud-retirement.md](docs/cloud-retirement.md)), the workspace creates projects, meshes, solves, and writes reports entirely in the browser; it makes no request to `/api`. `apps/openfea-api` and the `services/*` implementations behind it are a separate, independently runnable reference backend over the same schema — useful for inspecting the data model or driving the flow over HTTP, but not part of the production path. `pnpm dev` starts both so the reference backend stays exercised; running only `pnpm --filter @openfea/web dev` gives you the full product.
+## Development and verification
 
-> **Security note:** the reference API has no authentication or tenant isolation by design. It binds `127.0.0.1` by default and must stay loopback-only; never expose it as a shared or network-reachable service. The server logs a warning if started on a non-loopback host.
-
-## Current Workflow
-
-OpenFEA guides a study through Model, Material, Supports, Loads, Mesh, Run, Results, and Report steps:
-
-- Choose a static stress, dynamic structural, modal, or steady-state thermal study.
-- Start from a blank project, an analytic parametric STEP part, or a bracket, beam, or cantilever sample.
-- Upload STEP, STP, STL, or OBJ geometry; inspect selectable faces; show dimensions; and adjust model orientation.
-- Assign starter materials, including additive-manufacturing print settings that affect effective material properties.
-- Add structural supports, temperature boundaries, loads, and multi-body connections as the study requires.
-- Generate coarse, medium, fine, or ultra volume meshes for local analysis.
-- Run local simulations with progress events, logs, cancellation, result artifacts, HTML reports, and PDF reports.
-- Inspect stress, displacement, safety factor, velocity, acceleration, natural frequencies, mode shapes, temperature, and heat flux where available.
-- Play dynamic result frames with cached playback preparation for smoother browser rendering.
-- Save a self-contained local project file with embedded uploaded model data and completed results.
-
-## Useful Commands
+Build Core packages before typechecking consumers because package exports resolve to emitted `dist` files. The main checks are:
 
 ```bash
-pnpm db:migrate
-pnpm db:seed
-pnpm reset:local
-pnpm build
+pnpm build:core
+pnpm --filter "./packages/*" --if-present test
+node scripts/verify-cloudflare-config.mjs
 pnpm typecheck
 pnpm test
-pnpm verify:perf
-node scripts/check-production-health.mjs
+pnpm verify:step-selection-browser
+pnpm verify:project-results-browser
+pnpm build:cloudflare
+pnpm --filter @openfea/web check:bundle
 ```
 
-## Cloudflare Worker Deploy
+The browser checks require Chrome or Chromium; set `CHROME_BIN` if auto-detection cannot find it. STEP selection uses ports 5198/9336 and project/results checks use 5199/9337. The bundle check must follow the production build. [CI](.github/workflows/ci.yml) delegates to the pinned [fleet workflow](.github/workflows/fleet-ci.yml); it also enforces runner isolation and routing policy.
 
-The production Cloudflare target for `fea.esau.app` serves the Vite web app from Workers Static Assets. Simulations run entirely in the browser with OpenFEA Core — the Worker hosts no solver. If browser autosave overflows, the app can ask for explicit permission to upload a client-encrypted 30-day recovery snapshot; the Worker never receives its decryption key. (The former OpenCAE Core Cloud container/R2 solve path was retired in July 2026; see [docs/cloud-retirement.md](docs/cloud-retirement.md).)
+`pnpm build` includes the reference API. `pnpm build:cloudflare` builds Core and the production web app only. `pnpm verify:perf` builds and checks web performance. Database migration, seeding, and reset commands are for reference-backend data maintenance; see [local development](docs/local-development/README.md) before using them.
+
+## Production hosting
+
+The production app is [fea.esau.app](https://fea.esau.app). A Cloudflare Worker serves static assets, encrypted recovery backups, the analytics relay, and health routes. Simulation jobs stay in the browser. The production build compresses Gmsh WASM before generating the service-worker precache and checking bundle budgets.
+
+For an authorized production deployment:
 
 ```bash
-pnpm install --frozen-lockfile
 pnpm deploy:cloudflare
 ```
 
-Build and deploy environments use `pnpm build:core` to build the in-repo OpenFEA Core packages before the web bundle. Production deploys require only this repository plus the checked-in lockfile; there is no runtime or build-time fetch of a second repo.
-
-Production deploys use the default [wrangler.jsonc](wrangler.jsonc) (static assets, security headers, and the encrypted recovery-backup binding; no solver bindings).
-
-For a separate non-production static Worker deploy, use:
-
-```bash
-pnpm deploy:cloudflare:static:dry-run
-pnpm deploy:cloudflare:static
-```
-
-That static path uses [wrangler.static.jsonc](wrangler.static.jsonc), which targets `openfea-static` and intentionally omits the production custom domain routes.
-
-For Cloudflare Builds, use:
+This verifies the configuration, builds the app, and deploys with [wrangler.jsonc](wrangler.jsonc). For Cloudflare Builds, use:
 
 ```text
 Build command: pnpm run build
 Deploy command: npx wrangler deploy
 ```
 
-`pnpm deploy:cloudflare` is also valid as a deploy command. Do not use `npx wrangler versions upload` for the production Worker: version uploads cannot apply the retired container Durable Object cleanup path and can leave Cloudflare rejecting stale `OpenCaeCoreCloudContainer` state. Do not use the static deploy command for the production Worker.
-
-If Cloudflare rejects a deploy with code `10064` for `OpenCaeCoreCloudContainer`, run the one-off cleanup deploy from an authenticated Wrangler session:
-
-```bash
-pnpm deploy:cloudflare:retired-do-cleanup
-```
-
-That records the retired Durable Object delete-class migration server-side. After it succeeds, return to the normal `npx wrangler deploy` / `pnpm deploy:cloudflare` path.
+`pnpm deploy:cloudflare` is also a supported deploy command. Do not use `npx wrangler versions upload` for the production Worker: version uploads cannot apply the retired Durable Object cleanup migration. The separate `deploy:cloudflare:static` target is non-production and omits the production domain. See [local development](docs/local-development/README.md) and [cloud retirement](docs/cloud-retirement.md) for deployment commands and the one-off retired Durable Object cleanup procedure.
 
 ## Production Uptime
 
-The live app runs at `https://fea.esau.app`. Uptime monitors should check the Worker health endpoint:
+| Endpoint | Purpose |
+| --- | --- |
+| [`GET /health`](https://fea.esau.app/health) | Release contract: expected Worker/service identities and `solverRuntime: "browser-openfea-core"`. The [production-health workflow](.github/workflows/production-health.yml) checks it every 30 minutes. |
+| [`GET /healthz`](https://fea.esau.app/healthz) or `HEAD /healthz` | Public Worker liveness without storage or upstream requests. Returns HTTP 200, JSON `status: "ok"` for GET, and `Cache-Control: no-store`; other methods return 405. |
 
-```bash
-curl -fsS https://fea.esau.app/health
-```
+Neither endpoint verifies browser geometry or solver execution. Retired cloud solve routes return HTTP 410. Cloudflare Access, WAF, and bot challenges run before the Worker; monitoring exceptions must be scoped to the intended hostname and exact GET/HEAD `/healthz` route and verified from the monitor's network.
 
-The scheduled [Production Health workflow](.github/workflows/production-health.yml) checks this contract every 30 minutes and powers the badge at the top of this README. It requires HTTP 200 plus the expected Worker, service, and `solverRuntime: "browser-openfea-core"` fields, so a generic success page cannot produce a false green result.
+## Repository layout
 
-This endpoint proves that the production Worker is reachable and serving the expected local-first release contract. It is not a separate solver-readiness probe: the solver ships inside the app bundle and runs in the browser. Retired cloud solve routes return HTTP 410.
+| Path | Role |
+| --- | --- |
+| `apps/openfea-web` | Production React/Vite workspace and Cloudflare Worker. |
+| `packages/*` | OpenFEA Core model, examples, CPU solver, WebGPU solver, and viewer. |
+| `libs/*` | Schema, units, materials, CAD/mesh intake, study validation, solve pipeline, Core adapter, and reference-backend storage/jobs/database utilities. |
+| `apps/openfea-api`, `services/*`, `runners/openfea-runner-local` | Separately runnable reference backend; excluded from the production solve path. |
+| `examples/*`, `docs/*` | Sample fixtures, user documentation, architecture, and validation evidence. |
+| `infra/local/*`, `data/*` | Reference-backend setup notes and local runtime data. |
 
-## Workspace Layout
+CAD topology references remain the source of truth for supports, loads, connections, and named selections. Meshes are generated artifacts; results and reports belong to their study run. Computed FEA, preview estimates, benchmarks, and historical cloud results retain distinct provenance. See [architecture](docs/architecture/README.md).
 
-- `apps/openfea-web` - React/Vite CAD workspace for static and dynamic structural workflows.
-- `apps/openfea-api` - Fastify reference API for projects, uploads, studies, jobs, artifacts, reports, and service orchestration. Not on the production path; the web app does not call it.
-- `packages/*` - OpenFEA Core model, examples, CPU solver, WebGPU solver, and viewer packages. (The never-implemented `solver-wasm` placeholder was removed in July 2026; browser WebAssembly is Gmsh meshing in `libs/openfea-mesh-intake`.)
-- `libs/*` - Shared schema, units, materials, storage, jobs, validation (study-core), database, mesh intake, solve pipeline, and core-adapter packages.
-- `services/*` - CAD, mesh, solver, and post-processing reference implementations behind the reference API, plus a legacy CalculiX container note. (The `opencae-core-cloud` runner mirror was removed in the July 2026 cloud retirement.)
-- `runners/openfea-runner-local` - Local runner package for job execution flows.
-- `examples/*` - Sample project documentation and fixtures.
-- `docs/*` - Architecture, local development, file format, validation, and user guide notes.
-- `infra/local/*` - Local SQLite, storage, and jobs setup notes.
-- `data/*` - Local runtime data directories for the reference API: `artifacts` (including each project's uploads), `logs`, `reports`, and `sqlite` state.
+## Compatibility
 
-## Simulation Flow
+New project downloads use `.openfea.json` and the `openfea-local-project` envelope. Existing `.opencae` / `.opencae.json` projects and browser autosaves remain readable. Packages and workspace paths use `@openfea/*` and `openfea-*`.
 
-OpenFEA treats CAD entities as the source of truth. Meshes are generated artifacts, while results and reports are immutable study-run artifacts. Loads, supports, contacts, and named selections bind to CAD topology references so the data model can survive backend changes without rewriting the user workflow.
-
-The built-in bracket, beam, and cantilever demos ship with Aluminum 6061 and 3D-printing material presets, supports, payload/force loads, generated mesh summaries, and local report artifacts.
-
-## Solver Attribution
-
-Production solving runs in the browser with OpenFEA Core and is labeled as local computed FEA. Results must carry `opencae_core_fea`, `computed` result provenance, and `actual_volume_mesh` or `structured_block_core` mesh provenance; preview estimates must never be displayed as production FEA. Results solved on the retired OpenCAE Core Cloud (before July 2026) keep their historical cloud provenance labels — old data stays truthfully attributed.
+Some storage keys, Core schema/provenance identifiers, backup headers, the `opencae-project-backups` bucket, and archived fixtures retain their original identifiers for compatibility. Renaming infrastructure requires a separate migration. If an older reference-backend checkout has ignored `data/` directories under `opencae-*` workspace paths, move that data to the corresponding `openfea-*` paths before starting it.
 
 ## Documentation
 
+- [User guide](docs/user-guide/README.md)
 - [Architecture](docs/architecture/README.md)
 - [Local development](docs/local-development/README.md)
-- [User guide](docs/user-guide/README.md)
-- [File format](docs/file-format/README.md)
+- [Project file format](docs/file-format/README.md)
 - [Validation](docs/validation/README.md)
-- [Cloud retirement (2026-07)](docs/cloud-retirement.md)
+- [Analytics and privacy](docs/glimpse.md)
+- [Cloud retirement](docs/cloud-retirement.md)
 
 ## License
 
-OpenFEA source code is licensed under the Apache License 2.0.
-
-OpenFEA may invoke or distribute separately licensed third-party tools and
-libraries, including OCCT/occt-import-js components. Those
-components are not relicensed under Apache-2.0. See [NOTICE](NOTICE) and
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.
+OpenFEA source code is licensed under [Apache-2.0](LICENSE). Separately licensed third-party components, including OCCT/occt-import-js, retain their own licenses; see [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 Copyright 2026 Esau Engineering. The OpenFEA name and logo are trademarks of Esau Engineering.
-
-## Scope
-
-OpenFEA is still an engineering preview. OpenFEA Core results are development-oriented analysis outputs and should not be treated as certified analysis. Native CAD, meshing, and post-processing support continue to evolve behind the existing service boundaries.
-
-### Public liveness endpoint
-
-`GET /healthz` returns HTTP 200 with JSON `status: "ok"` and a service name.
-`HEAD /healthz` returns the same headers without a body; other methods return
-405 with `Allow: GET, HEAD`. Responses use `Cache-Control: no-store`.
-This endpoint requires no application credentials and performs no storage or
-upstream requests. It reports Worker liveness, not dependency readiness or
-browser geometry/solver health. Existing health endpoints keep their behavior.
-
-Cloudflare Access, WAF, and bot challenges run before the Worker. If a monitor
-receives a login redirect or challenge, configure a narrowly scoped exception
-for GET/HEAD on the exact `/healthz` path and the intended app hostname, then
-verify the JSON response from the monitor's network. Repository changes alone
-do not alter those dashboard policies.
