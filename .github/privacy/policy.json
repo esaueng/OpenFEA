@@ -5,34 +5,39 @@
     "2026-10-16-initial",
     "2026-10-16-email-followup"
   ],
-  "verification_digest": "589d9233a43fff4a6a09ba695a06f4fdf85dca322ea3f6722913200a1c8cc6a0",
+  "verification_digest": "44c12d529691655af09474ab9261932b3e7780c360db1ca868eb4dafc9c0fc4b",
   "blocked_file_sha256": "cebcef27bfb595581b6dd7032fedf1d70bfa08f5c2faf4c4f25bf9e1850824b1",
   "blocked_object_count": 61268,
   "identifiers": [
     {
       "length": 15,
-      "prefix_digest": "74f279e85b77f928315cbbde32ca3bb94aaaa3c1ba4f290cc56c1436bd3c53da",
-      "digest": "e1aec511c0470459b31ba25157d8d267f24d27f7d4feb73e4aa257f4c017db7e"
+      "prefix_digest": "3df74e0e98053914e2ead8b3653d1021a16c9a041b28363df703f9329a559133",
+      "digest": "73922da781f009c574e6d7d638ef1928ad841f0d0ded406022703590f3ec22c2"
     },
     {
       "length": 17,
-      "prefix_digest": "74f279e85b77f928315cbbde32ca3bb94aaaa3c1ba4f290cc56c1436bd3c53da",
-      "digest": "4c278c921ace78ff0c776c77b9016cf68a1fdb78cd2ecfec94e240f18cf997c4"
-    },
-    {
-      "length": 19,
-      "prefix_digest": "74f279e85b77f928315cbbde32ca3bb94aaaa3c1ba4f290cc56c1436bd3c53da",
-      "digest": "65b9fd6f05f146d5680e606ac10db5236b27646c68bc6146329531fd24be149c"
-    },
-    {
-      "length": 30,
-      "prefix_digest": "74f279e85b77f928315cbbde32ca3bb94aaaa3c1ba4f290cc56c1436bd3c53da",
-      "digest": "8e497bac294327981cfcaf725f84c9ec13efde686af2e34bf90186b7907c94c6"
+      "prefix_digest": "3df74e0e98053914e2ead8b3653d1021a16c9a041b28363df703f9329a559133",
+      "digest": "124d3d98da9e9d8b97150c777b1a34df725f9ed9c54800e390bb32fbbaefd2df"
     },
     {
       "length": 11,
-      "prefix_digest": "74f279e85b77f928315cbbde32ca3bb94aaaa3c1ba4f290cc56c1436bd3c53da",
-      "digest": "f7d54fac79b08b6048eec29115bbfc81c0fef321d74a251b48b6fd463893e6a0"
+      "prefix_digest": "3df74e0e98053914e2ead8b3653d1021a16c9a041b28363df703f9329a559133",
+      "digest": "795e35cc742a4f1037d4cc221758f225d1cf67c06b4e95e835b6a191f5ee204b"
+    },
+    {
+      "length": 19,
+      "prefix_digest": "3df74e0e98053914e2ead8b3653d1021a16c9a041b28363df703f9329a559133",
+      "digest": "b6e4e6ddb338e810f4e4ba9b9e90b09e586e75b8018ce6cb351a6084834ea4e2"
+    },
+    {
+      "length": 30,
+      "prefix_digest": "3df74e0e98053914e2ead8b3653d1021a16c9a041b28363df703f9329a559133",
+      "digest": "ae5c7938bf994d66850631986a93e5d4dcd670f302fafdef535fa815c14e7e0b"
+    },
+    {
+      "length": 33,
+      "prefix_digest": "d8e96dc4bc93235208559cdb81cfb6a428623d2db903841496e2ece5eba61a18",
+      "digest": "4b481bdb10deb6365ae098a97e2e1191d83b1633f9be6220825576e91104e547"
     }
   ],
   "object_ledger_scope": [
