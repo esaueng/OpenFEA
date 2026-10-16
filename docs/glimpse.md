@@ -52,3 +52,10 @@ count again. Meshing/solver/export/import failures have fixed categories without
 raw messages. DNT/GPC suppresses browser sends while retaining a visible stored
 grant that the user can revoke. No new app database/migration is required; deploy
 the expanded Glimpse service before enabling this app's optional collection.
+
+Local v2 verification: five package builds and 269 package tests passed;
+Cloudflare config, typecheck, 1,520 root tests, production build and bundle
+budgets passed. Final focused analytics/relay/storage checks: 31 passed. Isolated
+real-Chrome STEP-selection and project-results probes passed after permitting
+the browser test process to bind its local debugging port. Hosted checks and
+production event delivery are separate; collection flags remain off.
