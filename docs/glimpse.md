@@ -14,11 +14,11 @@ The browser sends exactly `event` and a fixed `bucket`, omitting credentials and
 
 ## Configuration and rollout
 
-The checked-in `GLIMPSE_BASIC_ENABLED` and `GLIMPSE_USAGE_ENABLED` flags both start as `false`. The two switches are independent; the Optional switch additionally requires the browser's explicit opt-in. Missing/unavailable collectors do not affect app operations. Self-hosted/static configurations stay unconfigured unless deliberately connected to a separately protected service.
+Production enables `GLIMPSE_BASIC_ENABLED` and `GLIMPSE_USAGE_ENABLED` with the fixed `OpenFEAIngest` service binding. Enabling the deployment switches does not grant browser consent. The two switches are independent; the Optional switch additionally requires the browser's explicit opt-in. Missing/unavailable collectors do not affect app operations. Self-hosted/static configurations stay unconfigured unless deliberately connected to a separately protected service.
 
 Deploy and configure the Glimpse Worker/D1/Access application first; then deploy this integration with its service binding. Confirm the intended audience, jurisdictions, lawful basis where relevant, notices and metadata retention before enabling Basic. Optional remains opt-in even if a jurisdiction offers an analytics exemption. Cookieless does not automatically mean consent-free. Edge/Access/existing app security logs still need separate review: the network necessarily processes IP and headers, although analytics stores neither. Dashboard authentication uses its own Access identity/cookies, not analytics identifiers.
 
-Production deployment and remote migrations require separate authorization. No production resources, consent decisions or settings were changed by this PR. Roll back by setting both deployment switches to false and redeploying; users may withdraw independently through the same UI.
+Production collection activation is authorized. Browser choices remain independent and opt-in. Roll back by setting both deployment switches to false and redeploying; users may withdraw independently through the same UI.
 
 ## Validation
 
@@ -58,4 +58,4 @@ Cloudflare config, typecheck, 1,520 root tests, production build and bundle
 budgets passed. Final focused analytics/relay/storage checks: 31 passed. Isolated
 real-Chrome STEP-selection and project-results probes passed after permitting
 the browser test process to bind its local debugging port. Hosted checks and
-production event delivery are separate; collection flags remain off.
+production event delivery are separate; activation requires a live delivery check.
