@@ -1,3 +1,4 @@
+import { downloadDiagnosticReport } from '../analytics';
 import { CloudUpload, Download, HardDrive, ShieldCheck, X } from "lucide-react";
 import type { CloudBackupPreference } from "../cloudBackup";
 
@@ -93,9 +94,11 @@ export function ProjectStorageNotice({ preference, busy, recoveryNeeded, analyti
         />
         <span>
           <strong>Optional usage analytics</strong>
-          <small>Allow Glimpse to count feature use, workflow steps, exports, solver outcomes, and coarse timings. No model contents, geometry, filenames, project names, or identity. Off by default. Withdraw here to stop collection immediately; existing anonymous totals cannot be attributed or removed.</small>
+          <small>Allow Glimpse to count feature categories, workflow steps, exports, solver outcomes, diagnostic codes, part-count and project-size ranges, transfer-size ranges, and coarse timings. This expanded scope requires a fresh choice. No model contents, geometry, filenames, project names, or identity. Off by default. Withdraw here to stop collection immediately; existing anonymous totals cannot be attributed or removed.</small>
         </span>
       </label>
+      <button className="secondary" type="button" disabled={!analyticsEnabled} onClick={downloadDiagnosticReport}>Download diagnostic report</button>
+      <small>Report contains only allowlisted counts from this page since opt-in. Review the JSON before sharing it yourself. No automatic upload.</small>
       <small className="storage-recovery-footnote">Remembered in this browser. Change it anytime from Storage in the toolbar. Basic server counters measure API reliability separately; local operations require the optional choice above.</small>
     </aside>
   );
