@@ -1,6 +1,5 @@
 """Regress the credential boundary with no production credentials."""
 from pathlib import Path
-import re
 import unittest
 
 

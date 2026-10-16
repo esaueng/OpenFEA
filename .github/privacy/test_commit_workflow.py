@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import tempfile
-import sys
 import importlib.util
 import unittest
 from unittest.mock import patch
