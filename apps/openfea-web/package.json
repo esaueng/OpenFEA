@@ -2,6 +2,7 @@
   "name": "@openfea/web",
   "version": "0.1.0",
   "private": true,
+  "description": "Local-first browser CAD and finite element analysis for static, dynamic, modal, and thermal studies.",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",

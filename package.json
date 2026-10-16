@@ -2,7 +2,7 @@
   "name": "openfea",
   "version": "0.1.0",
   "private": true,
-  "description": "Local-first browser CAD/CAE workspace for structural and thermal simulation.",
+  "description": "Local-first browser CAD and finite element analysis for static, dynamic, modal, and thermal studies.",
   "type": "module",
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,blue \"pnpm --filter @openfea/api dev\" \"pnpm --filter @openfea/web dev\"",
@@ -32,5 +32,13 @@
     "wrangler": "^4.114.0"
   },
   "packageManager": "pnpm@11.7.0",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "homepage": "https://fea.esau.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/esaueng/OpenFEA.git"
+  },
+  "bugs": {
+    "url": "https://github.com/esaueng/OpenFEA/issues"
+  }
 }

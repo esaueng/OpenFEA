@@ -153,7 +153,7 @@ function offlineAssetCaching(): PluginOption {
     manifest: {
       name: "OpenFEA",
       short_name: "OpenFEA",
-      description: "Open structural simulation that runs locally in your browser.",
+      description: "Local-first browser CAD and finite element analysis for static, dynamic, modal, and thermal studies.",
       start_url: "/",
       display: "standalone",
       background_color: "#0b0f14",
