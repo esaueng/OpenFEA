@@ -1,15 +1,18 @@
 # Local Development
 
-Install dependencies and run the local API plus web app:
+Use Node.js 22 and the pnpm version pinned in the root `package.json`. Install dependencies, build the emitted Core packages, and start the browser workspace:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm dev
+pnpm build:core
+pnpm --filter @openfea/web dev
 ```
 
 OpenFEA Core packages are part of this monorepo under `packages/*`. `pnpm build:core` only builds those local packages; it does not install dependencies, clone another repository, or mutate the lockfile. CI and local verification should use `pnpm install --frozen-lockfile`.
 
-`pnpm dev` starts the Fastify API on `http://localhost:4317` and the Vite web app on `http://localhost:5173`. The API creates and seeds the SQLite database if needed.
+The web app runs at `http://localhost:5173` and handles geometry, meshing, solves, results, and reports locally. It does not need the reference API.
+
+For reference-backend development, `pnpm dev` starts the Fastify API on `http://localhost:4317` and the Vite web app on `http://localhost:5173`. The API creates and seeds the SQLite database if needed. It has no authentication or tenant isolation and must remain loopback-only.
 
 ## Commands
 
