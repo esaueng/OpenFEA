@@ -1,3 +1,4 @@
+import { isAnalyticsEnabled, trackSize, trackDetail } from './analytics';
 // Keep existing storage identifiers so the OpenFEA rename preserves saved data and preferences.
 import type { AutosavedWorkspace } from "./appPersistence";
 import { getBrowserStorage, readStorageItem, type StorageLike } from "./autosaveStorage";
@@ -22,6 +23,7 @@ export async function saveEncryptedCloudBackup(
   runId: string,
   options: { fetch?: typeof fetch; storage?: StorageLike | null } = {}
 ): Promise<CloudBackupDescriptor> {
+  const analyticsStarted = isAnalyticsEnabled();
   const fetchImpl = options.fetch ?? fetch;
   const storage = options.storage ?? getBrowserStorage();
   const backupId = crypto.randomUUID();
@@ -41,7 +43,8 @@ export async function saveEncryptedCloudBackup(
     },
     body: encrypted
   });
-  if (!response.ok) throw new Error(await cloudBackupError(response, "Cloud backup could not be stored."));
+  if (!response.ok) { if(analyticsStarted)trackDetail("error_cloud_save"); throw new Error(await cloudBackupError(response, "Cloud backup could not be stored.")); }
+  if(analyticsStarted)trackSize("transfer_upload",encrypted.size);
   const result = await response.json() as { expiresAt?: unknown };
   if (typeof result.expiresAt !== "string") throw new Error("Cloud backup response did not include its retention date.");
   const descriptor: CloudBackupDescriptor = {
@@ -68,14 +71,16 @@ export async function restoreEncryptedCloudBackup(
   runId: string,
   options: { fetch?: typeof fetch; storage?: StorageLike | null } = {}
 ): Promise<AutosavedWorkspace | null> {
+  const analyticsStarted = isAnalyticsEnabled();
   const descriptor = readCloudBackupDescriptor(options.storage ?? getBrowserStorage());
   if (!descriptor || descriptor.runId !== runId || Date.parse(descriptor.expiresAt) <= Date.now()) return null;
   const response = await (options.fetch ?? fetch)(`${CLOUD_BACKUP_PATH}/${descriptor.backupId}`, {
     headers: { "x-opencae-backup-token": descriptor.token }
   });
   if (response.status === 404 || response.status === 410) return null;
-  if (!response.ok) throw new Error(await cloudBackupError(response, "Cloud backup could not be restored."));
+  if (!response.ok) { if(analyticsStarted)trackDetail("error_cloud_load"); throw new Error(await cloudBackupError(response, "Cloud backup could not be restored.")); }
   const encrypted = new Uint8Array(await response.arrayBuffer());
+  if(analyticsStarted)trackSize("transfer_download",encrypted.byteLength);
   if (encrypted.byteLength <= 12) throw new Error("Cloud backup payload is invalid.");
   const key = await crypto.subtle.importKey("raw", base64UrlToBytes(descriptor.encryptionKey), { name: "AES-GCM" }, false, ["decrypt"]);
   const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: encrypted.slice(0, 12) }, key, encrypted.slice(12));
