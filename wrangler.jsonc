@@ -20,7 +20,6 @@
     }
   ],
   "vars": {"GLIMPSE_BASIC_ENABLED":"true", "GLIMPSE_USAGE_ENABLED":"true"},
-  "previews": { "vars": { "GLIMPSE_BASIC_ENABLED": "false", "GLIMPSE_USAGE_ENABLED": "false" } },
   "services": [{"binding":"GLIMPSE", "service":"glimpse", "entrypoint":"OpenFEAIngest"}],
   "assets": {
     "directory": "apps/openfea-web/dist",
