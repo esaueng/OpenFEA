@@ -106,6 +106,7 @@ export function expandedMetric(
   bucket: unknown,
   app: string,
 ): boolean {
+  if (!["openzcad", "openfea"].includes(app)) return false;
   if (typeof event !== "string" || typeof bucket !== "string") return false;
   if (
     app === "openzcad" &&
