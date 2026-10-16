@@ -1,14 +1,23 @@
 # OpenFEA Architecture
 
-OpenFEA is organized around service boundaries that keep user workflow data separate from generated artifacts.
+OpenFEA's production workflow runs in the browser. The separately runnable reference backend shares schema and Core packages but does not handle production simulation jobs.
 
-- The React/Vite web app owns the CAD workspace, study setup UI, local project save/open flow, result visualization, dynamic playback, and client-side modal phase animation.
-- The Fastify API owns local projects, uploads, study mutation routes, validation, run orchestration, reports, and artifact lookup.
-- SQLite stores project and study metadata through `@openfea/db`.
-- Filesystem object storage stores geometry display models, uploaded model files, mesh summaries, solver inputs/logs, result bundles, HTML reports, and PDF reports under `data/artifacts`.
-- The in-memory job queue and run-state provider publish run progress through Server-Sent Events for local development.
-- CAD, mesh, OpenFEA Core solver, and post-processing services sit behind package boundaries so native implementations can evolve without changing study bindings.
-- `@openfea/core`, `@openfea/solver-cpu`, and other OpenFEA Core packages resolve from this repo's `packages/*` workspace packages.
+## Production path
+
+- The React/Vite web app owns CAD import and analytic part creation, study setup, meshing, solving, local project save/open, result visualization, and reports.
+- Browser workers run geometry/mesh and OpenFEA Core solve jobs. localStorage and IndexedDB persist workspace state and completed results; portable project files embed geometry and saved results.
+- The service worker caches app and analysis assets. The app reports offline readiness only after installation completes.
+- The Cloudflare Worker serves static assets, health routes, consent-gated client-encrypted recovery backups, and the Glimpse analytics relay. It stores no plaintext project snapshot or decryption key. Aggregate backend metrics and optional browser analytics follow the controls in [Glimpse integration](../glimpse.md).
+- `pnpm build:cloudflare` includes Core and the web app, excluding the reference API and services. Core packages resolve from this repo's emitted `packages/*/dist` exports.
+
+## Reference backend
+
+`pnpm dev` also starts a loopback-only Fastify API for independent HTTP workflows. The web app's simulation workflow does not call it.
+
+- Fastify handles reference projects, uploads, study mutations, validation, run orchestration, reports, and artifact lookup.
+- SQLite stores reference project/study metadata through `@openfea/db`; filesystem storage holds geometry, mesh summaries, solver artifacts, results, and reports under `data/artifacts`.
+- An in-memory queue and run-state provider publish progress through Server-Sent Events.
+- CAD, mesh, solver, and post-processing services sit behind package boundaries. These boundaries are encoded by manifests, TypeScript resolution, builds, and the production Cloudflare configuration verifier; there is no general architecture-boundary linter.
 
 CAD entities remain the source of truth. Mesh entities are generated artifacts. Results and reports are immutable study-run artifacts. Loads, supports, contacts, and named selections bind to CAD topology references.
 
