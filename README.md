@@ -84,6 +84,8 @@ Build command: pnpm run build
 Deploy command: npx wrangler deploy
 ```
 
+Non-production branch builds use `npx wrangler preview`. The checked-in `previews` block disables analytics and omits production service, R2 and rate-limiter bindings. Browser-local modeling and simulation remain available; encrypted cloud recovery returns unavailable on previews. Preview resource isolation is enforced by `verify:cloudflare-config`.
+
 `pnpm deploy:cloudflare` is also a supported deploy command. Do not use `npx wrangler versions upload` for the production Worker: version uploads cannot apply the retired Durable Object cleanup migration. The separate `deploy:cloudflare:static` target is non-production and omits the production domain. See [local development](docs/local-development/README.md) and [cloud retirement](docs/cloud-retirement.md) for deployment commands and the one-off retired Durable Object cleanup procedure.
 
 ## Production Uptime

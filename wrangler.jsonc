@@ -20,6 +20,14 @@
     }
   ],
   "vars": {"GLIMPSE_BASIC_ENABLED":"true", "GLIMPSE_USAGE_ENABLED":"true"},
+  // PR previews run the browser workspace without production data or counters.
+  // Assets and compatibility settings remain top-level per Wrangler's Preview API.
+  "previews": {
+    "vars": { "GLIMPSE_BASIC_ENABLED": "false", "GLIMPSE_USAGE_ENABLED": "false" },
+    "services": [],
+    "r2_buckets": [],
+    "ratelimits": []
+  },
   "services": [{"binding":"GLIMPSE", "service":"glimpse", "entrypoint":"OpenFEAIngest"}],
   "assets": {
     "directory": "apps/openfea-web/dist",
