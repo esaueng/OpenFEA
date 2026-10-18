@@ -1,5 +1,5 @@
-import { useCallback, useRef } from "react";
-import type { StepId } from "./StepBar";
+import { useCallback, useRef, useState } from "react";
+import type { StepId } from "./StepNav";
 import type { Study } from "@openfea/schema";
 import type { RightPanelProps } from "./panels/RightPanelProps";
 import { ModelPanel } from "./panels/ModelPanel";
@@ -25,6 +25,7 @@ export function RightPanel(props: RightPanelProps) {
     beforeNextRef.current?.();
     props.onStepSelect(step);
   }, [props.onStepSelect]);
+  const [footerSlot, setFooterSlot] = useState<HTMLDivElement | null>(null);
   return (
     <aside className="side-panel">
       {props.notice && <WorkspaceNoticeBanner notice={props.notice} activeStep={props.activeStep} onDismiss={props.onDismissNotice} onGoToStep={props.onNoticeStep} />}
@@ -34,8 +35,8 @@ export function RightPanel(props: RightPanelProps) {
       {props.activeStep === "loads" && <LoadsPanel {...props} />}
       {props.activeStep === "mesh" && <MeshPanel {...props} />}
       {props.activeStep === "run" && <RunPanel {...props} />}
-      {props.activeStep === "results" && <ResultsPanel {...props} />}
-      <WorkflowNav activeStep={props.activeStep} study={props.study} onStepSelect={handleStepSelect} />
+      {props.activeStep === "results" && <ResultsPanel {...props} footerSlot={footerSlot} />}
+      <WorkflowNav activeStep={props.activeStep} study={props.study} onStepSelect={handleStepSelect} slotRef={setFooterSlot} />
     </aside>
   );
 }

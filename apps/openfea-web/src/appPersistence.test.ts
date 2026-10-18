@@ -72,7 +72,6 @@ const baseUi = {
   resultFrameIndex: 0,
   resultPlaybackFps: 12,
   resultPlaybackReverseLoop: false,
-  isStepbarCollapsed: false,
   draftLoadType: "force",
   draftLoadValue: 500,
   draftLoadDirection: "-Z",

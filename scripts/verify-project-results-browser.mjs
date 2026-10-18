@@ -125,7 +125,7 @@ async function run() {
   await cdp.send("Page.enable");
   cdp.on("Runtime.exceptionThrown", (params) => errors.push(params.exceptionDetails?.exception?.description ?? params.exceptionDetails?.text));
   await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
-  await waitFor("app", () => evaluate(cdp, 'document.title.includes("OpenFEA") && document.body.innerText.includes("Create new project")'));
+  await waitFor("app", () => evaluate(cdp, 'document.title.includes("OpenFEA") && document.body.innerText.includes("New study")'));
   const fixture = await waitFor("fixture imports", () => evaluate(cdp, `(async () => {
     const { loadSampleProject } = await import('/src/lib/api.ts');
     const { project, displayModel } = await loadSampleProject('cantilever', 'dynamic_structural');
@@ -194,8 +194,12 @@ async function run() {
     const api = await import('/src/lib/api.ts');
     const { buildLocalProjectFile } = await import('/src/projectFile.ts');
     const { project, displayModel } = await api.loadSampleProject('cantilever', 'modal_analysis');
-    const study = project.studies[0];
-    study.meshSettings.preset = 'coarse';
+    // Exercise the same mesh entry point as Generate mesh before solving.
+    // Structured samples must produce real counts without estimate opt-in.
+    const generated = await api.generateMesh(project.studies[0].id, 'coarse', project.studies[0], displayModel);
+    const study = generated.study;
+    project.studies[0] = study;
+    if (study.meshSettings.summary?.source !== 'core_solver') throw new Error('Cantilever meshing did not generate a real structured grid');
     study.solverSettings.modeCount = 6;
     const { run } = await api.runSimulation(study.id, study, displayModel);
     await new Promise((resolve, reject) => {
@@ -209,6 +213,8 @@ async function run() {
       });
     });
     const results = await api.getResults(run.id);
+    const mesh = results.artifacts?.meshStatistics;
+    if (mesh?.nodes !== study.meshSettings.summary.nodes || mesh?.elements !== study.meshSettings.summary.elements) throw new Error('Generated cantilever mesh counts differ from the solver mesh');
     if (results.summary.convergedModeCount !== 6 || results.fields.length !== 6) throw new Error('Six-mode solve omitted a mode');
     if (results.summary.modes.some(mode => mode.scaledResidual > 1e-6)) throw new Error('Modal residual exceeded tolerance');
     study.runs = [{ ...run, status: 'complete' }];

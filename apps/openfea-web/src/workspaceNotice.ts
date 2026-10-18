@@ -1,4 +1,4 @@
-import type { StepId } from "./components/StepBar";
+import type { StepId } from "./components/StepNav";
 
 export type WorkspaceNoticeTone = "error" | "warning";
 

@@ -1048,6 +1048,15 @@ export function coreMeshStatisticsForStudy(
   return meshStatisticsForCoreModel(buildOpenFeaCoreModelForStudy(study, displayModel, customMaterials));
 }
 
+/** Generate the same Tet10 grid used by the block solver, without requiring a material or boundary setup. */
+export function structuredBlockMeshCounts(displayModel: DisplayModel, preset: Study["meshSettings"]["preset"]): Pick<CoreMeshStatistics, "nodes" | "elements"> {
+  if (!displayModel.dimensions || !positiveDimensions(displayModel.dimensions) || displayModel.bodyCount !== 1 || isComplexGeometry(displayModel)) {
+    throw new Error("Structured meshing requires block-like geometry.");
+  }
+  const mesh = tetMeshForDisplayModel(displayModel, preset);
+  return { nodes: mesh.solverCoordinates.length / 3, elements: mesh.connectivity.length / 10 };
+}
+
 
 function cloneModelForLocalSolve(model: OpenFEAModelJson): OpenFEAModelJson {
   return {
@@ -1350,7 +1359,8 @@ export function staticEnvelopeVariant(variants: RunVariantResult[], runId: strin
       reactionForce: Math.max(reactionForce, 0),
       reactionForceUnits: structuralSummaries[0]?.reactionForceUnits ?? "N",
       provenance: structuralSummaries[0]?.provenance,
-      diagnostics: []
+      diagnostics: [],
+      ...envelopePeakLocations(referenceStress, stress, maxStress, referenceDisplacement, displacement, maxDisplacement)
     },
     fields: [
       {
@@ -1378,6 +1388,31 @@ export function staticEnvelopeVariant(variants: RunVariantResult[], runId: strin
       variantIds: variants.map((variant) => variant.id),
       stress: stressGoverning,
       displacement: displacementGoverning
+    }
+  };
+}
+
+/** The envelope peaks are maxima of surface-node arrays, so their index is the location. */
+function envelopePeakLocations(
+  stressField: ResultField,
+  stress: number[],
+  maxStress: number,
+  displacementField: ResultField,
+  displacement: number[],
+  maxDisplacement: number
+): { peakLocations?: NonNullable<Extract<ResultSummary, { maxStress: number }>["peakLocations"]> } {
+  const locate = (field: ResultField, values: number[], peak: number) => {
+    if (!field.surfaceMeshRef || !(peak > 0)) return undefined;
+    const surfaceNodeIndex = values.indexOf(peak);
+    return surfaceNodeIndex >= 0 ? { surfaceMeshId: field.surfaceMeshRef, surfaceNodeIndex } : undefined;
+  };
+  const stressLocation = locate(stressField, stress, maxStress);
+  const displacementLocation = locate(displacementField, displacement, maxDisplacement);
+  if (!stressLocation && !displacementLocation) return {};
+  return {
+    peakLocations: {
+      ...(stressLocation ? { stress: stressLocation } : {}),
+      ...(displacementLocation ? { displacement: displacementLocation } : {})
     }
   };
 }

@@ -108,7 +108,7 @@ export {
   solveStaticLinearTet4Cpu,
   solveStaticLinearTetLoadCases
 } from "./solver";
-export { staticCoreResultFromSolve } from "./results";
+export { staticCoreResultFromSolve, staticPeakSurfaceLocations } from "./results";
 export type {
   PreparedStaticLinearTetResult,
   PreparedStaticLinearTetSystem,

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { ViewerToolbar } from "./ViewerToolbar";
 import type { CSSProperties, ElementRef, MouseEvent as ReactMouseEvent, MutableRefObject, PointerEvent as ReactPointerEvent } from "react";
 import { Billboard, Bounds, Edges, GizmoHelper, Html, Line, OrbitControls, Text, useBounds } from "@react-three/drei";
 import { addAfterEffect, Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -6,13 +7,13 @@ import { configureTextBuilder } from "troika-three-text";
 import sceneLabelFontUrl from "../assets/fonts/ibm-plex-sans-latin-500-normal.woff";
 import type { ThreeEvent } from "@react-three/fiber";
 import { finiteExtrema } from "@openfea/core";
-import type { DisplayFace, DisplayModel, MeshSummary, ResultField, ResultRenderBounds } from "@openfea/schema";
+import type { DisplayFace, DisplayModel, MeshSummary, ResultField, ResultPeakLocation, ResultRenderBounds } from "@openfea/schema";
 import { globalBuildAxisToModelAxis } from "@openfea/study-core";
 import { SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../geometryFormats";
 import { meshVolumeM3FromTriangleSource, type Triangle } from "@openfea/units";
 import * as THREE from "three";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
-import type { StepId } from "./StepBar";
+import type { StepId } from "./StepNav";
 import { faceForModelHit, type SampleModelKind } from "../modelSelection";
 import { baseModelRotationRadians, modelRotationRadians, modelToViewerMatrix, viewerNormalToModelSpace, viewerPointToModelSpace, type RotationAxis } from "../modelOrientation";
 import { dimensionValuesForDisplayModel } from "../modelDimensions";
@@ -72,6 +73,8 @@ interface CadViewerProps {
   resultsStale?: boolean;
   /** Headline peak per result mode for the legend, e.g. `Peak 2.147 MPa` (2026-09 review F8). */
   resultPeaks?: Partial<Record<ResultMode, string>>;
+  /** Where the solver located those peaks on the result surface mesh, when it did. */
+  resultPeakLocations?: Partial<Record<"stress" | "displacement", ResultPeakLocation>>;
   resultPlaybackBufferCache?: PackedPreparedPlaybackCache | null;
   resultPlaybackFrameController?: ResultPlaybackFrameController;
   meshSummary?: MeshSummary;
@@ -79,6 +82,11 @@ interface CadViewerProps {
   themeMode: ThemeMode;
   projectionMode?: ProjectionMode;
   onProjectionModeChange?: (mode: ProjectionMode) => void;
+  /** View toolbar actions (plan 035, increment 3). */
+  onFitView?: () => void;
+  onToggleDimensions?: () => void;
+  onViewModeChange?: (mode: ViewMode) => void;
+  onSectionPlaneChange?: (plane: SectionPlaneState) => void;
   fitSignal: number;
   viewAxis: RotationAxis | null;
   viewAxisSignal: number;
@@ -197,6 +205,7 @@ export const VIEWER_VIEW_CUBE_CORNER_RADIUS = 0.082;
 export const VIEWER_VIEW_CUBE_CORNER_HIT_RADIUS = 0.19;
 const VIEWER_VIEW_CUBE_FACE_VISIBILITY_THRESHOLD = 0;
 export const VIEWER_ISOMETRIC_GIZMO_VIEW = "iso";
+const ORBIT_HINT_STORAGE_KEY = "openfea.viewer.orbitHintDismissed";
 export const VIEWER_CREDIT_URL = "https://esauengineering.com/";
 const VIEWER_FIT_MARGIN = 1.28;
 const DEFAULT_HOME_FIT_MARGIN = 1.46;
@@ -282,6 +291,14 @@ export function CadViewer(props: CadViewerProps) {
   const [uploadedPreviewBounds, setUploadedPreviewBounds] = useState<THREE.Box3 | null>(null);
   const [gizmoViewRequest, setGizmoViewRequest] = useState<{ view: GizmoViewRequest | null; signal: number }>({ view: null, signal: 0 });
   const [viewerInteracting, setViewerInteracting] = useState(false);
+  // The orbit hint teaches the three gestures once, then stays gone (per browser).
+  const [orbitHintDismissed, setOrbitHintDismissed] = useState(() => {
+    try { return window.localStorage.getItem(ORBIT_HINT_STORAGE_KEY) === "1"; } catch { return false; }
+  });
+  const dismissOrbitHint = useCallback(() => {
+    setOrbitHintDismissed(true);
+    try { window.localStorage.setItem(ORBIT_HINT_STORAGE_KEY, "1"); } catch { /* storage unavailable */ }
+  }, []);
   // The viewer's own render returns in a few tens of milliseconds; what takes seconds on a
   // cold boot is the Three scene building and compiling inside <Canvas>, during which the
   // shell paints an empty viewport with nothing to say for itself. This overlay is a DOM
@@ -371,6 +388,11 @@ export function CadViewer(props: CadViewerProps) {
     const bounds = kind === "uploaded" && uploadedPreviewBounds ? uploadedPreviewBounds : dimensionBoundsForDisplayModel(props.displayModel);
     props.onResultRenderBoundsChange?.(bounds ? resultRenderBoundsForBox(bounds) : null);
   }, [props.displayModel, props.onResultRenderBoundsChange, uploadedPreviewBounds]);
+  // The pick the setup steps act on, named on the canvas where the eye already is.
+  const selectedFaceChip = (props.activeStep === "supports" || props.activeStep === "loads") && props.selectedFaceId
+    ? props.displayModel.faces.find((face) => face.id === props.selectedFaceId)?.label ?? null
+    : null;
+
   return (
     <ResultColorScaleContext.Provider value={resultColorScale}>
       <SceneThemeContext.Provider value={props.themeMode}>
@@ -379,6 +401,7 @@ export function CadViewer(props: CadViewerProps) {
       className={`viewer-shell ${effectiveViewMode === "results" ? "results-view" : ""}`}
       aria-busy={props.importingModelFilename ? true : undefined}
       aria-label="3D CAD viewer"
+      onPointerDown={orbitHintDismissed ? undefined : dismissOrbitHint}
     >
       <Canvas frameloop="demand" dpr={viewerDpr} camera={{ position: [4.8, 4.8, 4.8], up: ISO_CAMERA_UP.toArray(), fov: DEFAULT_CAMERA_FOV }} onCreated={({ gl }) => { gl.localClippingEnabled = true; }} onPointerMissed={props.onViewerMiss}>
         <SceneFirstFrameSignal onPainted={handleScenePainted} />
@@ -456,6 +479,18 @@ export function CadViewer(props: CadViewerProps) {
                 playbackController={props.resultPlaybackFrameController}
               />
             )}
+            {effectiveViewMode === "results" && solverSurfaceResult && props.surfaceMesh && !props.resultPlaybackPlaying && (
+              <ResultPeakCallout
+                surfaceMesh={props.surfaceMesh}
+                location={resultPeakLocationForMode(props.resultPeakLocations, props.resultMode, stressComponent)}
+                label={props.resultPeaks?.[props.resultMode]}
+                footprint={solverSurfaceFootprint}
+                displacementField={solverSurfaceResult.displacementField}
+                showDeformed={effectiveShowDeformed}
+                deformationScale={props.stressExaggeration}
+                displacementPeakMagnitude={solverSurfaceResult.displacementPeakMagnitude}
+              />
+            )}
             <group rotation={baseModelRotation}>
               {effectiveViewMode === "results" && solverSurfaceResult && (
                 <group userData={{ openfeaSectionClippable: true }}><SolverSurfacePayloadMass kind={modelKindForDisplayModel(props.displayModel)} loadMarkers={props.loadMarkers} /></group>
@@ -521,15 +556,26 @@ export function CadViewer(props: CadViewerProps) {
           {props.displayModel.faces.length > MAX_A11Y_FACE_BUTTONS ? <span>Use pointer selection for additional faces.</span> : null}
         </div>
       )}
-      <div className="viewer-view-presets" role="group" aria-label="Camera views">
-        <button type="button" onClick={() => setGizmoViewRequest((request) => ({ view: "x", signal: request.signal + 1 }))}>X</button>
-        <button type="button" onClick={() => setGizmoViewRequest((request) => ({ view: "y", signal: request.signal + 1 }))}>Y</button>
-        <button type="button" onClick={() => setGizmoViewRequest((request) => ({ view: "z", signal: request.signal + 1 }))}>Z</button>
-        <button type="button" onClick={() => setGizmoViewRequest((request) => ({ view: VIEWER_ISOMETRIC_GIZMO_VIEW, signal: request.signal + 1 }))}>Iso</button>
-        <span className="projection-divider" aria-hidden="true" />
-        <button type="button" aria-pressed={projectionMode === "perspective"} onClick={() => props.onProjectionModeChange?.("perspective")}>Perspective</button>
-        <button type="button" aria-pressed={projectionMode === "orthographic"} onClick={() => props.onProjectionModeChange?.("orthographic")}>Orthographic</button>
-      </div>
+      {selectedFaceChip ? (
+        <div className="viewer-selection-chip" role="status" aria-live="polite">
+          <span className="viewer-selection-dot" aria-hidden="true" />Selected: {selectedFaceChip}
+        </div>
+      ) : null}
+      {!orbitHintDismissed ? (
+        <p className="viewer-orbit-hint">Drag to orbit · right-drag to pan · scroll to zoom</p>
+      ) : null}
+      <ViewerToolbar
+        projectionMode={projectionMode}
+        showDimensions={props.showDimensions}
+        sectionPlane={props.sectionPlane}
+        meshShown={effectiveViewMode === "results" ? null : props.viewMode === "mesh"}
+        onCameraView={(view) => setGizmoViewRequest((request) => ({ view: view === "iso" ? VIEWER_ISOMETRIC_GIZMO_VIEW : view, signal: request.signal + 1 }))}
+        onProjectionModeChange={props.onProjectionModeChange}
+        onFitView={props.onFitView}
+        onToggleDimensions={props.onToggleDimensions}
+        onToggleMesh={() => props.onViewModeChange?.(props.viewMode === "mesh" ? "model" : "mesh")}
+        onSectionPlaneChange={props.onSectionPlaneChange}
+      />
       {effectiveViewMode === "results" && <ResultLegend resultMode={props.resultMode} resultFields={resultFields} unitSystem={props.unitSystem} meshSummary={props.meshSummary} surfaceMesh={props.surfaceMesh} showDeformed={effectiveShowDeformed} deformationScale={props.stressExaggeration} peakLabel={props.resultPeaks?.[props.resultMode]} stale={props.resultsStale} />}
     </section>
       </StressComponentContext.Provider>
@@ -4003,6 +4049,85 @@ function SurfaceResultProbeMarkers({
     ] as [number, number, number];
     return [<UserResultProbeMarker key={reading.id} reading={reading} point={point} index={index} />];
   });
+}
+
+/** The located peak for the visible result, or none: other modes and stress components have none. */
+export function resultPeakLocationForMode(
+  locations: CadViewerProps["resultPeakLocations"],
+  resultMode: ResultMode,
+  stressComponent: StressComponent
+): ResultPeakLocation | undefined {
+  if (resultMode === "stress") return stressComponent === "von_mises" ? locations?.stress : undefined;
+  if (resultMode === "displacement") return locations?.displacement;
+  return undefined;
+}
+
+/**
+ * Display-space point of a peak located at a solver surface node. It goes through the
+ * same deformation and footprint mapping as result probes, so the callout sits on the
+ * rendered surface; a location on another mesh or outside this one maps to nothing.
+ */
+export function resultPeakCalloutPoint({
+  surfaceMesh,
+  location,
+  footprint,
+  displacementField,
+  showDeformed,
+  deformationScale,
+  displacementPeakMagnitude
+}: {
+  surfaceMesh: SolverSurfaceMesh;
+  location: ResultPeakLocation | undefined;
+  footprint: { scale: number; position: [number, number, number] } | null;
+  displacementField?: ResultField;
+  showDeformed: boolean;
+  deformationScale: number;
+  displacementPeakMagnitude?: number;
+}): [number, number, number] | null {
+  if (!location || location.surfaceMeshId !== surfaceMesh.id) return null;
+  const nodeIndex = location.surfaceNodeIndex;
+  if (!Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= surfaceMesh.nodes.length) return null;
+  const triangle = surfaceMesh.triangles.find((candidate) => candidate.includes(nodeIndex));
+  if (!triangle) return null;
+  const vertex = triangle.indexOf(nodeIndex);
+  const localPoint = solverSurfaceProbePoint({
+    surfaceMesh,
+    anchor: {
+      kind: "surface",
+      surfaceMeshId: surfaceMesh.id,
+      triangle: [...triangle] as [number, number, number],
+      barycentric: [vertex === 0 ? 1 : 0, vertex === 1 ? 1 : 0, vertex === 2 ? 1 : 0]
+    },
+    displacementField,
+    showDeformed,
+    deformationScale,
+    displacementPeakMagnitude
+  });
+  if (!localPoint || !localPoint.every(Number.isFinite)) return null;
+  const scale = footprint?.scale ?? 1;
+  const offset = footprint?.position ?? [0, 0, 0];
+  return [
+    localPoint[0] * scale + offset[0],
+    localPoint[1] * scale + offset[1],
+    localPoint[2] * scale + offset[2]
+  ];
+}
+
+function ResultPeakCallout({
+  label,
+  ...placement
+}: Parameters<typeof resultPeakCalloutPoint>[0] & { label?: string }) {
+  const point = label ? resultPeakCalloutPoint(placement) : null;
+  if (!point) return null;
+  // The legend carries the same text for assistive technology; this is its on-model pointer.
+  return (
+    <Html position={point} zIndexRange={[3, 2]} pointerEvents="none">
+      <span className="result-peak-callout" aria-hidden="true">
+        <span className="result-peak-callout-dot" />
+        <span className="result-peak-callout-label">{label}</span>
+      </span>
+    </Html>
+  );
 }
 
 export function buildSolverSurfaceOutlineGeometry(surfaceMesh: SolverSurfaceMesh): THREE.BufferGeometry {

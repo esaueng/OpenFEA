@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { Coffee, Github, MessageSquare } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { MessageSquare } from "lucide-react";
+import type { Study } from "@openfea/schema";
 import { REQUIRED_SETTING_HELP_IDS, SETTING_HELP, type SettingHelpVisual } from "../settingHelp";
 
 export interface WorkspaceLogEntry {
@@ -12,6 +13,8 @@ interface BottomPanelProps {
   logs: WorkspaceLogEntry[];
   meshStatus: string;
   solverStatus: string;
+  /** One-line study summary shown beside the status, e.g. "1 support, 1 load". */
+  studySummary?: string;
   onClearLogs: () => void;
 }
 
@@ -24,9 +27,6 @@ export const WORKSPACE_SHORTCUT_GUIDE: Array<{ keys: string[]; label: string }> 
   { keys: ["Shift", "Ctrl/Cmd", "Z"], label: "Redo" }
 ];
 
-export const COFFEE_ANIMATION_DURATION_MS = 1800;
-export const COFFEE_ANIMATION_REPLAY_DELAY_MS = { min: 18000, max: 45000 } as const;
-const COFFEE_LINK_TEXT = "Buy me a coffee";
 const ESAU_ENGINEERING_URL = "https://esauengineering.com/";
 const COPY_FEEDBACK_DURATION_MS = 2200;
 
@@ -40,24 +40,13 @@ export async function writeWorkspaceLogsToClipboard(text: string, clipboard?: Pi
   }
 }
 
-export function coffeeAnimationReplayDelayMs(randomValue = Math.random()) {
-  const safeRandomValue = Number.isFinite(randomValue) ? randomValue : 0;
-  const boundedRandomValue = Math.min(1, Math.max(0, safeRandomValue));
-  const delayRange = COFFEE_ANIMATION_REPLAY_DELAY_MS.max - COFFEE_ANIMATION_REPLAY_DELAY_MS.min;
-  return Math.round(COFFEE_ANIMATION_REPLAY_DELAY_MS.min + delayRange * boundedRandomValue);
-}
-
-export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLogs }: BottomPanelProps) {
-  const [tab, setTab] = useState<"tips" | "logs" | null>(null);
+export function BottomPanel({ status, logs, meshStatus, solverStatus, studySummary, onClearLogs }: BottomPanelProps) {
+  const [tab, setTab] = useState<"help" | "logs" | null>(null);
   const [drawerHeight, setDrawerHeight] = useState(320);
   const [clearPromptVisible, setClearPromptVisible] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "copied" | "unavailable" | "failed">("idle");
   const [tipFilter, setTipFilter] = useState("");
-  const [coffeeAnimating, setCoffeeAnimating] = useState(false);
-  const [coffeeAnimationRun, setCoffeeAnimationRun] = useState(0);
   const dragStart = useRef<{ y: number; height: number } | null>(null);
-  const animationTimeoutRef = useRef(0);
-  const replayTimeoutRef = useRef(0);
   const copyFeedbackTimeoutRef = useRef(0);
   const expanded = tab !== null;
   const displayStatus = statusForDisplay(status, solverStatus);
@@ -72,7 +61,6 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLog
         return help.title.toLowerCase().includes(needle) || help.body.toLowerCase().includes(needle);
       })
     : REQUIRED_SETTING_HELP_IDS;
-  const donateLinkClassName = `status-link donate-link${coffeeAnimating ? " coffee-animating" : ""}`;
 
   useEffect(() => {
     if (!clearPromptVisible) return undefined;
@@ -81,38 +69,6 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLog
   }, [clearPromptVisible]);
 
   useEffect(() => () => window.clearTimeout(copyFeedbackTimeoutRef.current), []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    if (prefersReducedCoffeeMotion()) return undefined;
-
-    function scheduleCoffeeAnimation() {
-      replayTimeoutRef.current = window.setTimeout(() => {
-        runCoffeeAnimation();
-        scheduleCoffeeAnimation();
-      }, coffeeAnimationReplayDelayMs());
-    }
-
-    runCoffeeAnimation();
-    scheduleCoffeeAnimation();
-
-    return () => {
-      window.clearTimeout(animationTimeoutRef.current);
-      window.clearTimeout(replayTimeoutRef.current);
-    };
-  }, []);
-
-  function prefersReducedCoffeeMotion() {
-    return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
-  }
-
-  function runCoffeeAnimation() {
-    if (typeof window === "undefined" || prefersReducedCoffeeMotion()) return;
-    setCoffeeAnimationRun((run) => run + 1);
-    setCoffeeAnimating(true);
-    window.clearTimeout(animationTimeoutRef.current);
-    animationTimeoutRef.current = window.setTimeout(() => setCoffeeAnimating(false), COFFEE_ANIMATION_DURATION_MS);
-  }
 
   function selectTab(nextTab: NonNullable<typeof tab>, event: MouseEvent<HTMLButtonElement>) {
     if (tab === nextTab) {
@@ -230,7 +186,7 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLog
           </pre>
         </div>
       )}
-      {expanded && tab === "tips" && (
+      {expanded && tab === "help" && (
         <div className="bottom-content tips-content" style={{ height: drawerHeight }}>
           <button
             type="button"
@@ -249,7 +205,7 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLog
             onKeyDown={resizeDrawerByKey}
           />
           <div className="tips-drawer-header">
-            <span>Settings tips</span>
+            <span>Help · Settings tips</span>
             <input
               type="search"
               className="tips-filter"
@@ -279,46 +235,24 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLog
       )}
       <div className="status-strip">
         <div className="status-primary">
+          <div className="status-groups" aria-label="Simulation status">
+            <span className={`status-state ${healthy}`}><i /><span className="status-state-label">{displayStatus}</span></span>
+            {studySummary ? <span className="status-summary">{studySummary}</span> : null}
+          </div>
+        </div>
+        <a className="status-attribution" href={ESAU_ENGINEERING_URL} target="_blank" rel="noreferrer">Built by Esau Engineering</a>
+        <div className="status-links" aria-label="Help and feedback">
           <div className="status-tabs">
-            {(["tips", "logs"] as const).map((item) => (
-              <button key={item} className={tab === item ? "active" : ""} aria-pressed={tab === item} aria-expanded={tab === item} onClick={(event) => selectTab(item, event)}>
-                {item[0]?.toUpperCase()}{item.slice(1)}
+            {(["help", "logs"] as const).map((item) => (
+              <button key={item} type="button" className={tab === item ? "active" : ""} aria-pressed={tab === item} aria-expanded={tab === item} onClick={(event) => selectTab(item, event)}>
+                {item === "help" ? "Help" : "Logs"}
                 {item === "logs" && <span className="count-pill">{logs.length}</span>}
               </button>
             ))}
           </div>
-          <div className="status-groups" aria-label="Simulation status">
-            <span className={`status-state ${healthy}`}><i /><span className="status-state-label">{displayStatus}</span></span>
-          </div>
-        </div>
-        <a className="status-attribution" href={ESAU_ENGINEERING_URL} target="_blank" rel="noreferrer">Built by Esau Engineering</a>
-        <div className="status-links" aria-label="Project links">
-          <a className={donateLinkClassName} href="https://ko-fi.com/esau" target="_blank" rel="noreferrer" title="Support OpenFEA on Ko-fi" onMouseEnter={runCoffeeAnimation}>
-            <span className="coffee-mark" aria-hidden="true" key={`coffee-mark-${coffeeAnimationRun}`}>
-              <span className="coffee-steam coffee-steam-one" />
-              <span className="coffee-steam coffee-steam-two" />
-              <Coffee size={13} aria-hidden="true" />
-              <span className="coffee-sparkle" />
-            </span>
-            <span className="coffee-label" key={`coffee-label-${coffeeAnimationRun}`}>
-              {COFFEE_LINK_TEXT.split("").map((letter, index) => (
-                <span
-                  className={letter === " " ? "coffee-letter coffee-letter-space" : "coffee-letter"}
-                  key={`${letter}-${index}`}
-                  style={{ "--coffee-letter-index": index } as CSSProperties}
-                >
-                  {letter}
-                </span>
-              ))}
-            </span>
-          </a>
           <a className="status-link" href="https://form.esauengineering.com/opencae-feedback" target="_blank" rel="noreferrer">
             <MessageSquare size={13} aria-hidden="true" />
             Feedback
-          </a>
-          <a className="status-link" href="https://github.com/esaueng/OpenFEA" target="_blank" rel="noreferrer">
-            <Github size={13} aria-hidden="true" />
-            GitHub
           </a>
         </div>
       </div>
@@ -391,6 +325,21 @@ export function statusForDisplay(status: string, solverStatus: string) {
   // leaves the working mesh and results untouched) and "Completed results were ignored".
   if (solverStatus === "Complete") return "Results ready";
   return "Ready";
+}
+
+/**
+ * The status bar's one-line study summary. Counts only what the user placed;
+ * modal studies take no loads, so their load count is left out.
+ */
+export function studySummaryLine(study: Pick<Study, "type" | "constraints" | "loads"> | null | undefined): string {
+  if (!study) return "";
+  const count = (n: number, singular: string, plural = `${singular}s`) => `${n} ${n === 1 ? singular : plural}`;
+  if (study.type === "steady_state_thermal") {
+    return `${count(study.constraints.length, "fixed temperature")}, ${count(study.loads.length, "heat load")}`;
+  }
+  const supports = count(study.constraints.length, "support");
+  if (study.type === "modal_analysis") return supports;
+  return `${supports}, ${count(study.loads.length, "load")}`;
 }
 
 export function resolveLogClearIntent(clickDetail: number, armed: boolean): "confirm" | "clear" {
