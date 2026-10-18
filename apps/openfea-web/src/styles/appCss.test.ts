@@ -170,7 +170,7 @@ describe("app CSS", () => {
   test("keeps compact interactive controls at least 24px high", () => {
     // Resolved through the control tier, so the guarantee holds whether a rule states
     // the size or takes --control-h-sm.
-    expect(resolvedControlPx(baseRule(".unit-switch .unit-toggle"), "min-height")).toBeGreaterThanOrEqual(24);
+    expect(resolvedControlPx(baseRule(".step-nav-step"), "min-height")).toBeGreaterThanOrEqual(24);
     expect(resolvedControlPx(baseRule(".tooltip-trigger"), "width")).toBeGreaterThanOrEqual(24);
     expect(resolvedControlPx(baseRule(".tooltip-trigger"), "height")).toBeGreaterThanOrEqual(24);
     expect(resolvedControlPx(baseRule(".status-tabs button"), "min-height")).toBeGreaterThanOrEqual(24);
@@ -511,7 +511,7 @@ describe("app CSS", () => {
       [".brand-button", "min-height"], [".breadcrumb-button", "min-height"], [".breadcrumb-input", "min-height"],
       [".icon-button", "height"], [".icon-button", "width"], [".topbar-action", "min-height"],
       [".storage-status-button", "min-height"], [".storage-recovery-close", "height"], [".shortcut-popover-close", "height"],
-      [".stepbar-collapse", "height"], [".stepbar-link", "min-height"], [".unit-switch .unit-toggle", "min-height"],
+      [".step-nav-step", "min-height"],
       [".tooltip-trigger", "height"], [".segmented button", "min-height"], [".text-button", "min-height"],
       [".remove-glyph", "height"], [".status-tabs button", "min-height"], [".status-link", "min-height"],
       [".log-copy-button,\n.log-clear-button", "min-height"], [".viewer-view-presets button", "min-height"],
@@ -700,7 +700,7 @@ describe("app CSS", () => {
 
     // No uppercase tracked eyebrows inside the panel; the chrome keeps them.
     const eyebrowGroup = css.replace(/\/\*[\s\S]*?\*\//g, "").match(/^[^{}]*\{\s*font-family:\s*var\(--font-mono\);\s*font-size:\s*var\(--fs-mini\);\s*letter-spacing:\s*var\(--ls-eyebrow\);\s*text-transform:\s*uppercase;\s*\}/m)?.[0] ?? "";
-    expect(eyebrowGroup).toContain(".stepbar-eyebrow");
+    expect(eyebrowGroup).toContain(".app-crash-eyebrow");
     for (const selector of [".panel-eyebrow", ".section-title", ".editable-list h3"]) {
       expect(eyebrowGroup, selector).not.toContain(selector);
     }

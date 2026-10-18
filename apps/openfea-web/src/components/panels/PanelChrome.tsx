@@ -9,7 +9,7 @@ import type { DisplayModel, DynamicSolverSettings, LoadCase, Material, MeshQuali
 
 import type { WorkspaceNotice } from "../../workspaceNotice";
 
-import type { StepId } from "../StepBar";
+import type { StepId } from "../StepNav";
 import { type LoadDirectionLabel, type LoadType } from "../../loadPreview";
 
 import { type ResolvedResultProbe } from "../../resultSelection";

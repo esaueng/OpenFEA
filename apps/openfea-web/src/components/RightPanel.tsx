@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import type { StepId } from "./StepBar";
+import type { StepId } from "./StepNav";
 import type { Study } from "@openfea/schema";
 import type { RightPanelProps } from "./panels/RightPanelProps";
 import { ModelPanel } from "./panels/ModelPanel";
