@@ -5,7 +5,7 @@ import { GITHUB_URL, KofiLink } from "./KofiLink";
 import { OpenFeaLogoMark } from "./OpenFeaLogoMark";
 import { SampleOptionCard } from "./SampleOptionCard";
 import { SAMPLE_ANALYSIS_OPTIONS } from "./sampleAnalysisOptions";
-import { SAMPLE_OPTIONS } from "./sampleOptions";
+import { SAMPLE_OPTIONS, sampleOptionFor } from "./sampleOptions";
 import { defaultRecentProjectService, isRecentProjectsSupported, pickRecentProjectFile, projectNameFromFile, requestRecentProjectFile, type RecentProjectEntry, type RecentProjectFileHandle, type RecentProjectService } from "../recentProjects";
 
 interface StartScreenProps {
@@ -25,9 +25,7 @@ export function StartScreen({ onLoadSample, onCreateProject, onOpenProject, busy
   // cache; nothing at all when there is no service worker.
   const offlineReadiness = useSyncExternalStore(subscribeOfflineReadiness, getOfflineReadiness, getOfflineReadiness);
   const offlineLabel = offlineReadinessLabel(offlineReadiness);
-  const [selectedSample, setSelectedSample] = useState<SampleModelId>("bracket");
   const [selectedAnalysisType, setSelectedAnalysisType] = useState<SampleAnalysisType>("static_stress");
-  const [sampleMenuOpen, setSampleMenuOpen] = useState(false);
   const [recentProjects, setRecentProjects] = useState<RecentProjectEntry[]>([]);
   const [recentsAvailable, setRecentsAvailable] = useState(() => isRecentProjectsSupported());
   const [recentError, setRecentError] = useState<string | null>(null);
@@ -48,7 +46,7 @@ export function StartScreen({ onLoadSample, onCreateProject, onOpenProject, busy
     return () => { cancelled = true; };
   }, [recentsAvailable]);
 
-  function loadSelectedSample(sample = selectedSample) {
+  function loadSample(sample: SampleModelId) {
     onLoadSample(sample, selectedAnalysisType);
   }
 
@@ -115,23 +113,21 @@ export function StartScreen({ onLoadSample, onCreateProject, onOpenProject, busy
     }
   }
 
+  const tryLabel = `${sampleOptionFor("bracket").title} · ${START_ANALYSIS_LABELS[selectedAnalysisType].toLowerCase()}`;
+
   return (
     <main
       className="start-screen"
       tabIndex={0}
       onKeyDown={(event) => {
-        if (event.key === "Escape" && sampleMenuOpen) {
-          event.preventDefault();
-          setSampleMenuOpen(false);
-        }
-        if (event.key === "Enter" && event.target === event.currentTarget) {
-          if (sampleMenuOpen) loadSelectedSample();
-          else setSampleMenuOpen(true);
-        }
-        // Only when <main> itself has focus, matching the Enter branch above. Unguarded,
-        // these fired from any focused descendant — WCAG 2.1.4, which the workspace's own
-        // single-key handler already cites and honours.
+        // Only when <main> itself has focus. Unguarded, these fired from any focused
+        // descendant — WCAG 2.1.4, which the workspace's own single-key handler already
+        // cites and honours.
         if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter") {
+          event.preventDefault();
+          if (!busy) loadSample("bracket");
+        }
         if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key.toLowerCase() === "n") {
           event.preventDefault();
           onCreateProject();
@@ -142,95 +138,153 @@ export function StartScreen({ onLoadSample, onCreateProject, onOpenProject, busy
         }
       }}
     >
-      <section className={`start-brand ${sampleMenuOpen ? "sample-menu-open" : ""}`} aria-labelledby="openfea-title">
-        <OpenFeaLogoMark className="start-mark" title="OpenFEA mark" />
-        <h1 id="openfea-title">OpenFEA</h1>
-        <p className="start-tagline">open structural simulation</p>
-        {sampleMenuOpen ? (
-          <SampleProjectMenu
-            selectedSample={selectedSample}
-            selectedAnalysisType={selectedAnalysisType}
-            onBack={() => setSampleMenuOpen(false)}
-            onLoadSample={(sample) => loadSelectedSample(sample)}
-            onSelectAnalysisType={setSelectedAnalysisType}
-            onSelectSample={setSelectedSample}
+      <div className="start-column">
+        <header className="start-brand" aria-labelledby="openfea-title">
+          <OpenFeaLogoMark className="start-mark" title="OpenFEA mark" />
+          <h1 id="openfea-title">OpenFEA</h1>
+          <p className="start-lede">See how a part bends and where it is stressed — right in your browser. Nothing leaves this device.</p>
+        </header>
+
+        <section className="start-actions" aria-label="Get started" aria-busy={busy}>
+          {busy && <p className="start-busy" role="status" aria-live="polite">Opening the workspace…</p>}
+          {continueProject && (
+            <button className="start-action start-continue primary" type="button" disabled={busy} onClick={() => continueProject.onContinue()}>
+              <span>
+                <strong>Continue {continueProject.name}</strong>
+                <small>Your last project is still open in this browser</small>
+              </span>
+              <span aria-hidden="true">→</span>
+            </button>
+          )}
+          <div className="start-action-grid">
+            <button className={`start-action ${continueProject ? "secondary" : "primary"} sample-action`} type="button" disabled={busy} onClick={() => loadSample("bracket")}>
+              <span>
+                <strong>Try a sample</strong>
+                <small>{tryLabel}, already set up</small>
+              </span>
+              <span aria-hidden="true">→</span>
+            </button>
+            <button className="start-action secondary" type="button" disabled={busy} onClick={() => onCreateProject()}>
+              <span>
+                <strong>New study</strong>
+                <small>Start from your own geometry</small>
+              </span>
+              <kbd>N</kbd>
+            </button>
+            <button className="start-action secondary" type="button" disabled={busy || recentBusyId === "picker"} onClick={() => void chooseLocalProject()}>
+              <span>
+                <strong>Open a project file</strong>
+                <small>An .openfea.json saved on this device</small>
+              </span>
+              <kbd>O</kbd>
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            className="visually-hidden"
+            type="file"
+            accept=".json,.openfea,.openfea.json,.opencae,.opencae.json,application/json"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (file) void openValidatedProject(file).catch((error) => setRecentError(messageFromError(error, "Could not open the selected project.")));
+            }}
           />
-        ) : (
-          <>
-            <div className="start-actions" aria-busy={busy}>
-              {busy && <p className="start-busy" role="status" aria-live="polite">Opening the workspace…</p>}
-              {continueProject && (
-                <button className="start-action primary" disabled={busy} onClick={() => continueProject.onContinue()}>
-                  <span>
-                    <strong>Continue {continueProject.name}</strong>
-                    <small>Your last project is still open in this browser</small>
-                  </span>
-                  <span aria-hidden="true">→</span>
-                </button>
-              )}
-              <button className="start-action secondary" disabled={busy} onClick={() => onCreateProject()}>
-                <span>Create new project</span>
-                <kbd>N</kbd>
-              </button>
-              <button className="start-action secondary" disabled={busy || recentBusyId === "picker"} onClick={() => void chooseLocalProject()}>
-                <span>Open local project</span>
-                <kbd>O</kbd>
-              </button>
-              <button className={`start-action ${continueProject ? "secondary" : "primary"} sample-action`} disabled={busy} aria-label="Open sample menu" onClick={() => setSampleMenuOpen(true)}>
-                <span>
-                  <strong>Load sample project</strong>
-                  <small>Choose a sample model and analysis type</small>
-                </span>
-                <span aria-hidden="true">→</span>
-              </button>
-              <input
-                ref={fileInputRef}
-                className="visually-hidden"
-                type="file"
-                accept=".json,.openfea,.openfea.json,.opencae,.opencae.json,application/json"
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  event.currentTarget.value = "";
-                  if (file) void openValidatedProject(file).catch((error) => setRecentError(messageFromError(error, "Could not open the selected project.")));
-                }}
-              />
-            </div>
-            {recentsAvailable && (
-              <RecentProjectsSection
-                entries={recentProjects}
-                busyId={recentBusyId}
-                onOpen={(entry) => void openRecentProject(entry)}
-                onRemove={(id) => void removeRecentProject(id)}
-                onClear={() => void clearRecentProjects()}
-              />
-            )}
-            {recentError && <p className="start-inline-error" role="alert">{recentError}</p>}
-            <p className="start-caption">
-              <span>OpenFEA helps you test how parts respond to forces.</span>
-              <span>Start with the sample project to see a complete example.</span>
-            </p>
-          </>
+        </section>
+
+        <StartSamplesSection
+          analysisType={selectedAnalysisType}
+          disabled={busy}
+          onSelectAnalysisType={setSelectedAnalysisType}
+          onLoadSample={loadSample}
+        />
+
+        {recentsAvailable && (
+          <RecentProjectsSection
+            entries={recentProjects}
+            busyId={recentBusyId}
+            onOpen={(entry) => void openRecentProject(entry)}
+            onRemove={(id) => void removeRecentProject(id)}
+            onClear={() => void clearRecentProjects()}
+          />
         )}
-      </section>
-      <footer className="start-footer">
-        <span className="local-runtime">
-          Runs locally
-          {offlineLabel ? (
-            <span className="offline-readiness" role="status">
-              {` · ${offlineLabel}`}
-            </span>
-          ) : null}
-        </span>
-        <a className="start-credit" href="https://esauengineering.com/" target="_blank" rel="noreferrer">
-          Built by Esau Engineering
-        </a>
-        <span className="start-footer-links">
-          <KofiLink />
-          <span aria-hidden="true"> · </span>
-          <a className="start-github" href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
-        </span>
-      </footer>
+        {recentError && <p className="start-inline-error" role="alert">{recentError}</p>}
+
+        <footer className="start-footer">
+          <span className="local-runtime">
+            Runs locally in your browser
+            {offlineLabel ? (
+              <span className="offline-readiness" role="status">
+                {` · ${offlineLabel}`}
+              </span>
+            ) : null}
+          </span>
+          <span className="start-footer-links">
+            <a className="start-credit" href="https://esauengineering.com/" target="_blank" rel="noreferrer">
+              Built by Esau Engineering
+            </a>
+            <span aria-hidden="true"> · </span>
+            <KofiLink />
+            <span aria-hidden="true"> · </span>
+            <a className="start-github" href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
+          </span>
+        </footer>
+      </div>
     </main>
+  );
+}
+
+/** The start screen's sentence-case names; the Model panel keeps its compact labels. */
+const START_ANALYSIS_LABELS: Record<SampleAnalysisType, string> = {
+  static_stress: "Static stress",
+  dynamic_structural: "Dynamic",
+  modal_analysis: "Modal",
+  steady_state_thermal: "Thermal"
+};
+
+interface StartSamplesSectionProps {
+  analysisType: SampleAnalysisType;
+  disabled?: boolean;
+  onSelectAnalysisType: (analysisType: SampleAnalysisType) => void;
+  onLoadSample: (sample: SampleModelId) => void;
+}
+
+/** Inline sample gallery. It replaced the second "sample menu" page: one click on a
+ *  card opens that sample with the chosen analysis type (plan 035, increment 5). */
+export function StartSamplesSection({ analysisType, disabled = false, onSelectAnalysisType, onLoadSample }: StartSamplesSectionProps) {
+  return (
+    <section className="start-samples" aria-labelledby="start-samples-title">
+      <div className="start-section-header">
+        <h2 id="start-samples-title">Samples</h2>
+        <div className="segmented start-analysis-type" role="group" aria-label="Analysis type">
+          {SAMPLE_ANALYSIS_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              className={analysisType === option.id ? "active" : ""}
+              type="button"
+              aria-pressed={analysisType === option.id}
+              onClick={() => onSelectAnalysisType(option.id)}
+            >
+              {START_ANALYSIS_LABELS[option.id]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="sample-option-grid start-sample-grid" role="group" aria-label="Sample models">
+        {SAMPLE_OPTIONS.map((option) => (
+          <SampleOptionCard
+            key={option.id}
+            option={option}
+            selected={false}
+            analysisType={analysisType}
+            openOnClick
+            disabled={disabled}
+            onSelect={onLoadSample}
+            onOpen={onLoadSample}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -248,18 +302,18 @@ export function RecentProjectsSection({
   onClear: () => void;
 }) {
   return (
-    <section className="recent-projects" aria-label="Recent Projects">
-      <div className="recent-projects-header">
-        <h2>Recent Projects</h2>
+    <section className="recent-projects" aria-labelledby="recent-projects-title">
+      <div className="start-section-header recent-projects-header">
+        <h2 id="recent-projects-title">Recent</h2>
         {entries.length > 0 && <button type="button" onClick={onClear}>Clear list</button>}
       </div>
-      {entries.length === 0 ? <p>No recent project files yet.</p> : (
+      {entries.length === 0 ? <p className="recent-projects-empty">Projects you save or open appear here.</p> : (
         <ul>
           {entries.map((entry) => (
             <li key={entry.id}>
               <span><strong>{entry.projectName}</strong><small>{entry.filename}</small></span>
               <button type="button" disabled={busyId !== null} onClick={() => onOpen(entry)}>{busyId === entry.id ? "Opening…" : "Open"}</button>
-              <button type="button" aria-label={`Remove ${entry.projectName} from Recent Projects`} disabled={busyId !== null} onClick={() => onRemove(entry.id)}>Remove</button>
+              <button type="button" aria-label={`Remove ${entry.projectName} from Recent`} disabled={busyId !== null} onClick={() => onRemove(entry.id)}>Remove</button>
             </li>
           ))}
         </ul>
@@ -270,60 +324,4 @@ export function RecentProjectsSection({
 
 function messageFromError(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
-}
-
-interface SampleProjectMenuProps {
-  selectedSample: SampleModelId;
-  selectedAnalysisType: SampleAnalysisType;
-  onBack: () => void;
-  onLoadSample: (sample?: SampleModelId) => void;
-  onSelectAnalysisType: (analysisType: SampleAnalysisType) => void;
-  onSelectSample: (sample: SampleModelId) => void;
-}
-
-export function SampleProjectMenu({ selectedSample, selectedAnalysisType, onBack, onLoadSample, onSelectAnalysisType, onSelectSample }: SampleProjectMenuProps) {
-  return (
-    <div className="start-sample-menu">
-      <div className="start-sample-menu-bar">
-        <button className="start-menu-back" type="button" onClick={onBack}>Back</button>
-      </div>
-      <div className="start-sample-setup" aria-label="Sample setup">
-        <div className="start-sample-header">
-          <span>Sample model</span>
-          <div className="segmented analysis-type sample-analysis-type-grid start-analysis-type" role="group" aria-label="Analysis type">
-            {SAMPLE_ANALYSIS_OPTIONS.map((option) => (
-              <button
-                key={option.id}
-                className={selectedAnalysisType === option.id ? "active" : ""}
-                type="button"
-                aria-pressed={selectedAnalysisType === option.id}
-                onClick={() => onSelectAnalysisType(option.id)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="sample-option-grid start-sample-grid" role="group" aria-label="Sample model">
-          {SAMPLE_OPTIONS.map((option) => (
-            <SampleOptionCard
-              key={option.id}
-              option={option}
-              selected={selectedSample === option.id}
-              analysisType={selectedAnalysisType}
-              onSelect={onSelectSample}
-              onOpen={onLoadSample}
-            />
-          ))}
-        </div>
-      </div>
-      <button className="start-action primary sample-action start-menu-load" onClick={() => onLoadSample(selectedSample)}>
-        <span>
-          <strong>Load sample project</strong>
-          <small>Use selected model and analysis type</small>
-        </span>
-        <span aria-hidden="true">→</span>
-      </button>
-    </div>
-  );
 }

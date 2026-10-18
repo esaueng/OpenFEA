@@ -6,6 +6,9 @@ test("labels thermal inputs as heat rather than force in viewer and report captu
   const marker = { id: "heat", faceId: "face", value: 10, units: "W/m²", direction: [0, 0, -1] as [number, number, number], directionLabel: "-Z", labelIndex: 0, stackIndex: 0 };
   expect(loadMarkerDisplayLabel({ ...marker, type: "heat_flux" })).toBe("L1 Heat flux 10 W/m²");
   expect(loadMarkerDisplayLabel({ ...marker, type: "heat_generation", units: "W/m³" })).toBe("L1 Heat generation 10 W/m³");
+  // Face-relative directions read in words on the canvas; the stored label is unchanged.
+  expect(loadMarkerDisplayLabel({ ...marker, type: "force", units: "N", directionLabel: "Opposite normal" })).toBe("L1 F 10 N into face");
+  expect(loadMarkerDisplayLabel({ ...marker, type: "force", units: "N", directionLabel: "Normal" })).toBe("L1 F 10 N out of face");
 });
 
 const face: DisplayFace = {

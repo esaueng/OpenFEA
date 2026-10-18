@@ -6,9 +6,11 @@ const appSource = readFileSync(resolve(__dirname, "WorkspaceApp.tsx"), "utf8").r
 const apiSource = readFileSync(resolve(__dirname, "lib/api.ts"), "utf8").replace(/\r\n/g, "\n");
 
 describe("App workflow layout", () => {
-  test("uses the step-by-step StepBar as the primary simulation workflow", () => {
-    expect(appSource).toContain('import { StepBar, type StepId } from "./components/StepBar";');
-    expect(appSource).toContain("<StepBar");
+  test("uses the top-bar StepNav as the primary simulation workflow", () => {
+    expect(appSource).toContain('import { StepNav, type StepId } from "./components/StepNav";');
+    expect(appSource).toContain("<StepNav");
+    // The left rail is gone (plan 035, increment 1); the stepper lives in the top bar.
+    expect(appSource).not.toContain("<StepBar");
     expect(appSource).not.toContain("<StudyTree");
   });
 

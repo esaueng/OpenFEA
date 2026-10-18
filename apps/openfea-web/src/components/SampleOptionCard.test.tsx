@@ -43,6 +43,22 @@ describe("SampleOptionCard", () => {
     expect(onOpen).toHaveBeenCalledWith("plate");
   });
 
+  test("opens on a single click or key press when openOnClick is set", () => {
+    const onSelect = vi.fn();
+    const onOpen = vi.fn();
+    const element = SampleOptionCard({ option: SAMPLE_OPTIONS[2]!, selected: false, openOnClick: true, onSelect, onOpen });
+
+    element.props.onClick();
+    element.props.onKeyDown({ key: "Enter", preventDefault: vi.fn() });
+
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onOpen).toHaveBeenCalledWith("cantilever");
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(element.props.onDoubleClick).toBeUndefined();
+    expect(element.props["aria-pressed"]).toBeUndefined();
+    expect(element.props["aria-label"]).toBe("Open Cantilever Demo sample");
+  });
+
   test("describes modal and thermal sample setup instead of structural loads", () => {
     const modalHtml = renderToStaticMarkup(
       <SampleOptionCard option={SAMPLE_OPTIONS[0]!} selected analysisType="modal_analysis" onSelect={vi.fn()} onOpen={vi.fn()} />

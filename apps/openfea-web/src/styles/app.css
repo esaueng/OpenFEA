@@ -86,16 +86,10 @@ img {
 }
 
 .start-brand {
-  position: relative;
-  z-index: 1;
-  width: min(340px, 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.start-brand.sample-menu-open {
-  width: min(430px, 100%);
+  text-align: center;
 }
 
 .app-not-found-code {
@@ -120,8 +114,8 @@ img {
 }
 
 .start-mark {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   color: var(--color-accent);
   margin-bottom: var(--sp-4);
 }
@@ -134,40 +128,12 @@ img {
   letter-spacing: 0;
 }
 
-.start-tagline {
-  margin: var(--sp-3) 0 var(--sp-6);
-  color: var(--color-text-subtle);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  letter-spacing: var(--ls-tagline);
-  text-transform: uppercase;
-}
-
-.start-sample-setup {
-  width: 100%;
-  margin-bottom: 14px;
-}
-
-.start-sample-menu {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
 /* One eyebrow. This recipe was retyped across twelve rules; each of them still owns its
    own colour and layout, but the type treatment lives here so changing it is one edit.
    Every class name is unchanged — the pinned CSS tests look selectors up literally, and
    RightPanel.test.tsx pins .panel-eyebrow's exact markup. */
-.start-sample-menu-bar,
-.start-sample-header,
 .simulation-type-header small,
 .storage-recovery-header small,
-.stepbar-eyebrow,
-.stepbar-footer,
-.panel-eyebrow,
-.editable-list h3,
-.section-title,
 .app-crash-eyebrow,
 .app-crash-detail span {
   font-family: var(--font-mono);
@@ -176,72 +142,14 @@ img {
   text-transform: uppercase;
 }
 
-.start-sample-menu-bar {
-  width: min(430px, 100%);
-  margin: 0 auto var(--sp-25);
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr) 70px;
-  align-items: center;
-  color: var(--color-text-subtle);
-  text-align: center;
-}
-
-.start-menu-back {
-  min-height: var(--control-h-md);
-  justify-self: start;
-  padding: 0 var(--sp-25);
-  color: var(--color-text-muted);
-  background: rgba(17, 24, 33, 0.72);
-  border: var(--border-thin);
-  border-radius: var(--radius-md);
-  font-size: var(--fs-xs);
-}
-
-.start-menu-back:hover,
-.start-menu-back:focus-visible {
-  color: var(--color-text);
-  border-color: var(--color-accent-border);
-}
-
-.start-menu-load {
-  width: min(430px, 100%);
-  max-width: 100%;
-}
-
-.start-sample-header {
-  width: min(430px, 100%);
-  margin: 0 auto var(--sp-25);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px;
-  align-items: center;
-  gap: var(--sp-3);
-  color: var(--color-text-subtle);
-}
-
-.start-analysis-type {
-  justify-self: end;
-  width: 180px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
 .start-actions {
-  width: 320px;
-  max-width: 100%;
   display: grid;
-  gap: var(--sp-25);
+  gap: var(--sp-3);
 }
 
-/* Same column as the actions above it; at 430px (capped to the brand's 340) it
-   overhung the 320px buttons by 10px a side. */
 .recent-projects {
-  width: min(320px, 100%);
-  margin-top: var(--sp-4);
-  padding: var(--sp-25);
+  width: 100%;
   color: var(--color-text-muted);
-  background: rgba(17, 24, 33, 0.72);
-  border: var(--border-thin);
-  border-radius: var(--radius-md);
 }
 
 .recent-projects-header,
@@ -253,34 +161,24 @@ img {
 
 .recent-projects-header {
   justify-content: space-between;
-  margin-bottom: var(--sp-2);
 }
 
 .recent-projects h2 {
   margin: 0;
-  color: var(--color-text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-medium);
-  letter-spacing: var(--ls-eyebrow);
-  text-transform: uppercase;
-}
-
-.recent-projects p {
-  margin: 0;
-  font-size: var(--fs-xs);
 }
 
 .recent-projects ul {
   display: grid;
-  gap: var(--sp-15);
   margin: 0;
-  padding: 0;
+  padding: 0 var(--sp-3);
   list-style: none;
+  background: rgba(17, 24, 33, 0.72);
+  border: var(--border-thin);
+  border-radius: var(--radius-md);
 }
 
 .recent-projects li {
-  padding-top: var(--sp-15);
+  padding: var(--sp-25) 0;
   border-top: 1px solid rgba(139, 148, 158, 0.16);
 }
 
@@ -326,12 +224,92 @@ img {
 }
 
 .start-inline-error {
-  width: min(430px, 100%);
-  margin: var(--sp-25) 0 0;
+  margin: 0;
   color: var(--color-error);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   line-height: var(--lh-loose);
   text-align: center;
+}
+
+/* Plan 035, increment 5: one column — header, three action cards, the inline
+   sample gallery, Recent and the footer. The column scrolls inside .start-screen. */
+.start-column {
+  position: relative;
+  z-index: 1;
+  width: min(880px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.start-lede {
+  max-width: 46ch;
+  margin: var(--sp-3) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-loose);
+}
+
+.start-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.start-action-grid .start-action {
+  align-items: flex-start;
+}
+
+.start-action strong {
+  font-size: var(--fs-md);
+}
+
+/* The label takes the free width, so it stays left-aligned when the phone tier
+   centres .primary/.secondary content and hides the shortcut. */
+.start-action > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Sentence-case section labels, not mono eyebrows (plan 035 deviation table). */
+.start-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.start-section-header h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+}
+
+.segmented.start-analysis-type {
+  flex: 0 0 auto;
+  grid-template-columns: repeat(4, auto);
+}
+
+.start-analysis-type button {
+  padding: 0 var(--sp-3);
+  white-space: nowrap;
+}
+
+.recent-projects li:first-child {
+  border-top: 0;
+}
+
+.recent-projects-empty {
+  margin: 0;
+  padding: var(--sp-4);
+  color: var(--color-text-subtle);
+  font-size: var(--fs-sm);
+  text-align: center;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
 }
 
 .start-action {
@@ -341,26 +319,17 @@ img {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  padding: var(--sp-2) 11px;
+  padding: var(--sp-3) var(--sp-4);
   border-radius: var(--radius-md);
   border: var(--border-thin);
   text-align: left;
   transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
 
-.start-actions .start-action,
-.start-menu-load {
-  justify-content: space-between;
-}
-
 .start-action.primary {
   color: var(--color-on-accent);
   background: var(--color-accent);
   border-color: var(--color-accent);
-}
-
-.start-action.sample-action {
-  margin-top: var(--sp-15);
 }
 
 .start-action.secondary {
@@ -384,9 +353,10 @@ img {
 }
 
 .start-action small {
-  margin-top: 1px;
+  margin-top: var(--sp-1);
   color: rgba(6, 17, 30, 0.85);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
 }
 
 .start-action > span:last-child {
@@ -405,24 +375,13 @@ img {
   text-align: right;
 }
 
-.start-caption {
-  width: min(430px, 100%);
-  margin: 20px 0 0;
-  color: var(--color-text-muted);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-loose);
-  text-align: center;
-}
-
 .sample-option-grid {
   display: grid;
   gap: var(--sp-25);
 }
 
 .start-sample-grid {
-  grid-template-columns: minmax(0, 1fr);
-  width: min(430px, 100%);
-  margin: 0 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .panel-sample-grid {
@@ -470,27 +429,6 @@ img {
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 32%, transparent),
     0 14px 32px rgba(0, 0, 0, 0.22);
-}
-
-.start-sample-grid .sample-option-card {
-  min-height: 112px;
-  grid-template-columns: 126px minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  align-items: center;
-  gap: var(--sp-2) var(--sp-3);
-}
-
-.start-sample-grid .sample-thumbnail {
-  grid-row: 1 / span 2;
-  height: 72px;
-}
-
-.start-sample-grid .sample-option-copy {
-  align-self: end;
-}
-
-.start-sample-grid .sample-option-meta {
-  align-self: start;
 }
 
 .sample-option-card.compact {
@@ -685,10 +623,6 @@ img {
   line-height: 1.25;
 }
 
-.start-caption span {
-  display: block;
-}
-
 .start-credit {
   color: var(--color-text-muted);
   text-decoration: none;
@@ -703,22 +637,17 @@ img {
 }
 
 .start-footer {
-  position: absolute;
-  right: 24px;
-  bottom: 20px;
-  left: 24px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--sp-4);
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+  padding-top: var(--sp-4);
   color: var(--color-text-subtle);
+  border-top: 1px solid rgba(139, 148, 158, 0.16);
   font-family: var(--font-mono);
   font-size: var(--fs-mini);
   line-height: 1;
-}
-
-.start-brand.sample-menu-open + .start-footer {
-  display: none;
 }
 
 .local-runtime {
@@ -732,21 +661,10 @@ img {
 }
 
 .start-footer a {
+  color: inherit;
   text-decoration: none;
   text-decoration-color: currentColor;
   text-underline-offset: 3px;
-}
-
-.start-footer-links {
-  justify-self: end;
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--sp-1);
-}
-
-/* Nested in .start-footer-links, so `.start-footer > *` no longer reaches it. */
-.start-github {
-  color: inherit;
 }
 
 .start-footer a:hover,
@@ -1068,7 +986,7 @@ img {
   position: fixed;
   z-index: var(--z-condition-menu);
   top: 116px;
-  left: calc(var(--stepbar-w) + 24px);
+  left: var(--sp-5);
   width: 280px;
   overflow: hidden;
   background: var(--color-surface);
@@ -1268,10 +1186,6 @@ img {
   color: var(--color-text);
 }
 
-.app-shell.stepbar-collapsed {
-  --stepbar-w: 56px;
-}
-
 .topbar {
   position: relative;
   display: flex;
@@ -1392,6 +1306,240 @@ img {
   align-items: center;
   gap: var(--sp-2);
   margin-left: auto;
+}
+
+/* The workflow stepper (plan 035, increment 1). It replaced the 124px left rail, so
+   the viewer gets that width back. The rail's state rules carry over: a tick means
+   present and valid, a warning glyph means blocked, never colour alone. */
+.step-nav {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0 auto;
+}
+
+.step-nav-list {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.step-nav-item + .step-nav-item::before {
+  content: "";
+  width: var(--sp-2);
+  height: 1px;
+  background: var(--color-border-strong);
+}
+
+.step-nav-step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-15);
+  min-height: var(--control-h-lg);
+  padding: 0 var(--sp-2) 0 var(--sp-1);
+  color: var(--color-text-muted);
+  border-radius: 999px;
+  font-size: var(--fs-base);
+  white-space: nowrap;
+}
+
+.step-nav-step:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.step-nav-step:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.step-nav-step.active {
+  color: var(--color-text);
+  background: var(--color-accent-dim);
+  font-weight: var(--fw-medium);
+}
+
+.step-nav-dot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.step-nav-dot.done {
+  color: var(--color-success);
+  background: var(--color-surface-2);
+  border-color: var(--color-border);
+}
+
+.step-nav-dot.blocked {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+
+.step-nav-step.active .step-nav-dot {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+/* At laptop widths the study name gives way to the stepper; the step labels need
+   ~700px and the name sits in the Run panel and the page title anyway. */
+@media (max-width: 1520px) {
+  .topbar .breadcrumb-sep,
+  .topbar .breadcrumb > span:last-child {
+    display: none;
+  }
+}
+
+/* Below that only the current step keeps a visible label; the others are clipped,
+   not removed, so each keeps its accessible name (and a title on hover). */
+@media (max-width: 1280px) {
+  .step-nav-step:not(.active) {
+    padding-right: var(--sp-1);
+  }
+
+  .step-nav-step:not(.active) .step-nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+.step-nav-status {
+  position: absolute;
+  right: -7px;
+  bottom: -5px;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  color: var(--color-surface);
+  background: var(--color-success);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--color-surface);
+}
+
+.step-nav-dot.blocked .step-nav-status {
+  background: var(--color-warning);
+}
+
+/* Between the narrow strip and the laptop tier the dots alone need every pixel:
+   the connector rules go first. */
+@media (min-width: 981px) and (max-width: 1180px) {
+  .topbar .step-nav-item + .step-nav-item::before {
+    display: none;
+  }
+}
+
+/* Narrow: the top bar has no room, so a sticky strip under it carries the stepper.
+   Only one of the two copies is ever displayed (display:none also drops the hidden
+   copy from the accessibility tree, so there is one "Simulation workflow" landmark). */
+.step-nav-strip {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .topbar .step-nav {
+    display: none;
+  }
+
+  .step-nav-strip {
+    position: sticky;
+    top: var(--topbar-h);
+    z-index: 1;
+    display: block;
+    padding: var(--sp-1) var(--sp-3);
+    overflow-x: auto;
+    background: var(--color-surface);
+    border-bottom: var(--border-thin);
+  }
+
+  .step-nav-strip .step-nav {
+    margin: 0;
+  }
+}
+
+/* The strip is full width, so from 760px every label fits again. */
+@media (min-width: 760px) and (max-width: 980px) {
+  .step-nav-strip .step-nav-step:not(.active) {
+    padding-right: var(--sp-2);
+  }
+
+  .step-nav-strip .step-nav-step:not(.active) .step-nav-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+}
+
+/* Theme and units moved here from the rail footer. Outside .topbar-tools on
+   purpose: that group is hidden at phone width, and these must stay reachable. */
+.project-menu-anchor {
+  position: relative;
+}
+
+.project-menu-popover {
+  position: absolute;
+  z-index: var(--z-popover);
+  top: calc(100% + 10px);
+  right: 0;
+  display: grid;
+  gap: var(--sp-3);
+  width: min(320px, calc(100vw - 24px));
+  padding: var(--sp-3);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: var(--border-thin);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-panel);
+}
+
+.project-menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-text);
+}
+
+.project-menu-header .shortcut-popover-close {
+  position: static;
+}
+
+.project-menu-row {
+  display: grid;
+  gap: var(--sp-15);
+}
+
+.project-menu-row .segmented {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.project-menu-row .segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-15);
 }
 
 .storage-status-button {
@@ -1960,321 +2108,8 @@ img {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: var(--stepbar-w) minmax(360px, 1fr) var(--context-w);
+  grid-template-columns: minmax(360px, 1fr) var(--context-w);
   background: var(--color-bg);
-}
-
-.stepbar {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  padding: var(--sp-4) var(--sp-15);
-  background: var(--color-surface);
-  border-right: var(--border-thin);
-}
-
-.stepbar-header {
-  min-height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  /* Text in the rail starts on the step icons' left edge (step padding + its
-     2px active border), not 8px outside it. */
-  padding-left: calc(var(--sp-15) + 2px);
-}
-
-.stepbar-eyebrow,
-.stepbar-footer {
-  color: var(--color-text-subtle);
-}
-
-.stepbar-collapse {
-  width: var(--control-h-sm);
-  height: var(--control-h-sm);
-  display: inline-grid;
-  flex: 0 0 auto;
-  place-items: center;
-  color: var(--color-text-subtle);
-  border: var(--border-thin);
-  border-radius: var(--radius-md);
-  background: rgba(11, 15, 20, 0.22);
-}
-
-.stepbar-collapse:hover,
-.stepbar-collapse:focus-visible {
-  color: var(--color-accent);
-  border-color: var(--color-accent-border);
-  outline: none;
-}
-
-/* The stepbar chips hard-code dark translucent fills; swap in the light
-   surface token so muted text keeps AA contrast in light theme. */
-.theme-light .stepbar-collapse,
-.theme-light .stepbar-link,
-.theme-light .step-icon,
-.theme-light .stepbar.collapsed .unit-switch .unit-toggle {
-  background: var(--color-surface-2);
-}
-
-.theme-light .step:hover {
-  background: var(--color-surface-hover);
-}
-
-.step-list {
-  display: grid;
-  gap: var(--sp-1);
-  margin-top: var(--sp-3);
-}
-
-.step {
-  height: 48px;
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  align-items: center;
-  gap: 7px;
-  padding: 0 var(--sp-15);
-  color: var(--color-text-muted);
-  border-left: 2px solid transparent;
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  text-align: left;
-}
-
-.step:hover {
-  color: var(--color-text);
-  background: rgba(23, 32, 43, 0.55);
-}
-
-.step:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.step:disabled:hover {
-  color: var(--color-text-muted);
-  background: transparent;
-}
-
-.step.active {
-  color: var(--color-text);
-  background: var(--color-surface-2);
-  border-left-color: var(--color-accent);
-}
-
-.step-icon {
-  position: relative;
-  width: 30px;
-  height: 30px;
-  display: inline-grid;
-  place-items: center;
-  color: var(--color-text-subtle);
-  border: var(--border-thin);
-  border-radius: var(--radius-md);
-  background: rgba(11, 15, 20, 0.28);
-}
-
-.step-icon svg {
-  width: 18px;
-  height: 18px;
-}
-
-/* Done reads from the glyph alone. Seven green-filled tiles made a finished
-   setup the loudest thing on screen and drowned the accent of the active step. */
-.step-icon.done {
-  color: var(--color-success);
-}
-
-.step.active .step-icon {
-  color: var(--color-accent);
-  border-color: var(--color-accent-border);
-  background: var(--color-accent-dim);
-}
-
-.step.active .step-icon.done {
-  color: var(--color-success);
-}
-
-.stepbar-footer {
-  display: grid;
-  gap: 7px;
-  margin-top: auto;
-  letter-spacing: 0;
-  text-transform: lowercase;
-  min-width: 0;
-}
-
-.stepbar-footer > div:not(.stepbar-actions) {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--sp-15);
-  min-width: 0;
-  padding-inline: calc(var(--sp-15) + 2px) var(--sp-15);
-}
-
-.stepbar-footer > .unit-switch {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
-  gap: var(--sp-1) var(--sp-15);
-  align-items: center;
-}
-
-.unit-switch .unit-toggle {
-  grid-column: 1 / -1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--control-h-sm);
-  padding: 0;
-  justify-self: center;
-  color: var(--color-text-muted);
-  background: transparent;
-  border: 0;
-  font-size: var(--fs-mini);
-  text-transform: none;
-  width: auto;
-}
-
-.unit-toggle-short {
-  display: none;
-}
-
-.unit-toggle:hover,
-.unit-toggle:focus-visible {
-  color: var(--color-accent);
-  outline: none;
-}
-
-.stepbar-footer strong {
-  color: var(--color-text-muted);
-  font-weight: var(--fw-regular);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stepbar-actions {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--sp-15);
-  margin-bottom: var(--sp-15);
-}
-
-.stepbar-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  min-width: 0;
-  min-height: var(--control-h-md);
-  padding: 0 var(--sp-2);
-  color: var(--color-text-muted);
-  background: rgba(11, 15, 20, 0.28);
-  border: var(--border-thin);
-  border-radius: var(--radius-md);
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  letter-spacing: 0;
-  text-transform: none;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.stepbar-link svg {
-  flex: 0 0 auto;
-}
-
-.stepbar-link:hover,
-.stepbar-link:focus-visible {
-  color: var(--color-accent);
-  border-color: var(--color-accent-border);
-  background: var(--color-accent-dim);
-  text-decoration: none;
-}
-
-.stepbar.collapsed {
-  padding-right: var(--sp-15);
-  padding-left: var(--sp-15);
-}
-
-.stepbar.collapsed .stepbar-header {
-  justify-content: center;
-  padding-left: 0;
-}
-
-.stepbar.collapsed .stepbar-eyebrow,
-.stepbar.collapsed .step > span:not(.step-icon) {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.stepbar.collapsed .step {
-  grid-template-columns: 1fr;
-  justify-items: center;
-  gap: 0;
-  padding: 0;
-}
-
-.stepbar.collapsed .stepbar-footer {
-  justify-items: center;
-  gap: var(--sp-15);
-  width: 100%;
-}
-
-.stepbar.collapsed .stepbar-footer > div:not(.stepbar-actions):not(.unit-switch) {
-  display: none;
-}
-
-.stepbar.collapsed .stepbar-actions {
-  gap: var(--sp-15);
-  margin-bottom: 0;
-}
-
-.stepbar.collapsed .stepbar-link {
-  width: var(--control-h-lg);
-  min-height: var(--control-h-md);
-  padding: 0;
-  gap: 0;
-  font-size: 0;
-}
-
-.stepbar.collapsed .stepbar-link svg {
-  width: 16px;
-  height: 16px;
-}
-
-.stepbar.collapsed .unit-switch {
-  display: grid;
-  grid-template-columns: 1fr;
-  justify-items: center;
-  gap: 3px;
-}
-
-.stepbar.collapsed .unit-switch > span,
-.stepbar.collapsed .unit-switch > strong,
-.stepbar.collapsed .unit-toggle-label {
-  display: none;
-}
-
-.stepbar.collapsed .unit-switch .unit-toggle {
-  grid-column: auto;
-  width: var(--control-h-lg);
-  min-height: var(--control-h-sm);
-  border: var(--border-thin);
-  border-radius: var(--radius-md);
-  background: rgba(11, 15, 20, 0.28);
-  font-family: var(--font-mono);
-}
-
-.stepbar.collapsed .unit-toggle-short {
-  display: inline;
 }
 
 .viewer-shell {
@@ -2283,6 +2118,183 @@ img {
   min-height: 0;
   background: var(--color-viewport-bg);
   overflow: hidden;
+}
+
+/* The viewer toolbar (plan 035, increment 3): one floating group at the bottom
+   centre replaces the X/Y/Z/Iso strip, the projection toggle and the Model panel's
+   View buttons. The view cube is canvas-drawn and cannot take focus, so the Views
+   menu here is the keyboard path to every camera view. */
+.viewer-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: var(--sp-4);
+  z-index: var(--z-viewer-overlay);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-1);
+  background: var(--color-surface);
+  border: var(--border-thin);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-panel);
+  transform: translateX(-50%);
+}
+
+.viewer-toolbar button,
+.viewer-toolbar-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-15);
+  min-height: var(--control-h-lg);
+  padding: 0 var(--sp-3);
+  color: var(--color-text-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+}
+
+.viewer-toolbar button:hover,
+.viewer-toolbar-icon:hover {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.viewer-toolbar button[aria-pressed="true"],
+.viewer-toolbar button[aria-expanded="true"],
+.viewer-toolbar-icon[aria-pressed="true"] {
+  color: var(--color-accent);
+  background: var(--color-accent-dim);
+  border-color: var(--color-accent-border);
+}
+
+.viewer-toolbar-menu-anchor {
+  position: relative;
+}
+
+.viewer-views-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: var(--z-popover);
+  display: grid;
+  min-width: 180px;
+  padding: var(--sp-1);
+  background: var(--color-surface);
+  border: var(--border-thin);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-panel);
+  transform: translateX(-50%);
+}
+
+.viewer-views-menu button {
+  justify-content: flex-start;
+  width: 100%;
+  color: var(--color-text);
+}
+
+.viewer-views-menu button:focus-visible {
+  background: var(--color-surface-2);
+}
+
+.viewer-views-menu [role="menuitemradio"]::before {
+  content: "";
+  width: 14px;
+}
+
+.viewer-views-menu [role="menuitemradio"][aria-checked="true"]::before {
+  content: "✓";
+  color: var(--color-accent);
+}
+
+.viewer-views-separator {
+  height: 1px;
+  margin: var(--sp-1) 0;
+  background: var(--color-border);
+}
+
+/* Section controls float above the toolbar while a section is open, so the cut can
+   be adjusted from any step, not only Model. */
+.viewer-section-card {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sp-4) + var(--control-h-lg) + var(--sp-5));
+  z-index: var(--z-viewer-overlay);
+  display: grid;
+  gap: var(--sp-2);
+  width: min(320px, calc(100% - var(--sp-5)));
+  padding: var(--sp-25) var(--sp-3);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: var(--border-thin);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-panel);
+  transform: translateX(-50%);
+}
+
+.viewer-section-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--color-text);
+}
+
+.viewer-section-row .segmented {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.viewer-section-offset {
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+
+/* The face the setup steps act on, named where the eye already is. */
+.viewer-selection-chip {
+  position: absolute;
+  top: var(--sp-3);
+  left: 50%;
+  z-index: var(--z-viewer-overlay);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: calc(100% - var(--sp-6));
+  padding: var(--sp-15) var(--sp-3);
+  overflow: hidden;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent-border);
+  border-radius: 999px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.viewer-selection-dot {
+  width: var(--sp-2);
+  height: var(--sp-2);
+  flex: none;
+  background: var(--color-accent);
+  border-radius: 50%;
+}
+
+.viewer-orbit-hint {
+  position: absolute;
+  left: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: var(--z-viewer-overlay);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  pointer-events: none;
+}
+
+/* Below 1100px the hint would sit under the toolbar. */
+@media (max-width: 1100px) {
+  .viewer-orbit-hint {
+    display: none;
+  }
 }
 
 .viewer-shell canvas {
@@ -2565,12 +2577,28 @@ img {
 }
 
 .side-panel {
+  /* Every panel rule sizes text through --fs-*, so remapping the scale here moves the
+     whole panel one step up without touching a component rule. font-size is restated
+     because the inherited value was already computed at body. */
+  --fs-mini: var(--panel-fs-mini);
+  --fs-xs: var(--panel-fs-xs);
+  --fs-sm: var(--panel-fs-sm);
+  --fs-base: var(--panel-fs-base);
   min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
   border-left: var(--border-thin);
   overflow: hidden;
+  font-size: var(--fs-base);
+}
+
+/* Reading text moves up a step; button labels stay one step down, at the chrome's
+   13px, so two-up action grids and the Back/Next labels keep to one line in a
+   344px panel. :where() keeps this at element specificity, so a component rule that
+   sizes its own buttons still wins. */
+:where(.side-panel) button {
+  font-size: var(--fs-sm);
 }
 
 .panel-section {
@@ -2581,21 +2609,26 @@ img {
   overflow: hidden;
 }
 
+/* More options sits between the direction and Add load; without this the button
+   touched the collapsible's border. */
+.panel-body .collapsible-section + .outline-action,
+.panel-body .collapsible-section + .field-error {
+  margin-top: var(--gap-block);
+}
+
+/* Step line, then the question, then one helper sentence. */
 .panel-header {
-  padding: var(--sp-25) var(--sp-4) var(--sp-2);
+  display: grid;
+  gap: var(--sp-15);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
   border-bottom: var(--border-thin);
 }
 
-.panel-title-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-4);
-  margin-bottom: var(--sp-1);
-}
-
+/* Inside the panel, labels are sentence case at reading size: uppercase tracked mono
+   reads as instrument output, not as a heading. Eyebrows stay in the chrome. */
 .panel-eyebrow {
   color: var(--color-text-subtle);
+  font-size: var(--fs-sm);
 }
 
 .panel-section h2 {
@@ -2604,6 +2637,14 @@ img {
   font-size: var(--fs-lg);
   font-weight: var(--fw-medium);
   letter-spacing: 0;
+}
+
+/* The question a step answers is the panel's display line. Results keeps --fs-lg:
+   its KPI figures are the display level there. */
+.panel-section h2.panel-question {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-tight);
+  text-wrap: balance;
 }
 
 .panel-header .helper {
@@ -2700,7 +2741,7 @@ img {
 
 .workflow-nav {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   gap: var(--sp-2);
   padding: var(--sp-3) var(--sp-4);
   border-top: var(--border-thin);
@@ -2709,10 +2750,30 @@ img {
 
 .workflow-nav button {
   min-width: 0;
+  min-height: var(--control-h-touch);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
+}
+
+/* Back is a quiet text action beside the one primary button. It keeps its place
+   (disabled, not hidden) on the first step so Continue never moves. */
+.workflow-nav-back {
+  padding: 0 var(--sp-3);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-md);
+  font-weight: var(--fw-medium);
+}
+
+.workflow-nav-back:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.workflow-nav-back:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .workflow-nav-label {
@@ -3787,6 +3848,40 @@ button:disabled {
   margin: 14px 0 0;
 }
 
+/* On Results the footer's last slot holds the report and export actions (plan 035,
+   increment 4): the step has nowhere to continue to, and the primary action stays in
+   view however long the panel scrolls. */
+.workflow-nav-slot {
+  min-width: 0;
+}
+
+.result-actions-footer {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.result-actions-footer .result-actions {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin: 0;
+}
+
+.result-actions-footer .panel-warning {
+  margin: 0;
+}
+
+/* The footer slot is ~240px wide: the leading file icons go and the labels hold one
+   line, so "Download report" never clips beside Export. */
+.result-actions-footer .result-actions .primary > svg:first-child,
+.result-actions-footer .export-menu-trigger > svg:first-child {
+  display: none;
+}
+
+.result-actions-footer .result-actions .primary,
+.result-actions-footer .export-menu-trigger {
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .result-actions .primary,
 .result-actions .secondary {
   justify-content: flex-start;
@@ -3948,9 +4043,7 @@ button:disabled {
 
 .result-headline-item span {
   color: var(--color-text-muted);
-  font-size: var(--fs-mini);
-  letter-spacing: var(--ls-eyebrow);
-  text-transform: uppercase;
+  font-size: var(--fs-sm);
 }
 
 .result-headline-item strong {
@@ -4008,8 +4101,9 @@ button:disabled {
 .editable-list h3,
 .section-title {
   margin: 0 0 var(--sp-2);
-  color: var(--color-text-subtle);
-  font-weight: var(--fw-regular);
+  color: var(--color-text);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
 }
 
 /* The section boundary was 22px against a 14px block gap — a 1.57x ratio, too close for
@@ -4077,8 +4171,11 @@ button:disabled {
   color: var(--color-text-subtle);
   font-size: var(--fs-xs);
   font-weight: var(--fw-regular);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: var(--lh-tight);
+  /* At the panel's 14px tier "Sample and analysis type" overran a 390px panel by
+     12px; it wraps under itself rather than losing its last word. */
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .collapsible-chevron {
@@ -4142,44 +4239,26 @@ button:disabled {
   flex: none;
 }
 
+/* The verdict is the answer the user ran the solve for (plan 035, increment 4): an
+   icon, a 22px title and one sentence, not a tinted card. Status reads from the glyph
+   (shield or warning triangle) and the title's words, never from colour alone. */
 .failure-assessment {
   margin-top: 0;
-  margin-bottom: var(--sp-2);
+  margin-bottom: var(--gap-block);
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: var(--sp-25);
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--sp-3);
   align-items: start;
-  /* 3px left border + 9px padding = 12px content start, matching the export buttons
-     (1px border + 11px padding) so icons and text share a column even though the two
-     blocks now sit at opposite ends of the panel. */
-  padding: var(--sp-3) var(--sp-3) var(--sp-3) 9px;
+  padding: 0;
   color: var(--color-text);
-  background: rgba(77, 163, 255, 0.12);
-  border-left: 3px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-}
-
-.failure-assessment.fail {
-  background: rgba(239, 68, 68, 0.12);
-  border-left-color: var(--color-error);
-}
-
-.failure-assessment.warning {
-  background: rgba(245, 158, 11, 0.13);
-  border-left-color: var(--color-warning);
-}
-
-.failure-assessment.pass {
-  background: rgba(34, 197, 94, 0.12);
-  border-left-color: var(--color-success);
 }
 
 .failure-assessment .assessment-icon {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   display: inline-grid;
   place-items: center;
-  align-self: center;
+  align-self: start;
   color: var(--color-accent);
 }
 
@@ -4201,8 +4280,15 @@ button:disabled {
 }
 
 .failure-assessment strong {
-  font-size: var(--fs-md);
+  font-size: var(--fs-xl);
   font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+.result-provenance {
+  margin: var(--sp-2) 0 var(--gap-block);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
 }
 
 .failure-assessment small {
@@ -5050,7 +5136,7 @@ input[aria-invalid="true"] {
   position: fixed;
   right: var(--context-w);
   bottom: var(--statusbar-h);
-  left: var(--stepbar-w);
+  left: 0;
   z-index: var(--z-log-drawer);
   height: 320px;
   background: rgba(17, 24, 33, 0.98);
@@ -5459,7 +5545,7 @@ input[aria-invalid="true"] {
 
 /* border-color alone paints nothing here: the base button reset is `border: none`, so the
    selected face had no visible state. A transparent border gives it something to colour,
-   the way the sibling .viewer-view-presets rule already works. */
+   the way the viewer toolbar's toggles already work. */
 .viewer-a11y-faces button {
   border: 1px solid transparent;
 }
@@ -5467,100 +5553,6 @@ input[aria-invalid="true"] {
 .viewer-a11y-faces button[aria-pressed="true"] {
   color: var(--color-accent);
   border-color: var(--color-accent-border);
-}
-
-/* Compact camera controls remain available for projection switching while the
-   WebGL gizmo provides the same axis/corner presets in the viewport. */
-.viewer-view-presets {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: var(--z-viewer-overlay);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-  max-width: min(520px, calc(100% - 24px));
-  opacity: 0.88;
-  pointer-events: auto;
-}
-
-.viewer-view-presets:focus-within {
-  opacity: 1;
-}
-
-.viewer-view-presets .projection-divider {
-  width: 1px;
-  margin: 2px 2px;
-  background: var(--color-border);
-}
-
-.viewer-view-presets button {
-  min-height: var(--control-h-sm);
-  padding: var(--sp-1) var(--sp-2);
-  font-size: var(--fs-xs);
-  color: var(--color-text-muted);
-  background: var(--color-surface-2);
-  border: var(--border-thin);
-  border-radius: var(--radius-sm);
-}
-
-.viewer-view-presets button:hover {
-  color: var(--color-accent);
-  border-color: var(--color-accent-border);
-}
-
-/* A mode should look like a mode. Hover previously rendered identically to selected, so
-   the active camera view was indistinguishable from whichever button was under the
-   pointer. This is the recipe .segmented button.active already uses. */
-.viewer-view-presets button[aria-pressed="true"] {
-  color: var(--color-accent);
-  background: var(--color-accent-dim);
-  border-color: var(--color-accent-border);
-  box-shadow: inset 0 0 0 1px var(--color-accent-border);
-}
-
-.unit-toggle:focus-visible {
-  outline: 1px solid var(--color-accent);
-  outline-offset: 1px;
-}
-
-.stepbar-collapse:focus-visible {
-  outline: 1px solid var(--color-accent);
-  outline-offset: 1px;
-}
-
-/* Short screens: with the sample menu open the masthead took ~170px above Back and
-   pushed "Load sample project" below the fold at 600-700px tall. */
-@media (max-height: 760px) {
-  .start-brand.sample-menu-open .start-mark {
-    width: 36px;
-    height: 36px;
-    margin-bottom: var(--sp-2);
-  }
-
-  .start-brand.sample-menu-open h1 {
-    font-size: var(--fs-xl);
-  }
-
-  .start-brand.sample-menu-open .start-tagline {
-    display: none;
-  }
-
-  .start-brand.sample-menu-open .start-sample-grid .sample-option-card {
-    min-height: 0;
-  }
-
-  .start-brand.sample-menu-open .start-sample-grid .sample-thumbnail {
-    height: 64px;
-  }
-
-  /* The primary action stays on screen while the cards scroll under it. */
-  .start-menu-load {
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-    box-shadow: 0 -12px 24px 4px #0b0f14;
-  }
 }
 
 @media (max-width: 980px) {
@@ -5578,7 +5570,6 @@ input[aria-invalid="true"] {
      that, scrolling down to the panel carries save/undo and the status readout off screen
      and leaves the fixed log drawer floating over nothing. */
   .app-shell {
-    --stepbar-w: 104px;
     grid-template-rows: var(--topbar-h) minmax(min-content, 1fr) var(--statusbar-h);
     overflow: auto;
   }
@@ -5601,96 +5592,12 @@ input[aria-invalid="true"] {
     bottom: 0;
   }
 
-  .app-shell.stepbar-collapsed {
-    --stepbar-w: 56px;
-  }
-
   .workspace {
-    grid-template-columns: var(--stepbar-w) minmax(0, 1fr);
-    grid-template-rows: minmax(440px, 58vh) auto;
-  }
-
-  /* The rail spans the viewer and the panel rows; unstuck, the steps scrolled
-     away as soon as the reader reached the form, leaving an empty column. */
-  .stepbar {
-    grid-row: 1 / span 2;
-    position: sticky;
-    top: var(--topbar-h);
-    align-self: start;
-    max-height: calc(100dvh - var(--topbar-h) - var(--statusbar-h));
-    padding: var(--sp-3) var(--sp-2);
-    overflow-y: auto;
-  }
-
-  .stepbar-eyebrow {
-    display: none;
-  }
-
-  /* The footer holds the only theme and unit controls. It used to be hidden here
-     unless the rail was collapsed; show it in the collapsed rail's icon form. */
-  .stepbar .stepbar-footer {
-    justify-items: center;
-    gap: var(--sp-15);
-    width: 100%;
-    margin-top: var(--sp-3);
-  }
-
-  .stepbar .stepbar-footer > div:not(.stepbar-actions):not(.unit-switch),
-  .stepbar .unit-switch > span,
-  .stepbar .unit-switch > strong,
-  .stepbar .unit-toggle-label {
-    display: none;
-  }
-
-  .stepbar .stepbar-link {
-    width: var(--control-h-lg);
-    min-height: var(--control-h-md);
-    padding: 0;
-    gap: 0;
-    font-size: 0;
-  }
-
-  .stepbar .unit-switch {
-    display: grid;
-    padding: 0;
-  }
-
-  .stepbar .unit-switch .unit-toggle {
-    width: var(--control-h-lg);
-    min-height: var(--control-h-sm);
-    border: var(--border-thin);
-    border-radius: var(--radius-md);
-  }
-
-  .stepbar .unit-toggle-short {
-    display: inline;
-  }
-
-  .stepbar.collapsed .stepbar-footer {
-    display: grid;
-  }
-
-  .step {
-    grid-template-columns: 1fr;
-    grid-template-rows: 32px minmax(14px, auto);
-    justify-items: center;
-    align-content: center;
-    gap: var(--sp-15);
-    min-height: 70px;
-    height: auto;
-    padding: var(--sp-2) var(--sp-1);
-    text-align: center;
-    font-size: var(--fs-xs);
-    line-height: 1.1;
-  }
-
-  .step > span:not(.step-icon) {
-    max-width: 82px;
-    overflow-wrap: anywhere;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(440px, 58vh) auto;
   }
 
   .side-panel {
-    grid-column: 2;
     border-top: var(--border-thin);
     border-left: 0;
   }
@@ -5708,19 +5615,24 @@ input[aria-invalid="true"] {
 
   .bottom-content {
     right: 0;
-    left: var(--stepbar-w);
+    left: 0;
   }
 
   .shortcut-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .start-action-grid,
   .start-sample-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .start-action-grid .start-action {
+    align-items: center;
+  }
+
   .sample-option-card:not(.compact) {
-    min-height: 122px;
+    min-height: 0;
     grid-template-columns: 112px minmax(0, 1fr);
     grid-template-rows: auto auto;
     align-items: center;
@@ -5728,11 +5640,25 @@ input[aria-invalid="true"] {
 
   .sample-option-card:not(.compact) .sample-thumbnail {
     grid-row: 1 / span 2;
-    height: 82px;
+    height: 72px;
   }
 }
 
 @media (max-width: 640px) {
+  /* The viewer toolbar drops its words and keeps each name as an accessible label. */
+  .viewer-toolbar-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .viewer-toolbar button {
+    padding: 0 var(--sp-25);
+  }
+
   /* The base rule pairs min-width: 280px with max-width: calc(100% - 24px). At 375px the
      viewer is 297px wide, so the max computes to 273px and the min wins — the card renders
      at 280px, 94% of the viewer it is supposed to be annotating, wider than its own safety
@@ -5790,17 +5716,6 @@ input[aria-invalid="true"] {
     display: none;
   }
 
-  /* Step labels are hidden at this width, so "expanded" was icon-only too and just
-     22px wider than collapsed. One width, and no toggle that does nothing. */
-  .app-shell,
-  .app-shell.stepbar-collapsed {
-    --stepbar-w: 56px;
-  }
-
-  .stepbar-collapse {
-    display: none;
-  }
-
   .topbar-tools {
     display: none;
   }
@@ -5810,27 +5725,27 @@ input[aria-invalid="true"] {
   }
 
   .start-screen {
-    padding: var(--sp-4) var(--sp-3) 80px;
+    padding: var(--sp-5) var(--sp-4);
     overflow: auto;
   }
 
-  .start-sample-header {
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: center;
+  .start-column {
+    gap: var(--sp-5);
   }
 
-  .start-analysis-type {
-    justify-self: center;
+  .segmented.start-analysis-type {
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .start-analysis-type button {
+    padding: 0;
   }
 
   .start-footer {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    gap: var(--sp-2);
-  }
-
-  .start-footer-links {
-    justify-self: center;
+    flex-direction: column;
+    align-items: center;
+    line-height: var(--lh-loose);
   }
 
   .breadcrumb-chip {
@@ -5843,31 +5758,6 @@ input[aria-invalid="true"] {
 
   .topbar-action .topbar-action-label {
     display: none;
-  }
-
-  .workspace {
-    grid-template-columns: var(--stepbar-w) minmax(0, 1fr);
-  }
-
-  .step {
-    min-height: 54px;
-    grid-template-rows: 32px;
-  }
-
-  .step > span:not(.step-icon) {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .bottom-content {
-    left: var(--stepbar-w);
   }
 
   .shortcut-list {
@@ -5887,7 +5777,6 @@ input[aria-invalid="true"] {
   .topbar-action,
   .storage-status-button,
   .start-action,
-  .start-menu-back,
   .start-analysis-type button,
   .workflow-nav button {
     min-height: var(--control-h-touch);
@@ -5903,14 +5792,6 @@ input[aria-invalid="true"] {
     min-height: 0;
   }
 
-  /* "Orthographic" dropped to its own row and the strip covered 54px of a 490px viewer. */
-  .viewer-view-presets {
-    flex-wrap: nowrap;
-  }
-
-  .viewer-view-presets button {
-    padding-inline: var(--sp-15);
-  }
 }
 .validation-gallery-backdrop {
   z-index: var(--z-gallery-backdrop);
@@ -6254,12 +6135,6 @@ input[aria-invalid="true"] {
   text-decoration: underline;
 }
 
-.step-icon.blocked {
-  color: var(--color-warning);
-  border-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
-  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
-}
-
 .step-badge {
   position: absolute;
   top: -3px;
@@ -6323,7 +6198,7 @@ input[aria-invalid="true"] {
   cursor: progress;
 }
 
-/* The Continue action takes the primary slot, so the sample action can be secondary; its subtitle needs readable ink there. */
+/* The Continue action takes the primary slot, so Try a sample turns secondary; its subtitle needs readable ink there. */
 .start-action.secondary small {
   color: var(--color-text-muted);
 }

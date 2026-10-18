@@ -170,7 +170,7 @@ describe("app CSS", () => {
   test("keeps compact interactive controls at least 24px high", () => {
     // Resolved through the control tier, so the guarantee holds whether a rule states
     // the size or takes --control-h-sm.
-    expect(resolvedControlPx(baseRule(".unit-switch .unit-toggle"), "min-height")).toBeGreaterThanOrEqual(24);
+    expect(resolvedControlPx(baseRule(".step-nav-step"), "min-height")).toBeGreaterThanOrEqual(24);
     expect(resolvedControlPx(baseRule(".tooltip-trigger"), "width")).toBeGreaterThanOrEqual(24);
     expect(resolvedControlPx(baseRule(".tooltip-trigger"), "height")).toBeGreaterThanOrEqual(24);
     expect(resolvedControlPx(baseRule(".status-tabs button"), "min-height")).toBeGreaterThanOrEqual(24);
@@ -247,21 +247,31 @@ describe("app CSS", () => {
     expect(alignments).toEqual(["center", "safe center"]);
   });
 
-  test("keeps the main start screen compact and stacks the sample submenu vertically", () => {
-    const startScreen = cssRule(".start-screen");
-    const startBrand = cssRule(".start-brand");
-    const startBrandMenu = cssRule(".start-brand.sample-menu-open");
-    const sampleMenuFooter = cssRule(".start-brand.sample-menu-open + .start-footer");
+  test("lays the start screen out as one column with three-up actions and samples (plan 035, 5)", () => {
+    const startColumn = cssRule(".start-column");
+    const actionGrid = cssRule(".start-action-grid");
     const sampleGrid = cssRule(".start-sample-grid");
-    const sampleGridCard = cssRule(".start-sample-grid .sample-option-card");
+    const recentEmpty = cssRule(".recent-projects-empty");
+    // Every 980px block, not the first: the top-bar stepper has its own one earlier in the file.
+    const narrowTier = [...css.matchAll(/@media \(max-width: 980px\) \{(?<body>[\s\S]*?)\n\}/g)].map((match) => match.groups?.body ?? "").join("\n");
 
-    expect(startScreen).toMatch(/overflow:\s*auto/);
-    expect(startBrand).toMatch(/position:\s*relative/);
-    expect(startBrand).toMatch(/width:\s*min\(340px,\s*100%\)/);
-    expect(startBrandMenu).toMatch(/width:\s*min\(430px,\s*100%\)/);
-    expect(sampleMenuFooter).toMatch(/display:\s*none/);
-    expect(sampleGrid).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-    expect(sampleGridCard).toMatch(/min-height:\s*112px/);
+    expect(startColumn).toMatch(/width:\s*min\(880px,\s*100%\)/);
+    expect(startColumn).toMatch(/z-index:\s*1/);
+    expect(actionGrid).toMatch(/grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+    expect(sampleGrid).toMatch(/grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+    expect(narrowTier).toMatch(/\.start-action-grid,\n\s*\.start-sample-grid \{\n\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+    expect(recentEmpty).toMatch(/border:\s*1px dashed var\(--color-border-strong\)/);
+    // The sample-menu page and its Back/Load controls are gone.
+    expect(css).not.toContain(".start-brand.sample-menu-open");
+    expect(css).not.toContain(".start-menu-back");
+    expect(css).not.toContain(".start-menu-load");
+  });
+
+  test("uses sentence-case section labels on the start screen, not mono eyebrows", () => {
+    const sectionTitle = cssRule(".start-section-header h2");
+    expect(sectionTitle).toMatch(/font-size:\s*var\(--fs-md\)/);
+    expect(sectionTitle).not.toMatch(/text-transform/);
+    expect(baseRule(".recent-projects h2")).not.toMatch(/text-transform:\s*uppercase/);
   });
 
   test("uses the start screen background for the required simulation type screen", () => {
@@ -287,16 +297,17 @@ describe("app CSS", () => {
     expect(activeShowcase).toMatch(/border-color:\s*color-mix\(in srgb,\s*var\(--color-accent\)\s*72%,\s*transparent\)/);
   });
 
-  test("aligns all start screen footer text on one row", () => {
+  test("keeps the start screen footer in the column, local status left and credits right", () => {
     const startFooter = cssRule(".start-footer");
-    const startFooterItems = cssRule(".start-footer > *");
+    const startFooterLinks = cssRule(".start-footer a");
     const localRuntime = cssRule(".local-runtime");
 
-    expect(startFooter).toMatch(/display:\s*grid/);
-    expect(startFooter).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)\s*auto\s*minmax\(0,\s*1fr\)/);
+    // In flow, not absolutely positioned: the taller column would run under it.
+    expect(startFooter).not.toMatch(/position:\s*absolute/);
+    expect(startFooter).toMatch(/display:\s*flex/);
+    expect(startFooter).toMatch(/justify-content:\s*space-between/);
     expect(startFooter).toMatch(/align-items:\s*baseline/);
-    expect(startFooterItems).toMatch(/color:\s*inherit/);
-    expect(startFooterItems).toMatch(/font:\s*inherit/);
+    expect(startFooterLinks).toMatch(/color:\s*inherit/);
     expect(localRuntime).toMatch(/color:\s*inherit/);
   });
 
@@ -377,7 +388,7 @@ describe("app CSS", () => {
   test("gives compact controls a 24px minimum target", () => {
     // WCAG 2.5.8. Measured before this: camera presets ~22px, the brand
     // control 18px, footer links 16-17px.
-    for (const selector of [".brand-button", ".viewer-view-presets button", ".status-link", ".status-attribution"]) {
+    for (const selector of [".brand-button", ".viewer-toolbar button,\n.viewer-toolbar-icon", ".status-link", ".status-attribution"]) {
       expect(resolvedControlPx(baseRule(selector), "min-height"), selector).toBeGreaterThanOrEqual(24);
     }
     // The resolver itself: the tier's small step is the WCAG 2.5.8 floor.
@@ -511,11 +522,11 @@ describe("app CSS", () => {
       [".brand-button", "min-height"], [".breadcrumb-button", "min-height"], [".breadcrumb-input", "min-height"],
       [".icon-button", "height"], [".icon-button", "width"], [".topbar-action", "min-height"],
       [".storage-status-button", "min-height"], [".storage-recovery-close", "height"], [".shortcut-popover-close", "height"],
-      [".stepbar-collapse", "height"], [".stepbar-link", "min-height"], [".unit-switch .unit-toggle", "min-height"],
+      [".step-nav-step", "min-height"],
       [".tooltip-trigger", "height"], [".segmented button", "min-height"], [".text-button", "min-height"],
       [".remove-glyph", "height"], [".status-tabs button", "min-height"], [".status-link", "min-height"],
-      [".log-copy-button,\n.log-clear-button", "min-height"], [".viewer-view-presets button", "min-height"],
-      [".start-action", "min-height"], [".start-menu-back", "min-height"]
+      [".log-copy-button,\n.log-clear-button", "min-height"], [".viewer-toolbar button,\n.viewer-toolbar-icon", "min-height"],
+      [".start-action", "min-height"]
     ];
     for (const [selector, property] of controls) {
       expect(baseRule(selector), `${selector} ${property}`).toMatch(new RegExp(`(?:^|\\s)${property}:\\s*var\\(--control-h-(sm|md|lg|xl|touch)\\);`));
@@ -681,5 +692,32 @@ describe("app CSS", () => {
       .sort();
 
     expect(unresolved).toEqual([]);
+  });
+
+  test("sets the side panel one type step above the chrome, in sentence case", () => {
+    // Plan 035 increment 0: the panel reads at 14px while the top bar, status bar and
+    // viewer overlays stay at 13px. The panel remaps the scale rather than retyping rules.
+    expect(tokens).toMatch(/--fs-base:\s*13px;/);
+    expect(tokens).toMatch(/--panel-fs-base:\s*14px;/);
+    expect(tokens).toMatch(/--panel-fs-mini:\s*11px;/);
+    const sidePanel = baseRule(".side-panel");
+    for (const step of ["mini", "xs", "sm", "base"]) {
+      expect(sidePanel, step).toMatch(new RegExp(`--fs-${step}:\\s*var\\(--panel-fs-${step}\\);`));
+    }
+    // Inherited font-size is computed at body, so the panel must restate it.
+    expect(sidePanel).toMatch(/font-size:\s*var\(--fs-base\);/);
+    // Button labels stay at 13px so the two-up view grid and Back/Next fit one line.
+    expect(baseRule(":where(.side-panel) button")).toMatch(/font-size:\s*var\(--fs-sm\);/);
+
+    // No uppercase tracked eyebrows inside the panel; the chrome keeps them.
+    const eyebrowGroup = css.replace(/\/\*[\s\S]*?\*\//g, "").match(/^[^{}]*\{\s*font-family:\s*var\(--font-mono\);\s*font-size:\s*var\(--fs-mini\);\s*letter-spacing:\s*var\(--ls-eyebrow\);\s*text-transform:\s*uppercase;\s*\}/m)?.[0] ?? "";
+    expect(eyebrowGroup).toContain(".app-crash-eyebrow");
+    for (const selector of [".panel-eyebrow", ".section-title", ".editable-list h3"]) {
+      expect(eyebrowGroup, selector).not.toContain(selector);
+    }
+    expect(baseRule(".result-headline-item span")).not.toMatch(/text-transform/);
+
+    // The step navigation is the panel's primary action and gets the touch-size floor.
+    expect(baseRule(".workflow-nav button")).toMatch(/min-height:\s*var\(--control-h-touch\);/);
   });
 });

@@ -261,7 +261,7 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
     visual: "results"
   },
   resultMode: {
-    title: "Result mode",
+    title: "Show on model",
     body: "Switches the color plot between stress, displacement, and safety factor so you can inspect different failure and deflection views.",
     visual: "results"
   },

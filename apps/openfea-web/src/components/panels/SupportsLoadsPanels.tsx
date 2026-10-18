@@ -18,7 +18,7 @@ import { formatDensity, formatMass, formatVolume, loadValueForUnits, type UnitSy
 import type { RightPanelProps } from "./RightPanelProps";
 import { noopDraftPayloadPreviewChange } from "./RightPanelProps";
 import { Panel, sameLoadDirection, structuralLoadCasesForPanel } from "./PanelChrome";
-import { Callout, Collapsible, EmptyEditableList, HelpLabel, Info, PlacementReadout, SectionTitle, SupportIcon, defaultValueForLoadType, directionOptionLabel, formatEquivalentForce, formatInputValue, formatNumber, loadTypeLabel, selectionForFace } from "./PanelChrome";
+import { Callout, Collapsible, EmptyEditableList, HelpLabel, Info, PlacementReadout, SectionTitle, SupportIcon, defaultValueForLoadType, directionOptionLabel, directionPhrase, formatEquivalentForce, formatInputValue, formatNumber, loadTypeLabel, selectionForFace } from "./PanelChrome";
 export function SupportsPanel({ selectedFace, study, draftSupportTemperature, onDraftSupportTemperatureChange, onAddSupport, onUpdateSupport, onRemoveSupport }: RightPanelProps) {
   const selectedFromViewport = selectedFace ? selectionForFace(study, selectedFace.id) : undefined;
   const thermal = study.type === "steady_state_thermal";
@@ -52,7 +52,7 @@ export function SupportsPanel({ selectedFace, study, draftSupportTemperature, on
     current.includes(ref) ? current.filter((candidate) => candidate !== ref) : [...current, ref]
   );
   return (
-    <Panel title={thermal ? "Temperature boundaries" : "Supports"} step="supports" helper={thermal ? "Select a face and prescribe its steady boundary temperature." : "Choose where the part is held fixed. Select a face, or click inside a cylindrical hole to constrain its wall. You can add more than one support."} study={study}>
+    <Panel title={thermal ? "Temperature boundaries" : "Supports"} question={thermal ? "Where is the temperature fixed?" : "Where is it held still?"} step="supports" helper={thermal ? "Select a face and prescribe its steady boundary temperature." : "Choose where the part is held fixed. Select a face, or click inside a cylindrical hole to constrain its wall. You can add more than one support."} study={study}>
       <PlacementReadout selectedRef={selectedFromViewport} fallbackLabel={selectedFace?.label} helpId="supportPlacement" />
       {thermal && <label className="field">Temperature<span className="input-with-unit"><input type="number" value={temperature} onChange={(event) => setTemperature(Number(event.currentTarget.value))} /><span>°C</span></span></label>}
       {!thermal && !modal && (
@@ -232,7 +232,7 @@ export function LoadsPanel({
     })), loadCombinations);
   }
   return (
-    <Panel title={thermal ? "Thermal loads" : "Loads"} step="loads" helper={thermal ? (draftLoadType === "heat_generation" ? "Apply uniform heat generation throughout the selected body." : "Select a face and apply inward surface heat flux.") : draftLoadType === "gravity" ? "Choose the object carrying payload mass, then add its weight as a load." : draftLoadType === "volume_force" ? "Apply a force density to the selected structural body." : "Select a face on the model, then add the load."} study={study}>
+    <Panel title={thermal ? "Thermal loads" : "Loads"} question={thermal ? "Where does heat go in or out?" : draftLoadType === "gravity" || draftLoadType === "volume_force" ? "What load does it carry?" : "Where does the force push?"} step="loads" helper={thermal ? (draftLoadType === "heat_generation" ? "Apply uniform heat generation throughout the selected body." : "Select a face and apply inward surface heat flux.") : draftLoadType === "gravity" ? "Choose the object carrying payload mass, then add its weight as a load." : draftLoadType === "volume_force" ? "Apply a force density to the selected structural body." : "Select a face on the model, then add the load."} study={study}>
       <div hidden={editingLoadId !== null}>
       <PlacementReadout
         helpId="loadPlacement"
@@ -240,27 +240,6 @@ export function LoadsPanel({
         fallbackLabel={selectedPayloadObject?.label ?? selectedFace?.label}
         detail={selectedPayloadObject ? "object selected" : selectedLoadPoint ? "point picked" : undefined}
       />
-      <label className="field">
-        <HelpLabel helpId="loadType">Load type</HelpLabel>
-        <select
-          value={draftLoadType}
-          onChange={(event) => {
-            const type = event.currentTarget.value as LoadType;
-            onDraftLoadTypeChange(type);
-            if (type !== draftLoadType) onDraftLoadValueChange(defaultValueForLoadType(type));
-          }}
-        >
-          {thermal ? <><option value="heat_flux">Surface heat flux</option><option value="heat_generation">Volumetric heat generation</option></> : <>
-            <option value="force">Face force (total)</option>
-            <option value="pressure">Pressure</option>
-            <option value="surface_traction">Surface traction</option>
-            <option value="volume_force">Volume force</option>
-            <option value="remote_force">Remote force</option>
-            {study.type === "static_stress" ? <option value="bolt_preload">Equivalent bolt preload</option> : null}
-            <option value="gravity">Payload mass</option>
-          </>}
-        </select>
-      </label>
       {draftLoadType === "gravity" ? (
         <PayloadMassControls
           unitSystem={project.unitSystem}
@@ -293,7 +272,6 @@ export function LoadsPanel({
           <Callout>{formatEquivalentForce(equivalentForceForLoad({ type: "gravity", parameters: { value: effectiveDraftValue } }), project.unitSystem)} equivalent weight.</Callout>
         </>
       )}
-      {draftLoadType === "force" ? <Callout>Face force is a total force distributed over the selected face. Its visual point does not affect the solve.</Callout> : null}
       {draftLoadType === "remote_force" ? (
         <fieldset className="field">
           <legend>Remote point coordinates</legend>
@@ -318,15 +296,36 @@ export function LoadsPanel({
           <Callout>Bonded-linear approximation only: no contact, slip, or fastener stiffness.</Callout>
         </>
       ) : null}
-      {!thermal && <label className="field">
-        <HelpLabel helpId="loadDirection">Direction</HelpLabel>
-        <select value={draftLoadDirection} onChange={(event) => onDraftLoadDirectionChange(event.currentTarget.value as LoadDirectionLabel)}>
-          {LOAD_DIRECTION_LABELS.map((option) => (
-            <option key={option} value={option}>{directionOptionLabel(option)}</option>
-          ))}
+      {!thermal && <DirectionChoice value={draftLoadDirection} onChange={onDraftLoadDirectionChange} />}
+      {/* Load type, its explanation and extra faces are the advanced half of the form
+          (plan 035, increment 2). The section opens itself whenever any of them is in use. */}
+      <Collapsible
+        title="More options"
+        subtitle={loadTypeLabel(draftLoadType)}
+        defaultOpen={draftLoadType !== (thermal ? "heat_flux" : "force") || extraLoadRefs.length > 0}
+      >
+      <label className="field">
+        <HelpLabel helpId="loadType">Load type</HelpLabel>
+        <select
+          value={draftLoadType}
+          onChange={(event) => {
+            const type = event.currentTarget.value as LoadType;
+            onDraftLoadTypeChange(type);
+            if (type !== draftLoadType) onDraftLoadValueChange(defaultValueForLoadType(type));
+          }}
+        >
+          {thermal ? <><option value="heat_flux">Surface heat flux</option><option value="heat_generation">Volumetric heat generation</option></> : <>
+            <option value="force">Face force (total)</option>
+            <option value="pressure">Pressure</option>
+            <option value="surface_traction">Surface traction</option>
+            <option value="volume_force">Volume force</option>
+            <option value="remote_force">Remote force</option>
+            {study.type === "static_stress" ? <option value="bolt_preload">Equivalent bolt preload</option> : null}
+            <option value="gravity">Payload mass</option>
+          </>}
         </select>
-      </label>}
-      {hasDraftPlacement && draftAddError && <p className="field-error" role="alert">{draftAddError}</p>}
+      </label>
+      {draftLoadType === "force" ? <Callout>Face force is a total force distributed over the selected face. Its visual point does not affect the solve.</Callout> : null}
       {!thermal && draftLoadType !== "gravity" && draftLoadType !== "volume_force" && draftLoadType !== "heat_generation" && draftLoadType !== "bolt_preload" && faceOptionsForLoad.length > 1 && (
         <AdditionalFacesPicker
           options={faceOptionsForLoad.filter((selection) => selection.id !== placementSelection?.id)}
@@ -334,6 +333,8 @@ export function LoadsPanel({
           onToggle={toggleExtraLoadRef}
         />
       )}
+      </Collapsible>
+      {hasDraftPlacement && draftAddError && <p className="field-error" role="alert">{draftAddError}</p>}
       <button className="outline-action wide" disabled={!canAddDraftLoad} title={draftAddError ?? undefined} onClick={() => canAddDraftLoad && onAddLoad(
         draftLoadType,
         effectiveDraftValue,
@@ -364,6 +365,48 @@ export function LoadsPanel({
       )}
       <LoadEditorList editingId={editingLoadId} onEditingIdChange={setEditingLoadId} study={study} displayModel={displayModel} unitSystem={project.unitSystem} loadCases={loadCases} retargetFace={selectedFace} onAssignLoadToCase={assignLoadToCase} onUpdateLoad={onUpdateLoad} onPreviewLoadEdit={onPreviewLoadEdit} onRemoveLoad={onRemoveLoad} />
     </Panel>
+  );
+}
+
+const AXIS_DIRECTIONS = LOAD_DIRECTION_LABELS.filter((label) => label !== "Normal" && label !== "Opposite normal");
+
+/**
+ * Direction as three plain choices. These are display labels only: the stored
+ * directionMode values ("Opposite normal", "Normal", ±X/±Y/±Z) and the vectors
+ * directionVectorForLabel builds from them are unchanged. "Normal" is the face's
+ * outward normal, so "Opposite normal" is the one that pushes into the face.
+ */
+function DirectionChoice({ value, onChange }: { value: LoadDirectionLabel; onChange: (direction: LoadDirectionLabel) => void }) {
+  const mode = value === "Opposite normal" ? "into" : value === "Normal" ? "out" : "axis";
+  const choices = [
+    { id: "into", label: "Into face", title: "Pushes into the selected face (opposite its outward normal)", direction: "Opposite normal" as const },
+    { id: "out", label: "Out of face", title: "Pulls away from the selected face (along its outward normal)", direction: "Normal" as const },
+    { id: "axis", label: "Along axis", title: "Acts along a global axis", direction: (AXIS_DIRECTIONS as readonly LoadDirectionLabel[]).includes(value) ? value : "-Z" as const }
+  ];
+  return (
+    <div className="field direction-field">
+      <HelpLabel helpId="loadDirection">Direction</HelpLabel>
+      <div className="segmented direction-choice" role="radiogroup" aria-label="Direction">
+        {choices.map((choice) => (
+          <button
+            key={choice.id}
+            type="button"
+            role="radio"
+            aria-checked={mode === choice.id}
+            className={mode === choice.id ? "active" : ""}
+            title={choice.title}
+            onClick={() => { if (mode !== choice.id) onChange(choice.direction); }}
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
+      {mode === "axis" ? (
+        <select aria-label="Axis direction" value={value} onChange={(event) => onChange(event.currentTarget.value as LoadDirectionLabel)}>
+          {AXIS_DIRECTIONS.map((option) => <option key={option} value={option}>{directionOptionLabel(option)}</option>)}
+        </select>
+      ) : null}
+    </div>
   );
 }
 
@@ -583,7 +626,7 @@ function LoadEditorList({ editingId, onEditingIdChange, study, displayModel, uni
                 <strong>{loadLabel ? `${loadLabel} · ` : ""}{loadTypeLabel(load.type)} · {formatNumber(displayLoad.value)} {displayLoad.units}</strong>
                 <small>{load.type === "heat_flux" || load.type === "heat_generation"
                   ? label
-                  : `${label}${pointLabel} · ${directionOptionLabel(directionLabelForLoad(load, displayModel, selectedFace))} direction${equivalentForce}`}</small>
+                  : `${label}${pointLabel} · ${directionPhrase(directionLabelForLoad(load, displayModel, selectedFace))}${equivalentForce}`}</small>
               </button>
               {loadCases.length > 1 && (
                 <label className="load-case-assignment">

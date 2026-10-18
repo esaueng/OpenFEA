@@ -118,8 +118,8 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
   }
 
   return (
-    <Panel title="Material" step="material" helper="Choose the material, then how it is made." study={study}>
-      <SectionTitle helpId="materialLibrary">Base Material</SectionTitle>
+    <Panel title="Material" question="What is it made of?" step="material" helper="Choose the material, then how it is made." study={study}>
+      <SectionTitle helpId="materialLibrary">Base material</SectionTitle>
       <div className="base-material-card">
         <button className="base-material-selector" type="button" onClick={() => setShowLibrary(true)} aria-label={`Change base material. Current material: ${selectedMaterial.name}`}>
           <span className="base-material-icon"><Atom size={20} aria-hidden="true" /></span>
@@ -152,7 +152,7 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
         </p>
       </div>
 
-      <SectionTitle helpId="manufacturingProcess">Manufacturing Process</SectionTitle>
+      <SectionTitle helpId="manufacturingProcess">Manufacturing process</SectionTitle>
       <p className="material-process-helper">Compatible with {selectedMaterial.name}. Only validated options are shown.</p>
       <div className="material-process-list" role="radiogroup" aria-label="Manufacturing process">
         {compatibleProcesses.map((process) => {
@@ -181,7 +181,7 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
 
       {processUsesBuildDirection ? (
         <>
-          <SectionTitle helpId="printSettings">{selectedProcess.shortLabel} Settings</SectionTitle>
+          <SectionTitle helpId="printSettings">{selectedProcess.shortLabel} settings</SectionTitle>
           <div className="print-settings">
             <div className={`print-settings-grid ${selectedProcess.settingsKind === "fdm" ? "" : "build-direction-only"}`}>
               {selectedProcess.settingsKind === "fdm" ? (
@@ -232,7 +232,7 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
 
       {processAltersProperties && (
         <>
-          <SectionTitle helpId="simulationProperties">Simulation Properties</SectionTitle>
+          <SectionTitle helpId="simulationProperties">Simulation properties</SectionTitle>
           <div className="summary-box material-simulation-properties">
             {fdmFactors ? <Info label="Governing load path" value={fdmFactors.criticalAxis ? `${fdmFactors.criticalAxis.toUpperCase()} axis` : "Conservative"} /> : null}
             {fdmFactors ? <Info label="Layer response" value={fdmLayerResponseLabel(fdmFactors.loadPathRelation)} /> : null}

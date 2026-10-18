@@ -72,7 +72,7 @@ export function MeshPanel({ project, displayModel, study, viewMode, onViewModeCh
   }
 
   return (
-    <Panel title="Mesh" step="mesh" helper="The mesh breaks the model into small pieces so OpenFEA can calculate results." study={study}>
+    <Panel title="Mesh" question="How finely should it be divided?" step="mesh" helper="The mesh breaks the model into small pieces so OpenFEA can calculate results." study={study}>
       <div className="field">
         <HelpLabel helpId="meshQuality">Quality preset</HelpLabel>
         <div className="segmented mesh-quality" role="group" aria-label="Mesh quality">

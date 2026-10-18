@@ -11,7 +11,8 @@ import { OpenFeaLogoMark } from "./components/OpenFeaLogoMark";
 import { ProjectStorageNotice } from "./components/ProjectStorageNotice";
 import { RightPanel } from "./components/RightPanel";
 import { StartScreen } from "./components/StartScreen";
-import { StepBar, type StepId } from "./components/StepBar";
+import { StepNav, type StepId } from "./components/StepNav";
+import { ProjectMenu } from "./components/ProjectMenu";
 import { readinessForStudy } from "./runReadiness";
 import { BoundaryConditionMenu, CreateSimulationScreen } from "./components/SimulationWorkflow";
 import {
@@ -268,7 +269,6 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const [sampleModel, setSampleModel] = useState<SampleModelId>(restoredUi?.sampleModel ?? "bracket");
   const [sampleAnalysisType, setSampleAnalysisType] = useState<SampleAnalysisType>(restoredUi?.sampleAnalysisType ?? "static_stress");
   const [previewPrintLayerOrientation, setPreviewPrintLayerOrientation] = useState<PrintLayerOrientation | null | undefined>(undefined);
-  const [isStepbarCollapsed, setIsStepbarCollapsed] = useState(restoredUi?.isStepbarCollapsed ?? false);
   const [showBoundaryConditionMenu, setShowBoundaryConditionMenu] = useState(false);
   const [isRepairingModel, setIsRepairingModel] = useState(false);
   const [singleKeyShortcutsEnabled, setSingleKeyShortcutsEnabled] = useState(() => {
@@ -1056,7 +1056,6 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     resultFrameIndex,
     resultPlaybackFps,
     resultPlaybackReverseLoop,
-    isStepbarCollapsed,
     draftLoadType,
     draftLoadValue,
     draftLoadDirection,
@@ -1078,7 +1077,6 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     draftLoadType,
     draftLoadValue,
     homeRequested,
-    isStepbarCollapsed,
     logs,
     projectionMode,
     redoStack,
@@ -2593,6 +2591,16 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           <ProjectNameChip name={project.name} onRename={handleRenameProject} />
           {study ? <><span className="breadcrumb-sep">/</span><span>{study.name}</span></> : <><span className="breadcrumb-sep">/</span><span>No simulation</span></>}
         </div>
+        {study && showRunButton ? (
+          <StepNav
+            activeStep={activeStep}
+            study={study}
+            hasResults={resultDisplayEligible && !resultsOutdatedBy}
+            readiness={runReadiness}
+            notices={stepNotices}
+            onSelect={handleStepSelect}
+          />
+        ) : null}
         <div className="topbar-tools" aria-label="Workspace tools">
           <div className="history-tools" role="group" aria-label="Undo and redo">
             <button className="icon-button history-button" type="button" title="Undo last change" aria-label="Undo last change" disabled={!canUndoAction} onClick={handleUndoAction}><UndoIcon /></button>
@@ -2637,6 +2645,15 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
               </div>
             </>
           ) : null}
+        </div>
+        <div className="project-menu-anchor">
+          <ProjectMenu
+            themeMode={themeMode}
+            unitSystem={project.unitSystem}
+            onThemeModeChange={setThemeMode}
+            onUnitSystemChange={handleUnitSystemChange}
+            onOpen={() => { setShortcutGuideOpen(false); setStorageRecoveryNoticeOpen(false); }}
+          />
         </div>
         <button
           className={`storage-status-button ${cloudBackupPreference ?? "unselected"}`}
@@ -2698,7 +2715,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
 
   if (project && displayModel && displayModelForUi && !study) {
     return (
-      <div className={`app-shell theme-${themeMode} simulation-type-shell ${isStepbarCollapsed ? "stepbar-collapsed" : ""}`}>
+      <div className={`app-shell theme-${themeMode} simulation-type-shell`}>
         {renderTopbar(false)}
         <CreateSimulationScreen
           onCreateStatic={handleCreateStaticSimulation}
@@ -2715,26 +2732,24 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   if (!study) return null;
 
   return (
-    <div className={`app-shell theme-${themeMode} ${isStepbarCollapsed ? "stepbar-collapsed" : ""}`}>
+    <div className={`app-shell theme-${themeMode}`}>
       <a className="skip-link" href="#workspace-main" onClick={handleSkipToMain}>Skip to main content</a>
       <h1 className="visually-hidden">{project?.name ? `OpenFEA — ${project.name}` : "OpenFEA workspace"}</h1>
       {renderTopbar(true)}
 
       <main ref={workspaceMainRef} className="workspace" id="workspace-main" tabIndex={-1}>
-        <StepBar
-          activeStep={activeStep}
-          collapsed={isStepbarCollapsed}
-          project={project}
-          themeMode={themeMode}
-          onSelect={handleStepSelect}
-          onToggleCollapsed={() => setIsStepbarCollapsed((collapsed) => !collapsed)}
-          onToggleTheme={() => setThemeMode((mode) => (mode === "dark" ? "light" : "dark"))}
-          onUnitSystemChange={handleUnitSystemChange}
-          study={study}
-          hasResults={resultDisplayEligible && !resultsOutdatedBy}
-          readiness={runReadiness}
-          notices={stepNotices}
-        />
+        {/* Below 980px the top bar has no room for the stepper, so this strip carries it
+            instead; CSS shows exactly one of the two. */}
+        <div className="step-nav-strip">
+          <StepNav
+            activeStep={activeStep}
+            study={study}
+            hasResults={resultDisplayEligible && !resultsOutdatedBy}
+            readiness={runReadiness}
+            notices={stepNotices}
+            onSelect={handleStepSelect}
+          />
+        </div>
         <Suspense fallback={(
           <section className="viewer-shell viewer-loading" aria-label="3D CAD viewer loading">
             <div className="viewer-import-card" role="status" aria-live="polite">
@@ -2781,6 +2796,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             unitSystem={displayUnitSystem}
             themeMode={themeMode}
             projectionMode={projectionMode}
+            onFitView={handleFitDefaultView}
+            onToggleDimensions={() => setShowDimensions((value) => !value)}
+            onViewModeChange={setViewMode}
+            onSectionPlaneChange={setSectionPlane}
             onProjectionModeChange={setProjectionMode}
             fitSignal={fitSignal}
             viewAxis={viewAxis}
