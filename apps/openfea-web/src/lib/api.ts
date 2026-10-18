@@ -14,7 +14,7 @@ import type { ResultViewCaptures } from "../report/captureResultViews";
 import { isCancelledSolveError, startLocalSolve } from "../workers/solveWorkerClient";
 import { deleteLocalRunVariantResults, loadLocalRunResults, loadLocalRunVariantResult, saveLocalRunResults, saveLocalRunVariantResult } from "./localResultsStore";
 import { cancelWasmMeshing, canMeshStudyOnDemand, generateWasmMeshForStudy, type WasmMeshPhaseProgress } from "./wasmMeshing";
-import { coreMeshStatisticsForStudy, geometrySourceForStudy, hasActualCoreVolumeMesh, isComplexGeometry, normalizeSolverBackend, openFeaCoreEligibility, OPENFEA_CORE_MESH_REQUIRED_REASON, type NormalizedBrowserSolverBackend } from "../workers/openfeaCoreSolve";
+import { coreMeshStatisticsForStudy, structuredBlockMeshCounts, geometrySourceForStudy, hasActualCoreVolumeMesh, isComplexGeometry, normalizeSolverBackend, openFeaCoreEligibility, OPENFEA_CORE_MESH_REQUIRED_REASON, type NormalizedBrowserSolverBackend } from "../workers/openfeaCoreSolve";
 import { runStaticMeshConvergence, type ConvergenceProbe } from "../meshConvergence";
 import { SUPPORTED_GEOMETRY_FORMAT_LABEL, isSupportedGeometryExtension } from "../geometryFormats";
 import {
@@ -443,6 +443,24 @@ export async function renameProject(projectId: string, name: string, currentProj
 }
 
 export async function generateMesh(studyId: string, preset: MeshQuality, currentStudy: Study, displayModel?: DisplayModel, onProgress?: (message: string) => void, onPhaseProgress?: (progress: WasmMeshPhaseProgress) => void, options: GenerateMeshOptions = {}): Promise<{ study: Study; message: string }> {
+  // Blocks use the Core solver's deterministic structured Tet10 grid, not
+  // Gmsh. Generate it here as well so the mesh step reports real counts and
+  // remains available in wasm opt-out builds. No solve or result is implied.
+  if (currentStudy && displayModel && !isComplexGeometry(displayModel, currentStudy) && geometrySourceForStudy(currentStudy, displayModel)?.kind === "structured_block") {
+    const counts = structuredBlockMeshCounts(displayModel, preset);
+    return {
+      study: {
+        ...currentStudy,
+        meshSettings: {
+          preset,
+          status: "complete",
+          meshRef: `${currentStudy.projectId}/mesh/structured-block-summary.json`,
+          summary: { ...counts, warnings: [], quality: preset, source: "core_solver", units: "m", solverCoordinateSpace: "solver" }
+        }
+      },
+      message: `Mesh generated in browser (structured grid): ${counts.nodes.toLocaleString()} nodes, ${counts.elements.toLocaleString()} Tet10 elements.`
+    };
+  }
   // In-browser gmsh-wasm meshing (production default since A-M4). Returns
   // null in opt-out builds or when the geometry has no wasm-meshable source.
   // Estimate fallback is quarantined behind options.allowEstimateFallback and

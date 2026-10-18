@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { isStructuralResultSummary } from "@openfea/schema";
 import type { DisplayModel, Project, RunEvent, Study } from "@openfea/schema";
+import { coreMeshStatisticsForStudy } from "../workers/openfeaCoreSolve";
 import { addLoad, addSupport, assignMaterial, cancelRun, createProject, dynamicOutputFrameEstimate, generateMesh, geometryWithMeshPreset, getResults, importLocalProject, loadSampleProject, renameProject, runSimulation, subscribeToRun, updateStudy, uploadModel, withDerivedSafetyFactorSurfaceField, withFieldRunIds, withReportCaptures } from "./api";
 
 const TestFile = globalThis.File ?? class extends Blob {
@@ -526,6 +527,47 @@ describe("api", () => {
         volumeStatus: "available"
       }
     });
+  });
+
+  test.each(["coarse", "medium", "fine", "ultra"] as const)("generates the cantilever's real %s structured mesh without estimate opt-in or workers", async (preset) => {
+    vi.stubGlobal("Worker", undefined);
+    vi.stubEnv("VITE_WASM_MESHING", "0");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const sample = await loadSampleProject("cantilever");
+    const original = structuredClone(sample.project.studies[0]!);
+    const response = await generateMesh(original.id, preset, original, sample.displayModel);
+    const actual = coreMeshStatisticsForStudy(response.study, sample.displayModel);
+
+    expect(response.study.meshSettings).toMatchObject({
+      preset,
+      status: "complete",
+      summary: { nodes: actual.nodes, elements: actual.elements, source: "core_solver", quality: preset, warnings: [] }
+    });
+    expect(actual.nodes).toBeGreaterThan(0);
+    expect(actual.elements).toBeGreaterThan(0);
+    expect(response.message).toContain("Tet10");
+    expect(sample.project.studies[0]).toEqual(original);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("regenerates structured counts when the mesh preset changes", async () => {
+    const sample = await loadSampleProject("cantilever");
+    const coarse = await generateMesh(sample.project.studies[0]!.id, "coarse", sample.project.studies[0]!, sample.displayModel);
+    const fine = await generateMesh(coarse.study.id, "fine", coarse.study, sample.displayModel);
+    expect(fine.study.meshSettings.summary!.nodes).toBeGreaterThan(coarse.study.meshSettings.summary!.nodes);
+    expect(fine.study.meshSettings.summary!.elements).toBeGreaterThan(coarse.study.meshSettings.summary!.elements);
+  });
+
+  test.each(["static_stress", "dynamic_structural", "modal_analysis", "steady_state_thermal"] as const)("meshes the beam sample for %s without a completed physics setup", async (analysisType) => {
+    const sample = await loadSampleProject("plate", analysisType);
+    const unconfigured: Study = { ...sample.project.studies[0]!, materialAssignments: [], constraints: [], loads: [] };
+    const response = await generateMesh(unconfigured.id, "coarse", unconfigured, sample.displayModel);
+    const configured = { ...sample.project.studies[0]!, meshSettings: response.study.meshSettings };
+    const actual = coreMeshStatisticsForStudy(configured, sample.displayModel);
+    expect(response.study.meshSettings.summary).toMatchObject({ nodes: actual.nodes, elements: actual.elements, source: "core_solver" });
+    expect(response.study.type).toBe(analysisType);
+    expect(response.study.runs).toEqual(unconfigured.runs);
   });
 
   test("generates mesh locally when the API does not know the restored study", async () => {

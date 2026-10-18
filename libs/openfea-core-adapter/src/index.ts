@@ -1048,6 +1048,15 @@ export function coreMeshStatisticsForStudy(
   return meshStatisticsForCoreModel(buildOpenFeaCoreModelForStudy(study, displayModel, customMaterials));
 }
 
+/** Generate the same Tet10 grid used by the block solver, without requiring a material or boundary setup. */
+export function structuredBlockMeshCounts(displayModel: DisplayModel, preset: Study["meshSettings"]["preset"]): Pick<CoreMeshStatistics, "nodes" | "elements"> {
+  if (!displayModel.dimensions || !positiveDimensions(displayModel.dimensions) || displayModel.bodyCount !== 1 || isComplexGeometry(displayModel)) {
+    throw new Error("Structured meshing requires block-like geometry.");
+  }
+  const mesh = tetMeshForDisplayModel(displayModel, preset);
+  return { nodes: mesh.solverCoordinates.length / 3, elements: mesh.connectivity.length / 10 };
+}
+
 
 function cloneModelForLocalSolve(model: OpenFEAModelJson): OpenFEAModelJson {
   return {
