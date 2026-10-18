@@ -310,19 +310,19 @@ describe("RightPanel result probes", () => {
   });
 });
 
-describe("RightPanel open section", () => {
-  test("shows axis, normalized offset, and flip controls when the plane is active", () => {
+describe("RightPanel view tools", () => {
+  test("leaves fit, section, mesh and dimensions to the viewer toolbar (plan 035)", () => {
     const html = renderPanel("model", {
       sectionPlane: { enabled: true, axis: "y", offset: 0.37, flipped: false },
       onSectionPlaneChange: vi.fn()
     });
-
-    expect(html).toContain("Open section");
-    expect(html).toContain("Close section");
-    expect(html).toContain("Normalized offset · 37%");
-    expect(html).toContain("Flip cut side");
-    expect(html).toContain("Section plane axis");
-    expect(html).toContain('aria-pressed="false"');
+    expect(html).not.toContain("view-tool-grid");
+    expect(html).not.toContain("Open section");
+    expect(html).not.toContain("Section plane axis");
+    // Orientation stays in the panel.
+    expect(html).toContain('aria-label="Axis view"');
+    // The measured dimensions still read in the panel when they are switched on.
+    expect(renderPanel("model", { showDimensions: true })).toContain("Overall dimensions");
   });
 });
 
@@ -798,9 +798,6 @@ describe("RightPanel payload mass controls", () => {
     expect(supportsHtml).not.toContain("Select the actual model face");
     expect(loadsHtml).not.toContain("<strong>Load placement</strong>");
     expect(loadsHtml).not.toContain("Click the exact point for force");
-    // Dimensions, section, fit and mesh share one View section whose help covers all four;
-    // the dimensions-specific help sits on the panel the Show dimensions button opens.
-    expect(`${modelHtml}${supportsHtml}${loadsHtml}`).toContain('aria-label="View tools help"');
     expect(`${modelHtml}${supportsHtml}${loadsHtml}`).toContain('aria-label="Support placement help"');
     expect(`${modelHtml}${supportsHtml}${loadsHtml}`).toContain('aria-label="Load placement help"');
   });

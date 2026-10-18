@@ -193,7 +193,17 @@ export function loadMarkerDisplayLabel(marker: ViewerLoadMarker) {
     return `${loadMarkerOrdinalLabel(marker)} ${kind} ${formatLoadMarkerValue(marker.value)} ${marker.units}`;
   }
   const kind = marker.type === "pressure" || marker.type === "surface_traction" ? "P" : marker.type === "gravity" ? "G" : "F";
-  return `${loadMarkerOrdinalLabel(marker)} ${kind} ${formatLoadMarkerValue(marker.value)} ${marker.units} ${marker.directionLabel}`;
+  return `${loadMarkerOrdinalLabel(marker)} ${kind} ${formatLoadMarkerValue(marker.value)} ${marker.units} ${markerDirectionText(marker.directionLabel)}`;
+}
+
+/**
+ * Scene wording for a stored direction. Display only: directionLabel keeps the stored
+ * value. "Normal" is the face's outward normal, so "Opposite normal" pushes into it.
+ */
+function markerDirectionText(direction: string) {
+  if (direction === "Opposite normal") return "into face";
+  if (direction === "Normal") return "out of face";
+  return direction;
 }
 
 export function loadMarkerViewportPresentation(marker: ViewerLoadMarker) {

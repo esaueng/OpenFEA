@@ -2182,6 +2182,183 @@ img {
   overflow: hidden;
 }
 
+/* The viewer toolbar (plan 035, increment 3): one floating group at the bottom
+   centre replaces the X/Y/Z/Iso strip, the projection toggle and the Model panel's
+   View buttons. The view cube is canvas-drawn and cannot take focus, so the Views
+   menu here is the keyboard path to every camera view. */
+.viewer-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: var(--sp-4);
+  z-index: var(--z-viewer-overlay);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--sp-1);
+  background: var(--color-surface);
+  border: var(--border-thin);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-panel);
+  transform: translateX(-50%);
+}
+
+.viewer-toolbar button,
+.viewer-toolbar-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-15);
+  min-height: var(--control-h-lg);
+  padding: 0 var(--sp-3);
+  color: var(--color-text-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+}
+
+.viewer-toolbar button:hover,
+.viewer-toolbar-icon:hover {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.viewer-toolbar button[aria-pressed="true"],
+.viewer-toolbar button[aria-expanded="true"],
+.viewer-toolbar-icon[aria-pressed="true"] {
+  color: var(--color-accent);
+  background: var(--color-accent-dim);
+  border-color: var(--color-accent-border);
+}
+
+.viewer-toolbar-menu-anchor {
+  position: relative;
+}
+
+.viewer-views-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: var(--z-popover);
+  display: grid;
+  min-width: 180px;
+  padding: var(--sp-1);
+  background: var(--color-surface);
+  border: var(--border-thin);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-panel);
+  transform: translateX(-50%);
+}
+
+.viewer-views-menu button {
+  justify-content: flex-start;
+  width: 100%;
+  color: var(--color-text);
+}
+
+.viewer-views-menu button:focus-visible {
+  background: var(--color-surface-2);
+}
+
+.viewer-views-menu [role="menuitemradio"]::before {
+  content: "";
+  width: 14px;
+}
+
+.viewer-views-menu [role="menuitemradio"][aria-checked="true"]::before {
+  content: "✓";
+  color: var(--color-accent);
+}
+
+.viewer-views-separator {
+  height: 1px;
+  margin: var(--sp-1) 0;
+  background: var(--color-border);
+}
+
+/* Section controls float above the toolbar while a section is open, so the cut can
+   be adjusted from any step, not only Model. */
+.viewer-section-card {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--sp-4) + var(--control-h-lg) + var(--sp-5));
+  z-index: var(--z-viewer-overlay);
+  display: grid;
+  gap: var(--sp-2);
+  width: min(320px, calc(100% - var(--sp-5)));
+  padding: var(--sp-25) var(--sp-3);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border: var(--border-thin);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-panel);
+  transform: translateX(-50%);
+}
+
+.viewer-section-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--color-text);
+}
+
+.viewer-section-row .segmented {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.viewer-section-offset {
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+
+/* The face the setup steps act on, named where the eye already is. */
+.viewer-selection-chip {
+  position: absolute;
+  top: var(--sp-3);
+  left: 50%;
+  z-index: var(--z-viewer-overlay);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: calc(100% - var(--sp-6));
+  padding: var(--sp-15) var(--sp-3);
+  overflow: hidden;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-accent-border);
+  border-radius: 999px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.viewer-selection-dot {
+  width: var(--sp-2);
+  height: var(--sp-2);
+  flex: none;
+  background: var(--color-accent);
+  border-radius: 50%;
+}
+
+.viewer-orbit-hint {
+  position: absolute;
+  left: var(--sp-4);
+  bottom: var(--sp-4);
+  z-index: var(--z-viewer-overlay);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+  pointer-events: none;
+}
+
+/* Below 1100px the hint would sit under the toolbar. */
+@media (max-width: 1100px) {
+  .viewer-orbit-hint {
+    display: none;
+  }
+}
+
 .viewer-shell canvas {
   display: block;
   width: 100% !important;
@@ -5396,7 +5573,7 @@ input[aria-invalid="true"] {
 
 /* border-color alone paints nothing here: the base button reset is `border: none`, so the
    selected face had no visible state. A transparent border gives it something to colour,
-   the way the sibling .viewer-view-presets rule already works. */
+   the way the viewer toolbar's toggles already work. */
 .viewer-a11y-faces button {
   border: 1px solid transparent;
 }
@@ -5404,56 +5581,6 @@ input[aria-invalid="true"] {
 .viewer-a11y-faces button[aria-pressed="true"] {
   color: var(--color-accent);
   border-color: var(--color-accent-border);
-}
-
-/* Compact camera controls remain available for projection switching while the
-   WebGL gizmo provides the same axis/corner presets in the viewport. */
-.viewer-view-presets {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  z-index: var(--z-viewer-overlay);
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
-  max-width: min(520px, calc(100% - 24px));
-  opacity: 0.88;
-  pointer-events: auto;
-}
-
-.viewer-view-presets:focus-within {
-  opacity: 1;
-}
-
-.viewer-view-presets .projection-divider {
-  width: 1px;
-  margin: 2px 2px;
-  background: var(--color-border);
-}
-
-.viewer-view-presets button {
-  min-height: var(--control-h-sm);
-  padding: var(--sp-1) var(--sp-2);
-  font-size: var(--fs-xs);
-  color: var(--color-text-muted);
-  background: var(--color-surface-2);
-  border: var(--border-thin);
-  border-radius: var(--radius-sm);
-}
-
-.viewer-view-presets button:hover {
-  color: var(--color-accent);
-  border-color: var(--color-accent-border);
-}
-
-/* A mode should look like a mode. Hover previously rendered identically to selected, so
-   the active camera view was indistinguishable from whichever button was under the
-   pointer. This is the recipe .segmented button.active already uses. */
-.viewer-view-presets button[aria-pressed="true"] {
-  color: var(--color-accent);
-  background: var(--color-accent-dim);
-  border-color: var(--color-accent-border);
-  box-shadow: inset 0 0 0 1px var(--color-accent-border);
 }
 
 /* Short screens: with the sample menu open the masthead took ~170px above Back and
@@ -5575,6 +5702,20 @@ input[aria-invalid="true"] {
 }
 
 @media (max-width: 640px) {
+  /* The viewer toolbar drops its words and keeps each name as an accessible label. */
+  .viewer-toolbar-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .viewer-toolbar button {
+    padding: 0 var(--sp-25);
+  }
+
   /* The base rule pairs min-width: 280px with max-width: calc(100% - 24px). At 375px the
      viewer is 297px wide, so the max computes to 273px and the min wins — the card renders
      at 280px, 94% of the viewer it is supposed to be annotating, wider than its own safety
@@ -5710,14 +5851,6 @@ input[aria-invalid="true"] {
     min-height: 0;
   }
 
-  /* "Orthographic" dropped to its own row and the strip covered 54px of a 490px viewer. */
-  .viewer-view-presets {
-    flex-wrap: nowrap;
-  }
-
-  .viewer-view-presets button {
-    padding-inline: var(--sp-15);
-  }
 }
 .validation-gallery-backdrop {
   z-index: var(--z-gallery-backdrop);
