@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const fake = vi.hoisted(() => {
-  type Scenario = "algorithm_fallback" | "coarser_size" | "deep_refinement" | "quality_repair" | "complex_seams" | "complex_seams_completed" | "complex_seams_repair_loses_volume" | "surface_only" | "dof_fallback";
+  type Scenario = "algorithm_fallback" | "coarser_size" | "deep_refinement" | "quality_repair" | "complex_seams" | "complex_seams_completed" | "complex_seams_repair_loses_volume" | "surface_only" | "dof_fallback" | "curved_recovery" | "curved_alternate" | "curved_unrecoverable";
   const state = {
     scenario: "algorithm_fallback" as Scenario,
     attempts: [] as Array<{ algorithm: "delaunay" | "frontal"; sizeMm: number }>,
     qualityRepairAttempts: [] as number[],
-    moduleCount: 0
+    moduleCount: 0,
+    optimizedOrders: [] as number[]
   };
 
   const qualityFor = (algorithm: "delaunay" | "frontal", sizeMm: number, qualityRepair: boolean, optimized: boolean): number => {
@@ -28,6 +29,7 @@ const fake = vi.hoisted(() => {
     let healed = false;
     let meshAdapt = false;
     let optimized = false;
+    let straightEdges = false;
 
     const isQualityRepair = () => healed && meshAdapt;
     const hasComplexSeams = () => state.scenario === "complex_seams" || state.scenario === "complex_seams_completed" || state.scenario === "complex_seams_repair_loses_volume";
@@ -53,6 +55,7 @@ const fake = vi.hoisted(() => {
           if (name === "Mesh.Algorithm3D" && value === 4) algorithm = "frontal";
           if (name === "Mesh.Algorithm" && value === 1) meshAdapt = true;
           if (name === "Mesh.CharacteristicLengthMax") sizeMm = value;
+          if (name === "Mesh.SecondOrderLinear") straightEdges = value === 1;
         }
       },
       model: {
@@ -110,9 +113,11 @@ const fake = vi.hoisted(() => {
             }
           },
           optimize() {
+            state.optimizedOrders.push(elementOrder);
             if (state.scenario === "algorithm_fallback" && algorithm === "delaunay") {
               throw new Error("memory access out of bounds");
             }
+            if (state.scenario === "curved_alternate" && algorithm === "delaunay") throw new Error("memory access out of bounds");
             optimized = true;
           },
           setOrder(order: 1 | 2) {
@@ -128,6 +133,11 @@ const fake = vi.hoisted(() => {
             return { elementTags: typeCode === activeType ? [1] : [], nodeTags: [] };
           },
           getElementQualities() {
+            if (state.scenario.startsWith("curved_")) {
+              const quality = elementOrder === 1 || straightEdges ? 0.8
+                : optimized && state.scenario !== "curved_unrecoverable" ? 0.3 : -0.1;
+              return { elementsQuality: [quality] };
+            }
             return { elementsQuality: [qualityFor(algorithm, sizeMm, isQualityRepair(), optimized)] };
           }
         }
@@ -149,6 +159,32 @@ describe("STEP quality recovery orchestration", () => {
     fake.state.attempts.length = 0;
     fake.state.qualityRepairAttempts.length = 0;
     fake.state.moduleCount = 0;
+    fake.state.optimizedOrders.length = 0;
+  });
+
+  test("repairs the linear mesh before abandoning curved Tet10", async () => {
+    fake.state.scenario = "curved_recovery";
+    const result = await meshStepToMshV2(new Uint8Array([1]), { elementOrder: 2, meshSizeMm: 8 });
+    expect(result).toMatchObject({ elevation: "curved", optimizer: "netgen", qualityMinSICN: 0.3 });
+    expect(fake.state.optimizedOrders).toEqual([1]);
+    expect(fake.state.moduleCount).toBe(1);
+  });
+
+  test("prefers valid curved Frontal output over a higher-quality straight-edge crash fallback", async () => {
+    fake.state.scenario = "curved_alternate";
+    const result = await meshStepToMshV2(new Uint8Array([1]), { elementOrder: 2, meshSizeMm: 6 });
+    expect(result).toMatchObject({ algorithm3D: "frontal", elevation: "curved", optimizer: "netgen", qualityMinSICN: 0.3 });
+    expect(fake.state.attempts.map(({ algorithm }) => algorithm)).toEqual(["delaunay", "delaunay", "frontal"]);
+    expect(fake.state.optimizedOrders).toEqual([1, 1]);
+    expect(fake.state.moduleCount).toBe(3);
+    expect(result.qualityRefinement).toBeUndefined();
+  });
+
+  test("retains the safe straight-edge rescue when both curved candidates miss the floor", async () => {
+    fake.state.scenario = "curved_unrecoverable";
+    const result = await meshStepToMshV2(new Uint8Array([1]), { elementOrder: 2, meshSizeMm: 8 });
+    expect(result).toMatchObject({ elevation: "straight_edge", qualityMinSICN: 0.8 });
+    expect(fake.state.moduleCount).toBe(2);
   });
 
   test("tries Frontal when a post-crash Delaunay retry completes below the quality floor", async () => {
