@@ -6,8 +6,16 @@ import { COFFEE_ANIMATION_REPLAY_DELAY_MS, KofiLink, coffeeAnimationReplayDelayM
 
 const kofiSource = readFileSync(resolve(__dirname, "KofiLink.tsx"), "utf8");
 
+// Strip tags until nothing changes: one pass can leave a partial tag such as "<script"
+// behind (CodeQL js/incomplete-multi-character-sanitization).
 function textContent(html: string) {
-  return html.replace(/<[^>]*>/g, "");
+  let text = html;
+  let previous: string;
+  do {
+    previous = text;
+    text = text.replace(/<[^>]*>/g, "");
+  } while (text !== previous);
+  return text;
 }
 
 describe("KofiLink", () => {
