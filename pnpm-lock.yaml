@@ -32,10 +32,10 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.11
-        version: 4.1.11(@types/node@22.19.17)(vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1))
+        version: 4.1.11(@types/node@26.6.5)(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1))
       wrangler:
         specifier: ^4.151.1
-        version: 4.151.1(@types/node@22.19.17)
+        version: 4.151.1(@types/node@26.6.5)
 
   apps/openfea-api:
     dependencies:
@@ -86,8 +86,8 @@ importers:
         version: 5.12.5
     devDependencies:
       '@types/node':
-        specifier: ^22.10.5
-        version: 22.19.17
+        specifier: ^26.6.5
+        version: 26.6.5
       tsx:
         specifier: ^4.23.1
         version: 4.23.1
@@ -166,13 +166,13 @@ importers:
         version: 0.171.0
       '@vitejs/plugin-react':
         specifier: ^6.0.4
-        version: 6.0.4(vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1))
+        version: 6.0.4(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1))
       vite:
         specifier: ^8.1.5
-        version: 8.1.5(@types/node@22.19.17)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1)
+        version: 8.1.5(@types/node@26.6.5)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1)
       vite-plugin-pwa:
         specifier: 2.0.0
-        version: 2.0.0(vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1))(workbox-build@7.4.1(@types/babel__core@7.20.5))(workbox-window@7.4.1)
+        version: 2.0.0(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1))(workbox-build@7.4.1(@types/babel__core@7.20.5))(workbox-window@7.4.1)
       workbox-window:
         specifier: 7.4.1
         version: 7.4.1
@@ -226,8 +226,8 @@ importers:
         specifier: ^7.6.12
         version: 7.6.13
       '@types/node':
-        specifier: ^22.10.5
-        version: 22.19.17
+        specifier: ^26.6.5
+        version: 26.6.5
 
   libs/openfea-jobs:
     dependencies:
@@ -299,8 +299,8 @@ importers:
   libs/openfea-storage:
     devDependencies:
       '@types/node':
-        specifier: ^22.10.5
-        version: 22.19.17
+        specifier: ^26.6.5
+        version: 26.6.5
 
   libs/openfea-study-core:
     dependencies:
@@ -1954,6 +1954,9 @@ packages:
   '@types/node@22.19.17':
     resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
 
+  '@types/node@26.6.5':
+    resolution: {integrity: sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==}
+
   '@types/offscreencanvas@2019.7.3':
     resolution: {integrity: sha512-ieXiYmgSRXUDeOntE1InxjWyvEelZGP63M+cGuquuRLuIKKT1osnkXjxev9B7d1nXSug5vpunx+gNlbVxMlC9A==}
 
@@ -3519,6 +3522,9 @@ packages:
 
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
+  undici-types@8.9.0:
+    resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
   undici@7.30.1:
     resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
@@ -5264,6 +5270,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/node@26.6.5':
+    dependencies:
+      undici-types: 8.9.0
+
   '@types/offscreencanvas@2019.7.3': {}
 
   '@types/pako@2.0.4': {}
@@ -5314,10 +5324,10 @@ snapshots:
       '@use-gesture/core': 10.3.1
       react: 18.3.1
 
-  '@vitejs/plugin-react@6.0.4(vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1))':
+  '@vitejs/plugin-react@6.0.4(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1))':
     dependencies:
       '@rolldown/pluginutils': 1.0.1
-      vite: 8.1.5(@types/node@22.19.17)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1)
+      vite: 8.1.5(@types/node@26.6.5)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1)
 
   '@vitest/expect@4.1.11':
     dependencies:
@@ -5328,13 +5338,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.11(vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1))':
+  '@vitest/mocker@4.1.11(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1))':
     dependencies:
       '@vitest/spy': 4.1.11
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.1.5(@types/node@22.19.17)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1)
+      vite: 8.1.5(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1)
 
   '@vitest/pretty-format@4.1.11':
     dependencies:
@@ -6306,10 +6316,10 @@ snapshots:
 
   mimic-response@3.1.0: {}
 
-  miniflare@5.20261012.1-beta(@types/node@22.19.17):
+  miniflare@5.20261012.1-beta(@types/node@26.6.5):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
-      sharp: 0.35.5(@types/node@22.19.17)
+      sharp: 0.35.5(@types/node@26.6.5)
       undici: 7.30.1
       workerd: 1.20261012.1
       ws: 8.21.0
@@ -6711,7 +6721,7 @@ snapshots:
       es-errors: 1.3.0
       es-object-atoms: 1.1.2
 
-  sharp@0.35.5(@types/node@22.19.17):
+  sharp@0.35.5(@types/node@26.6.5):
     dependencies:
       '@img/colour': 1.1.0
       detect-libc: 2.1.2
@@ -6742,7 +6752,7 @@ snapshots:
       '@img/sharp-win32-arm64': 0.35.5
       '@img/sharp-win32-ia32': 0.35.5
       '@img/sharp-win32-x64': 0.35.5
-      '@types/node': 22.19.17
+      '@types/node': 26.6.5
 
   shebang-command@2.0.0:
     dependencies:
@@ -7057,6 +7067,8 @@ snapshots:
 
   undici-types@6.21.0: {}
 
+  undici-types@8.9.0: {}
+
   undici@7.30.1: {}
 
   unenv@2.0.0-rc.24:
@@ -7101,18 +7113,18 @@ snapshots:
       base64-arraybuffer: 1.0.2
     optional: true
 
-  vite-plugin-pwa@2.0.0(vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1))(workbox-build@7.4.1(@types/babel__core@7.20.5))(workbox-window@7.4.1):
+  vite-plugin-pwa@2.0.0(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1))(workbox-build@7.4.1(@types/babel__core@7.20.5))(workbox-window@7.4.1):
     dependencies:
       debug: 4.4.3
       pretty-bytes: 6.1.1
       tinyglobby: 0.2.17
-      vite: 8.1.5(@types/node@22.19.17)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1)
+      vite: 8.1.5(@types/node@26.6.5)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1)
       workbox-build: 7.4.1(@types/babel__core@7.20.5)
       workbox-window: 7.4.1
     transitivePeerDependencies:
       - supports-color
 
-  vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1):
+  vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.1)(terser@5.51.2)(tsx@4.23.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -7120,13 +7132,13 @@ snapshots:
       rolldown: 1.1.5
       tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 22.19.17
+      '@types/node': 26.6.5
       esbuild: 0.28.1
       fsevents: 2.3.3
       terser: 5.51.2
       tsx: 4.23.1
 
-  vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1):
+  vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -7134,16 +7146,16 @@ snapshots:
       rolldown: 1.1.5
       tinyglobby: 0.2.17
     optionalDependencies:
-      '@types/node': 22.19.17
+      '@types/node': 26.6.5
       esbuild: 0.28.2
       fsevents: 2.3.3
       terser: 5.51.2
       tsx: 4.23.1
 
-  vitest@4.1.11(@types/node@22.19.17)(vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1)):
+  vitest@4.1.11(@types/node@26.6.5)(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1)):
     dependencies:
       '@vitest/expect': 4.1.11
-      '@vitest/mocker': 4.1.11(vite@8.1.5(@types/node@22.19.17)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1))
+      '@vitest/mocker': 4.1.11(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1))
       '@vitest/pretty-format': 4.1.11
       '@vitest/runner': 4.1.11
       '@vitest/snapshot': 4.1.11
@@ -7160,10 +7172,10 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.1.5(@types/node@22.19.17)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1)
+      vite: 8.1.5(@types/node@26.6.5)(esbuild@0.28.2)(terser@5.51.2)(tsx@4.23.1)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 22.19.17
+      '@types/node': 26.6.5
     transitivePeerDependencies:
       - msw
 
@@ -7342,13 +7354,13 @@ snapshots:
       '@cloudflare/workerd-linux-arm64': 1.20261012.1
       '@cloudflare/workerd-windows-64': 1.20261012.1
 
-  wrangler@4.151.1(@types/node@22.19.17):
+  wrangler@4.151.1(@types/node@26.6.5):
     dependencies:
       '@cloudflare/kv-asset-handler': 0.5.0
       '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261012.1)
       blake3-wasm: 2.1.5
       esbuild: 0.28.2
-      miniflare: 5.20261012.1-beta(@types/node@22.19.17)
+      miniflare: 5.20261012.1-beta(@types/node@26.6.5)
       path-to-regexp: 6.3.0
       unenv: 2.0.0-rc.24
       workerd: 1.20261012.1
