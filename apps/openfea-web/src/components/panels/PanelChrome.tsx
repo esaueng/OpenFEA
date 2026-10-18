@@ -72,16 +72,19 @@ export function selectionLabelForPanel(study: Study, selectionRef: string): stri
   return study.namedSelections.find((selection) => selection.id === selectionRef)?.name ?? selectionRef;
 }
 
-export function Panel({ title, step, helper, study, children }: { title: string; step: StepId; helper: string; study: Study; children: ReactNode }) {
+/**
+ * Each step leads with the question it answers (plan 035, increment 2). The step's
+ * name moves into the small line above; a panel without a question (Results, where the
+ * verdict is the answer) keeps its title as the heading.
+ */
+export function Panel({ title, question, step, helper, study, children }: { title: string; question?: string; step: StepId; helper: string; study: Study; children: ReactNode }) {
   const workflowSteps = workflowStepsForStudy(study);
   const stepNumber = workflowSteps.findIndex((workflowStep) => workflowStep.id === step) + 1;
   return (
     <div className="panel-section">
       <div className="panel-header">
-        <div className="panel-title-row">
-          <h2>{title}</h2>
-          <div className="panel-eyebrow">Step {stepNumber} of {workflowSteps.length}</div>
-        </div>
+        <div className="panel-eyebrow">Step {stepNumber} of {workflowSteps.length}{question ? ` · ${title}` : ""}</div>
+        <h2 className={question ? "panel-question" : undefined}>{question ?? title}</h2>
         <p className="helper">{helper}</p>
       </div>
       <div className="panel-body">{children}</div>
@@ -140,14 +143,15 @@ export function WorkflowNav({ activeStep, study, onStepSelect }: { activeStep: S
   const previousStep = index > 0 ? workflowSteps[index - 1] : undefined;
   const nextStep = index >= 0 && index < workflowSteps.length - 1 ? workflowSteps[index + 1] : undefined;
   const canGoNext = Boolean(nextStep && canNavigateToStep(nextStep.id, { meshStatus: study.meshSettings.status }));
-  const backLabel = previousStep ? `Back: ${previousStep.label}` : "Back";
-  const nextLabel = nextStep ? `Next: ${nextStep.label}` : "Next";
+  // Back is the quiet way out; the one primary action says where it goes.
+  const backLabel = "Back";
+  const nextLabel = nextStep ? `Continue to ${nextStep.label.toLowerCase()}` : "Continue";
   const backAriaLabel = previousStep ? `Previous workflow step: ${previousStep.label}. Shortcut B` : "Previous workflow step. Shortcut B";
   const nextAriaLabel = nextStep ? `Next workflow step: ${nextStep.label}. Shortcut N` : "Next workflow step. Shortcut N";
 
   return (
     <div className="workflow-nav" aria-label="Workflow navigation">
-      <button className="secondary" type="button" title="Previous workflow step (B)" aria-label={backAriaLabel} disabled={!previousStep} onClick={() => previousStep && onStepSelect(previousStep.id)}>
+      <button className="workflow-nav-back" type="button" title="Previous workflow step (B)" aria-label={backAriaLabel} disabled={!previousStep} onClick={() => previousStep && onStepSelect(previousStep.id)}>
         <span className="workflow-nav-label">{backLabel}</span>
         <kbd>B</kbd>
       </button>
@@ -504,10 +508,18 @@ export function defaultValueForLoadType(type: LoadType) {
   return 500;
 }
 
+/** "Normal" is the face's outward normal, so "Opposite normal" pushes into the face. */
 export function directionOptionLabel(direction: LoadDirectionLabel) {
-  if (direction === "Normal") return "Face normal";
-  if (direction === "Opposite normal") return "Opposite face normal";
+  if (direction === "Normal") return "Out of face";
+  if (direction === "Opposite normal") return "Into face";
   return `Global ${direction}`;
+}
+
+/** The same direction as a phrase for a load's summary line. */
+export function directionPhrase(direction: LoadDirectionLabel) {
+  if (direction === "Normal") return "out of the face";
+  if (direction === "Opposite normal") return "into the face";
+  return `along global ${direction}`;
 }
 
 export function capitalize(value: string) {

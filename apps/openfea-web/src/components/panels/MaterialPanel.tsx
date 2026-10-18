@@ -118,7 +118,7 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
   }
 
   return (
-    <Panel title="Material" step="material" helper="Choose the material, then how it is made." study={study}>
+    <Panel title="Material" question="What is it made of?" step="material" helper="Choose the material, then how it is made." study={study}>
       <SectionTitle helpId="materialLibrary">Base material</SectionTitle>
       <div className="base-material-card">
         <button className="base-material-selector" type="button" onClick={() => setShowLibrary(true)} aria-label={`Change base material. Current material: ${selectedMaterial.name}`}>

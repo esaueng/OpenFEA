@@ -2494,17 +2494,19 @@ img {
   overflow: hidden;
 }
 
-.panel-header {
-  padding: var(--sp-25) var(--sp-4) var(--sp-2);
-  border-bottom: var(--border-thin);
+/* More options sits between the direction and Add load; without this the button
+   touched the collapsible's border. */
+.panel-body .collapsible-section + .outline-action,
+.panel-body .collapsible-section + .field-error {
+  margin-top: var(--gap-block);
 }
 
-.panel-title-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-4);
-  margin-bottom: var(--sp-1);
+/* Step line, then the question, then one helper sentence. */
+.panel-header {
+  display: grid;
+  gap: var(--sp-15);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border-bottom: var(--border-thin);
 }
 
 /* Inside the panel, labels are sentence case at reading size: uppercase tracked mono
@@ -2520,6 +2522,14 @@ img {
   font-size: var(--fs-lg);
   font-weight: var(--fw-medium);
   letter-spacing: 0;
+}
+
+/* The question a step answers is the panel's display line. Results keeps --fs-lg:
+   its KPI figures are the display level there. */
+.panel-section h2.panel-question {
+  font-size: var(--fs-xl);
+  line-height: var(--lh-tight);
+  text-wrap: balance;
 }
 
 .panel-header .helper {
@@ -2616,7 +2626,7 @@ img {
 
 .workflow-nav {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   gap: var(--sp-2);
   padding: var(--sp-3) var(--sp-4);
   border-top: var(--border-thin);
@@ -2630,6 +2640,25 @@ img {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
+}
+
+/* Back is a quiet text action beside the one primary button. It keeps its place
+   (disabled, not hidden) on the first step so Continue never moves. */
+.workflow-nav-back {
+  padding: 0 var(--sp-3);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-md);
+  font-weight: var(--fw-medium);
+}
+
+.workflow-nav-back:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+}
+
+.workflow-nav-back:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .workflow-nav-label {
