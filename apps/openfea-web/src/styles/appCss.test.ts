@@ -300,8 +300,8 @@ describe("app CSS", () => {
     expect(localRuntime).toMatch(/color:\s*inherit/);
   });
 
-  test("styles the Ko-fi action as a bottom status link", () => {
-    const donateLink = cssRule(".status-link.donate-link");
+  test("styles the Ko-fi action as a warm donate link", () => {
+    const donateLink = cssRule(".donate-link");
     const coffeeMark = cssRule(".coffee-mark");
     const coffeeLabel = cssRule(".coffee-label");
     const coffeeLetter = cssRule(".coffee-letter");
@@ -369,7 +369,7 @@ describe("app CSS", () => {
     expect(playbackMozThumb).toMatch(/width:\s*4px/);
     expect(playbackMozThumb).toMatch(/border-radius:\s*3px/);
   });
-  test("sets status bar links in sentence case beside Buy me a coffee", () => {
+  test("sets status bar links in sentence case", () => {
     // They were forced lowercase ("feedback", "github") next to a capitalised donate link.
     expect(baseRule(".status-link")).not.toMatch(/text-transform:\s*lowercase/);
   });

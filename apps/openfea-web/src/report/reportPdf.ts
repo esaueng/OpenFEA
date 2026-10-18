@@ -8,6 +8,8 @@ import { REPORT_LAYOUT, REPORT_THEME, REPORT_TYPE } from "./reportTheme";
 const FONT_FAMILY = "IBMPlexSans";
 const BUILTIN_FONT = "helvetica";
 const FOOTER_GAP = 7;
+/** Mesh / solver / study lines above the page footer on the cover. */
+const COVER_FOOTER_HEIGHT = 15;
 
 let fontAssetsPromise: Promise<{ regular: string; semiBold: string } | null> | null = null;
 let logoAssetPromise: Promise<string | null> | null = null;
@@ -48,28 +50,30 @@ class PdfReport {
     this.contentWidth = this.pageWidth - REPORT_LAYOUT.margin * 2;
   }
 
+  /**
+   * Cover order (plan 035 increment 6): brand line → title and one-line context →
+   * verdict box → non-production callout → 4-up KPI row under a rule → the primary
+   * figure filling what is left → mesh and solver footer.
+   */
   cover(logo: string | null): void {
     this.drawBrandHeader(logo);
-    this.y = 43;
+    this.y = 42;
     this.text(this.data.title, REPORT_LAYOUT.margin, this.y, REPORT_TYPE.title, REPORT_THEME.ink, "bold");
-    this.y += 8;
-    this.text(this.data.projectName, REPORT_LAYOUT.margin, this.y, 13, REPORT_THEME.ink, "bold");
-    this.y += 5.5;
-    this.text(`${this.data.studyName} · ${this.data.unitSystemLabel}`, REPORT_LAYOUT.margin, this.y, REPORT_TYPE.body, REPORT_THEME.inkMuted);
-    this.y += 8;
+    this.y += 7;
+    const context = this.splitText(this.data.coverContext, this.contentWidth, 10.5)[0] ?? this.data.coverContext;
+    this.text(context, REPORT_LAYOUT.margin, this.y, 10.5, REPORT_THEME.inkMuted);
+    this.y += 7;
 
-    this.coverMetaStrip();
+    this.verdictBox();
     if (this.data.provenanceTier !== "production_fea") {
       this.callout(this.data.provenanceLabel, "warning", 10);
-      this.y += 4;
+      this.y += 5;
     }
-    this.table({ headers: ["Key result", "Value"], rows: this.data.keyResults.map((row) => [row.label, row.value]) }, { compact: true, keyResults: true, headerless: true });
-    this.verdictLine();
+    this.kpiRow();
 
-    this.text("Primary result", REPORT_LAYOUT.margin, this.y, 10, REPORT_THEME.accent, "bold");
-    this.y += 4;
-    const remainingHeight = Math.max(42, this.pageHeight - REPORT_LAYOUT.footerHeight - FOOTER_GAP - this.y - 8);
-    this.figure(this.data.figures.stress, remainingHeight);
+    const footerTop = this.pageHeight - REPORT_LAYOUT.footerHeight - COVER_FOOTER_HEIGHT;
+    this.figure(this.data.figures.stress, Math.max(42, footerTop - this.y - 2), { fill: true });
+    this.coverFooter(footerTop);
   }
 
   modelDefinition(): void {
@@ -172,41 +176,96 @@ class PdfReport {
     this.doc.line(REPORT_LAYOUT.margin, REPORT_LAYOUT.margin + 11, this.pageWidth - REPORT_LAYOUT.margin, REPORT_LAYOUT.margin + 11);
   }
 
-  private coverMetaStrip(): void {
-    const rows = this.data.coverMeta;
-    if (!rows.length) return;
-    const cellWidth = this.contentWidth / rows.length;
-    const topY = this.y;
-    this.doc.setDrawColor(REPORT_THEME.hairline);
-    this.doc.setLineWidth(0.2);
-    this.doc.line(REPORT_LAYOUT.margin, topY, this.pageWidth - REPORT_LAYOUT.margin, topY);
-    rows.forEach((row, index) => {
-      const x = REPORT_LAYOUT.margin + index * cellWidth;
-      this.text(row.label.toUpperCase(), x, topY + 4, 6.2, REPORT_THEME.inkMuted);
-      const value = this.splitText(row.value, cellWidth - 4, 8, "bold")[0] ?? row.value;
-      this.text(value, x, topY + 8, 8, REPORT_THEME.ink, "bold");
-    });
-    this.doc.line(REPORT_LAYOUT.margin, topY + 10.5, this.pageWidth - REPORT_LAYOUT.margin, topY + 10.5);
-    this.y = topY + 15;
-  }
-
-  private verdictLine(): void {
+  /** Keeps `verdictLine()` wording (title — message) inside a tinted box. */
+  private verdictBox(): void {
     const assessment = this.data.failureAssessment;
     const color = assessment.status === "pass" ? REPORT_THEME.success : assessment.status === "fail" ? REPORT_THEME.error : REPORT_THEME.warning;
-    const textX = REPORT_LAYOUT.margin + 4.5;
-    this.doc.setFillColor(color);
-    this.doc.circle(REPORT_LAYOUT.margin + 1.2, this.y - 1.2, 1.1, "F");
-    this.text(assessment.title, textX, this.y, REPORT_TYPE.body, REPORT_THEME.ink, "bold");
+    const fill = assessment.status === "pass" ? REPORT_THEME.successSoft : assessment.status === "fail" ? REPORT_THEME.errorSoft : REPORT_THEME.warningSoft;
+    const padX = 4;
+    const textX = REPORT_LAYOUT.margin + padX + 4;
+    const textWidth = this.contentWidth - (textX - REPORT_LAYOUT.margin) - padX;
+    const lineHeight = 4.4;
+    this.doc.setFont(this.fontFamily, "bold");
+    this.doc.setFontSize(REPORT_TYPE.body);
     const titleWidth = this.doc.getTextWidth(assessment.title);
-    const messageLines = this.splitText(`— ${assessment.message}`, this.contentWidth - 4.5 - titleWidth - 2, REPORT_TYPE.body);
-    this.text(messageLines[0] ?? "", textX + titleWidth + 2, this.y, REPORT_TYPE.body, REPORT_THEME.ink);
-    if (messageLines.length > 1) {
-      this.y += 4.2;
-      const wrapped = this.splitText(messageLines.slice(1).join(" "), this.contentWidth - 4.5, REPORT_TYPE.body);
-      this.text(wrapped, textX, this.y, REPORT_TYPE.body, REPORT_THEME.ink);
-      this.y += (wrapped.length - 1) * 4.2;
+    const firstLineWidth = textWidth - titleWidth - 2;
+    const firstLines = this.splitText(`— ${assessment.message}`, firstLineWidth, REPORT_TYPE.body);
+    const restLines = firstLines.length > 1 ? this.splitText(firstLines.slice(1).join(" "), textWidth, REPORT_TYPE.body) : [];
+    const height = 7 + (1 + restLines.length) * lineHeight;
+    const top = this.y;
+
+    this.doc.setFillColor(fill);
+    this.doc.roundedRect(REPORT_LAYOUT.margin, top, this.contentWidth, height, 1.5, 1.5, "F");
+    this.doc.setFillColor(color);
+    this.doc.rect(REPORT_LAYOUT.margin, top, 1.2, height, "F");
+    const baseline = top + 3.5 + lineHeight * 0.8;
+    this.doc.circle(REPORT_LAYOUT.margin + padX + 1.2, baseline - 1.2, 1.1, "F");
+    this.text(assessment.title, textX, baseline, REPORT_TYPE.body, REPORT_THEME.ink, "bold");
+    this.text(firstLines[0] ?? "", textX + titleWidth + 2, baseline, REPORT_TYPE.body, REPORT_THEME.ink);
+    if (restLines.length) this.text(restLines, textX, baseline + lineHeight, REPORT_TYPE.body, REPORT_THEME.ink);
+    this.y = top + height + 6;
+  }
+
+  /** Key results as a 4-up row under a rule; more than four wrap to another row. */
+  private kpiRow(): void {
+    const rows = this.data.keyResults;
+    if (!rows.length) return;
+    const perRow = 4;
+    const cellWidth = this.contentWidth / perRow;
+    const cellHeight = 15;
+    this.doc.setDrawColor(REPORT_THEME.ink);
+    this.doc.setLineWidth(0.5);
+    this.doc.line(REPORT_LAYOUT.margin, this.y, this.pageWidth - REPORT_LAYOUT.margin, this.y);
+    for (let start = 0; start < rows.length; start += perRow) {
+      const top = this.y;
+      rows.slice(start, start + perRow).forEach((row, index) => {
+        const x = REPORT_LAYOUT.margin + index * cellWidth;
+        if (index > 0) {
+          this.doc.setDrawColor(REPORT_THEME.hairline);
+          this.doc.setLineWidth(0.2);
+          this.doc.line(x - 2, top + 2.5, x - 2, top + cellHeight - 1.5);
+        }
+        this.text(row.label.toUpperCase(), x, top + 5.5, 6.4, REPORT_THEME.inkMuted);
+        // Long values (e.g. "Unit missing") step down rather than run into the next cell.
+        const size = this.splitText(row.value, cellWidth - 4, REPORT_TYPE.keyValue, "bold").length > 1 ? 10.5 : REPORT_TYPE.keyValue;
+        const value = this.splitText(row.value, cellWidth - 4, size, "bold")[0] ?? row.value;
+        this.text(value, x, top + 12.5, size, REPORT_THEME.ink, "bold");
+      });
+      this.y = top + cellHeight;
     }
-    this.y += 8;
+    this.doc.setDrawColor(REPORT_THEME.hairline);
+    this.doc.setLineWidth(0.2);
+    this.doc.line(REPORT_LAYOUT.margin, this.y, this.pageWidth - REPORT_LAYOUT.margin, this.y);
+    this.y += 7;
+  }
+
+  /** Mesh counts first (what the reader checks), then solver provenance and units. */
+  private coverFooter(top: number): void {
+    const find = (rows: ReportRow[], label: string) => rows.find((row) => row.label === label)?.value;
+    const nodes = find(this.data.mesh, "Nodes");
+    const elements = find(this.data.mesh, "Elements");
+    const elementType = find(this.data.mesh, "Element type");
+    const mesh = [
+      nodes && nodes !== "--" ? `${nodes} nodes` : undefined,
+      elements && elements !== "--" ? `${elements} elements` : undefined,
+      elementType && elementType !== "--" ? elementType : undefined
+    ].filter(Boolean).join(" · ") || "Not available (--)";
+    const solver = [find(this.data.coverMeta, "Solver"), find(this.data.coverMeta, "Version"), find(this.data.coverMeta, "Method")]
+      .filter((value) => value && value !== "--")
+      .join(" · ");
+    const study = `${this.data.studyName} · ${this.data.unitSystemLabel}`;
+    this.doc.setDrawColor(REPORT_THEME.hairline);
+    this.doc.setLineWidth(0.2);
+    this.doc.line(REPORT_LAYOUT.margin, top, this.pageWidth - REPORT_LAYOUT.margin, top);
+    const labelX = REPORT_LAYOUT.margin;
+    const valueX = REPORT_LAYOUT.margin + 14;
+    const valueWidth = this.contentWidth - 14;
+    const lines: Array<[string, string]> = [["MESH", mesh], ["SOLVER", solver || "--"], ["STUDY", study]];
+    lines.forEach(([label, value], index) => {
+      const y = top + 4.2 + index * 3.6;
+      this.text(label, labelX, y, 6.2, REPORT_THEME.inkMuted);
+      this.text(this.splitText(value, valueWidth, REPORT_TYPE.caption)[0] ?? value, valueX, y, REPORT_TYPE.caption, REPORT_THEME.ink);
+    });
   }
 
   private sectionHeading(number: number, title: string, keepTogether: number = REPORT_LAYOUT.sectionKeepTogether): void {
@@ -275,14 +334,21 @@ class PdfReport {
     this.y = (finalY ?? this.y + 18) + 5;
   }
 
-  private figure(figure: ReportFigure, maxHeight: number): void {
-    this.ensureSpace(Math.min(maxHeight + 18, 96));
+  /**
+   * `fill` sizes the frame to all the space it is given (the cover's primary figure)
+   * instead of the default 0.56 aspect; the capture is centred in it like a viewport.
+   */
+  private figure(figure: ReportFigure, maxHeight: number, options: { fill?: boolean } = {}): void {
+    if (!options.fill) this.ensureSpace(Math.min(maxHeight + 18, 96));
     this.text(figure.title, REPORT_LAYOUT.margin, this.y, 10, REPORT_THEME.ink, "bold");
     this.y += 4;
     const legendWidth = 24;
     const gap = 5;
     const imageAreaWidth = this.contentWidth - legendWidth - gap;
-    const frameHeight = Math.max(35, Math.min(maxHeight - 14, imageAreaWidth * 0.56));
+    const captionHeight = this.splitText(figure.caption, this.contentWidth, REPORT_TYPE.caption).length * 3.5;
+    const frameHeight = options.fill
+      ? Math.max(35, maxHeight - 4 - 4 - captionHeight)
+      : Math.max(35, Math.min(maxHeight - 14, imageAreaWidth * 0.56));
     const imageX = REPORT_LAYOUT.margin;
     const imageY = this.y;
 

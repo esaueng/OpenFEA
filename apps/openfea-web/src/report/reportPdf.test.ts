@@ -1,5 +1,6 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { deflateSync } from "node:zlib";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type { ReportData } from "./reportData";
 import { boundaryFrameHeight, renderReportPdf } from "./reportPdf";
@@ -20,12 +21,36 @@ describe("renderReportPdf", () => {
     expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe("%PDF");
     expect([...text.matchAll(/\/Type \/Page\b/g)].length).toBeGreaterThanOrEqual(2);
     expect(blob.type).toBe("application/pdf");
+  });
 
-    const qaOutput = process.env.REPORT_PDF_QA_OUTPUT;
-    if (qaOutput) {
-      mkdirSync(dirname(qaOutput), { recursive: true });
-      writeFileSync(qaOutput, bytes);
-    }
+  // Visual QA: `REPORT_PDF_QA_OUTPUT=<path>.pdf npx vitest run src/report/reportPdf.test.ts`
+  // writes the fixture with the real IBM Plex fonts and a representative 1600x900 capture,
+  // plus a `-nonproduction.pdf` variant (preview callout, failing verdict, wrapped KPIs).
+  test.skipIf(!process.env.REPORT_PDF_QA_OUTPUT)("writes QA PDFs with real fonts and a representative capture", async () => {
+    const qaOutput = process.env.REPORT_PDF_QA_OUTPUT!;
+    vi.resetModules(); // the font promise is module-cached; the offline tests above cached null
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const name = String(url).split("?")[0]!.split("/").pop()!;
+      const path = name === "openfea-logo.png" ? resolve(__dirname, "../../public", name) : resolve(__dirname, "fonts", name);
+      const bytes = readFileSync(path);
+      return new Response(bytes);
+    }));
+    const { renderReportPdf: render } = await import("./reportPdf");
+    const capture = syntheticStressCapture(1600, 900);
+    const data = fixtureReport();
+    data.figures.stress.png = capture;
+    data.figures.displacement.png = capture;
+    data.boundaryFigure.png = capture;
+    mkdirSync(dirname(qaOutput), { recursive: true });
+    writeFileSync(qaOutput, new Uint8Array(await (await render(data)).arrayBuffer()));
+
+    const variant = fixtureReport();
+    variant.figures.stress.png = capture;
+    variant.provenanceTier = "core_preview";
+    variant.provenanceLabel = "OpenFEA Core preview (coarse mesh, not production FEA)";
+    variant.failureAssessment = { status: "fail", title: "Exceeds allowable limit", message: "The reported factor of safety is below 1.0, so the part is expected to yield under this load case. Reduce the load or stiffen the section and re-run." };
+    variant.keyResults = [...variant.keyResults, { label: "Peak displacement", value: "0.0072 in" }];
+    writeFileSync(qaOutput.replace(/\.pdf$/, "") + "-nonproduction.pdf", new Uint8Array(await (await render(variant)).arrayBuffer()));
   });
 
   test("renders an empty-data report with explicit unavailable values", async () => {
@@ -49,6 +74,17 @@ describe("renderReportPdf", () => {
 
     await expect(renderReportPdf(empty)).resolves.toBeInstanceOf(Blob);
   });
+
+  test("renders the cover with non-production callout, wrapped KPIs and a failing verdict", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline fixture")));
+    const data = fixtureReport();
+    data.provenanceTier = "core_preview";
+    data.provenanceLabel = "Preview estimate";
+    data.failureAssessment = { status: "fail", title: "Exceeds allowable limit", message: "The reported factor of safety is below 1.0, so the part is expected to yield under this load case. Reduce the load or stiffen the section and re-run." };
+    data.keyResults = [...data.keyResults, { label: "Extra", value: "Unit missing" }];
+    const text = new TextDecoder("latin1").decode(new Uint8Array(await (await renderReportPdf(data)).arrayBuffer()));
+    expect(text).toContain("%PDF");
+  });
 });
 
 describe("boundaryFrameHeight", () => {
@@ -71,6 +107,46 @@ describe("boundaryFrameHeight", () => {
     expect(boundaryFrameHeight(undefined, CONTENT_WIDTH, MAX_HEIGHT)).toBe(96);
   });
 });
+
+// A cantilever-shaped band coloured along its length on a white ground, standing in for a
+// real viewport capture so the QA PDF shows how the cover figure fills its frame.
+function syntheticStressCapture(width: number, height: number): string {
+  const ramp = [[11, 87, 208], [14, 165, 233], [34, 197, 94], [250, 204, 21], [249, 115, 22], [239, 68, 68]];
+  const raw = Buffer.alloc((width * 3 + 1) * height, 255);
+  for (let y = 0; y < height; y += 1) {
+    raw[y * (width * 3 + 1)] = 0;
+    for (let x = 0; x < width; x += 1) {
+      const t = x / width;
+      const top = height * (0.38 + 0.08 * t * t);
+      if (x < width * 0.08 || x > width * 0.92 || y < top || y > top + height * 0.2) continue;
+      const color = ramp[Math.min(ramp.length - 1, Math.floor((1 - (x - width * 0.08) / (width * 0.84)) * ramp.length))]!;
+      raw.set(color, y * (width * 3 + 1) + 1 + x * 3);
+    }
+  }
+  const chunk = (type: string, body: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(body.length);
+    const typed = Buffer.concat([Buffer.from(type, "latin1"), body]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(typed));
+    return Buffer.concat([length, typed, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  const png = Buffer.concat([Buffer.from("\x89PNG\r\n\x1a\n", "latin1"), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+  return `data:image/png;base64,${png.toString("base64")}`;
+}
+
+function crc32(bytes: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
 // Minimal PNG header (signature + IHDR width/height) — enough for pngDimensions.
 function pngFixture(width: number, height: number): string {
@@ -97,6 +173,7 @@ function fixtureReport(): ReportData {
     title: "Dynamic Structural Simulation Report",
     projectName: "Cantilever Fixture",
     studyName: "Dynamic Structural",
+    coverContext: "Cantilever · Aluminum 6061 · 500 N force",
     unitSystemLabel: "SI (m, Pa)",
     provenanceTier: "production_fea",
     provenanceLabel: "OpenFEA Core Local (in-browser)",
