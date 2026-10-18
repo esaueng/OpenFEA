@@ -377,7 +377,7 @@ describe("app CSS", () => {
   test("gives compact controls a 24px minimum target", () => {
     // WCAG 2.5.8. Measured before this: camera presets ~22px, the brand
     // control 18px, footer links 16-17px.
-    for (const selector of [".brand-button", ".viewer-view-presets button", ".status-link", ".status-attribution"]) {
+    for (const selector of [".brand-button", ".viewer-toolbar button,\n.viewer-toolbar-icon", ".status-link", ".status-attribution"]) {
       expect(resolvedControlPx(baseRule(selector), "min-height"), selector).toBeGreaterThanOrEqual(24);
     }
     // The resolver itself: the tier's small step is the WCAG 2.5.8 floor.
@@ -514,7 +514,7 @@ describe("app CSS", () => {
       [".step-nav-step", "min-height"],
       [".tooltip-trigger", "height"], [".segmented button", "min-height"], [".text-button", "min-height"],
       [".remove-glyph", "height"], [".status-tabs button", "min-height"], [".status-link", "min-height"],
-      [".log-copy-button,\n.log-clear-button", "min-height"], [".viewer-view-presets button", "min-height"],
+      [".log-copy-button,\n.log-clear-button", "min-height"], [".viewer-toolbar button,\n.viewer-toolbar-icon", "min-height"],
       [".start-action", "min-height"], [".start-menu-back", "min-height"]
     ];
     for (const [selector, property] of controls) {
