@@ -680,6 +680,12 @@ export const MeshSummarySchema = z.object({
   resultSampleCoordinateSpace: z.string().optional()
 });
 
+export const ResultPeakLocationSchema = z.object({
+  surfaceMeshId: boundedId,
+  surfaceNodeIndex: z.number().int().min(0),
+  elementIndex: z.number().int().min(0).optional()
+});
+
 export const StructuralResultSummarySchema = z.object({
   maxStress: finiteNumber,
   maxStressUnits: z.string().max(MAX_RESULT_UNIT_LENGTH),
@@ -720,6 +726,13 @@ export const StructuralResultSummarySchema = z.object({
       frameCount: z.number(),
       peakDisplacementTimeSeconds: z.number(),
       peakDisplacement: z.number()
+    })
+    .optional(),
+  /** Reported peaks located on the solver surface mesh; absent when a peak is not on it. */
+  peakLocations: z
+    .object({
+      stress: ResultPeakLocationSchema.optional(),
+      displacement: ResultPeakLocationSchema.optional()
     })
     .optional()
 });
@@ -824,6 +837,7 @@ export type ResultProvenance = z.infer<typeof ResultProvenanceSchema>;
 export type ResultProvenanceTier = z.infer<typeof ResultProvenanceTierSchema>;
 export type StressComponent = z.infer<typeof StressComponentSchema>;
 export type ResultField = z.infer<typeof ResultFieldSchema>;
+export type ResultPeakLocation = z.infer<typeof ResultPeakLocationSchema>;
 export type GeometryFile = z.infer<typeof GeometryFileSchema>;
 export type MeshSummary = z.infer<typeof MeshSummarySchema>;
 export type StructuralResultSummary = Omit<z.infer<typeof StructuralResultSummarySchema>, "diagnostics"> & { diagnostics?: Diagnostic[] };

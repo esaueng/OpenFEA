@@ -7,7 +7,7 @@ import { configureTextBuilder } from "troika-three-text";
 import sceneLabelFontUrl from "../assets/fonts/ibm-plex-sans-latin-500-normal.woff";
 import type { ThreeEvent } from "@react-three/fiber";
 import { finiteExtrema } from "@openfea/core";
-import type { DisplayFace, DisplayModel, MeshSummary, ResultField, ResultRenderBounds } from "@openfea/schema";
+import type { DisplayFace, DisplayModel, MeshSummary, ResultField, ResultPeakLocation, ResultRenderBounds } from "@openfea/schema";
 import { globalBuildAxisToModelAxis } from "@openfea/study-core";
 import { SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../geometryFormats";
 import { meshVolumeM3FromTriangleSource, type Triangle } from "@openfea/units";
@@ -73,6 +73,8 @@ interface CadViewerProps {
   resultsStale?: boolean;
   /** Headline peak per result mode for the legend, e.g. `Peak 2.147 MPa` (2026-09 review F8). */
   resultPeaks?: Partial<Record<ResultMode, string>>;
+  /** Where the solver located those peaks on the result surface mesh, when it did. */
+  resultPeakLocations?: Partial<Record<"stress" | "displacement", ResultPeakLocation>>;
   resultPlaybackBufferCache?: PackedPreparedPlaybackCache | null;
   resultPlaybackFrameController?: ResultPlaybackFrameController;
   meshSummary?: MeshSummary;
@@ -475,6 +477,18 @@ export function CadViewer(props: CadViewerProps) {
                 showDeformed={effectiveShowDeformed}
                 deformationScale={props.stressExaggeration}
                 playbackController={props.resultPlaybackFrameController}
+              />
+            )}
+            {effectiveViewMode === "results" && solverSurfaceResult && props.surfaceMesh && !props.resultPlaybackPlaying && (
+              <ResultPeakCallout
+                surfaceMesh={props.surfaceMesh}
+                location={resultPeakLocationForMode(props.resultPeakLocations, props.resultMode, stressComponent)}
+                label={props.resultPeaks?.[props.resultMode]}
+                footprint={solverSurfaceFootprint}
+                displacementField={solverSurfaceResult.displacementField}
+                showDeformed={effectiveShowDeformed}
+                deformationScale={props.stressExaggeration}
+                displacementPeakMagnitude={solverSurfaceResult.displacementPeakMagnitude}
               />
             )}
             <group rotation={baseModelRotation}>
@@ -4035,6 +4049,85 @@ function SurfaceResultProbeMarkers({
     ] as [number, number, number];
     return [<UserResultProbeMarker key={reading.id} reading={reading} point={point} index={index} />];
   });
+}
+
+/** The located peak for the visible result, or none: other modes and stress components have none. */
+export function resultPeakLocationForMode(
+  locations: CadViewerProps["resultPeakLocations"],
+  resultMode: ResultMode,
+  stressComponent: StressComponent
+): ResultPeakLocation | undefined {
+  if (resultMode === "stress") return stressComponent === "von_mises" ? locations?.stress : undefined;
+  if (resultMode === "displacement") return locations?.displacement;
+  return undefined;
+}
+
+/**
+ * Display-space point of a peak located at a solver surface node. It goes through the
+ * same deformation and footprint mapping as result probes, so the callout sits on the
+ * rendered surface; a location on another mesh or outside this one maps to nothing.
+ */
+export function resultPeakCalloutPoint({
+  surfaceMesh,
+  location,
+  footprint,
+  displacementField,
+  showDeformed,
+  deformationScale,
+  displacementPeakMagnitude
+}: {
+  surfaceMesh: SolverSurfaceMesh;
+  location: ResultPeakLocation | undefined;
+  footprint: { scale: number; position: [number, number, number] } | null;
+  displacementField?: ResultField;
+  showDeformed: boolean;
+  deformationScale: number;
+  displacementPeakMagnitude?: number;
+}): [number, number, number] | null {
+  if (!location || location.surfaceMeshId !== surfaceMesh.id) return null;
+  const nodeIndex = location.surfaceNodeIndex;
+  if (!Number.isInteger(nodeIndex) || nodeIndex < 0 || nodeIndex >= surfaceMesh.nodes.length) return null;
+  const triangle = surfaceMesh.triangles.find((candidate) => candidate.includes(nodeIndex));
+  if (!triangle) return null;
+  const vertex = triangle.indexOf(nodeIndex);
+  const localPoint = solverSurfaceProbePoint({
+    surfaceMesh,
+    anchor: {
+      kind: "surface",
+      surfaceMeshId: surfaceMesh.id,
+      triangle: [...triangle] as [number, number, number],
+      barycentric: [vertex === 0 ? 1 : 0, vertex === 1 ? 1 : 0, vertex === 2 ? 1 : 0]
+    },
+    displacementField,
+    showDeformed,
+    deformationScale,
+    displacementPeakMagnitude
+  });
+  if (!localPoint || !localPoint.every(Number.isFinite)) return null;
+  const scale = footprint?.scale ?? 1;
+  const offset = footprint?.position ?? [0, 0, 0];
+  return [
+    localPoint[0] * scale + offset[0],
+    localPoint[1] * scale + offset[1],
+    localPoint[2] * scale + offset[2]
+  ];
+}
+
+function ResultPeakCallout({
+  label,
+  ...placement
+}: Parameters<typeof resultPeakCalloutPoint>[0] & { label?: string }) {
+  const point = label ? resultPeakCalloutPoint(placement) : null;
+  if (!point) return null;
+  // The legend carries the same text for assistive technology; this is its on-model pointer.
+  return (
+    <Html position={point} zIndexRange={[3, 2]} pointerEvents="none">
+      <span className="result-peak-callout" aria-hidden="true">
+        <span className="result-peak-callout-dot" />
+        <span className="result-peak-callout-label">{label}</span>
+      </span>
+    </Html>
+  );
 }
 
 export function buildSolverSurfaceOutlineGeometry(surfaceMesh: SolverSurfaceMesh): THREE.BufferGeometry {
