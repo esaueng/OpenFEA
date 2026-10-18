@@ -2,6 +2,7 @@ export {
   autoSolverBackend,
   buildOpenFeaCoreModelForStudy,
   coreMeshStatisticsForStudy,
+  structuredBlockMeshCounts,
   geometrySourceForStudy,
   explicitSolverBackend,
   hasActualCoreVolumeMesh,
