@@ -2,11 +2,10 @@
    Shared contracts live in ./RightPanelProps; panels never import each other. */
 import { useEffect, useRef, useState } from "react";
 
-import { AlertTriangle, ArrowDown, Atom, Eye, Factory, Grid3x3, Maximize2, RotateCcw, Ruler, ScanLine, Upload, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowDown, Atom, Eye, Factory, RotateCcw, Upload, Wrench } from "lucide-react";
 
 import { GEOMETRY_FILE_ACCEPT, PREVIEW_ONLY_GEOMETRY_NOTICE, STL_PREVIEW_SCOPE_NOTE, SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../../geometryFormats";
 
-import { DEFAULT_SECTION_PLANE } from "../../workspaceViewTypes";
 
 import { type SampleAnalysisType, type SampleModelId } from "../../lib/api";
 
@@ -25,7 +24,7 @@ import { SAMPLE_OPTIONS, sampleOptionFor } from "../sampleOptions";
 import type { RightPanelProps } from "./RightPanelProps";
 import { Panel } from "./PanelChrome";
 import { Callout, Collapsible, ConceptCard, HelpLabel, Info, ModelDimensions, SectionTitle, SupportIcon, formatEquivalentForce } from "./PanelChrome";
-export function ModelPanel({ project, displayModel, study, viewMode, showDimensions, sectionPlane = DEFAULT_SECTION_PLANE, sampleModel, sampleAnalysisType = "static_stress", onFitView, onRotateModel, onResetModelOrientation, onViewModeChange, onToggleDimensions, onSectionPlaneChange, onLoadSample, onUploadModel, onRepairModel, isRepairingModel = false }: RightPanelProps) {
+export function ModelPanel({ project, displayModel, study, showDimensions, sampleModel, sampleAnalysisType = "static_stress", onRotateModel, onResetModelOrientation, onLoadSample, onUploadModel, onRepairModel, isRepairingModel = false }: RightPanelProps) {
   const [confirmSampleLoad, setConfirmSampleLoad] = useState(false);
   const [pendingSampleModel, setPendingSampleModel] = useState<SampleModelId>(sampleModel);
   const [pendingAnalysisType, setPendingAnalysisType] = useState<SampleAnalysisType>(sampleAnalysisType);
@@ -156,7 +155,7 @@ export function ModelPanel({ project, displayModel, study, viewMode, showDimensi
      closed collapsibles below the actions; a blank project inverts that, since
      getting a model in is its only state. */
   return (
-    <Panel title="Model" step="model" helper="Inspect the 3D part. Orbit with left-drag, pan with right-drag, zoom with scroll." study={study}>
+    <Panel title="Model" question="Is this the right part?" step="model" helper="Inspect the 3D part. Orbit with left-drag, pan with right-drag, zoom with scroll." study={study}>
       {uploadInput}
       {isBlankProject && uploadAction}
       {isBlankProject && parametricBuilder}
@@ -191,60 +190,15 @@ export function ModelPanel({ project, displayModel, study, viewMode, showDimensi
         )}
         <Info label="Units" value={project.unitSystem === "US" ? "in" : "mm"} />
       </div>
-      {/* View tools share one section: each used to be a lone full-width button,
-          one under an eyebrow that only repeated its label and one trailed by an
-          orphaned help icon. Help now sits on the group each button opens. */}
-      <SectionTitle helpId="viewTools">View</SectionTitle>
-      <div className="view-tool-grid">
-        <button className={showDimensions ? "primary" : "secondary"} type="button" aria-pressed={showDimensions} onClick={onToggleDimensions}>
-          <Ruler size={15} />
-          {showDimensions ? "Hide dimensions" : "Show dimensions"}
-        </button>
-        <button
-          className={sectionPlane.enabled ? "primary" : "secondary"}
-          type="button"
-          aria-pressed={sectionPlane.enabled}
-          onClick={() => onSectionPlaneChange?.({ ...sectionPlane, enabled: !sectionPlane.enabled })}
-        >
-          <ScanLine size={15} />
-          {sectionPlane.enabled ? "Close section" : "Open section"}
-        </button>
-        <button className="secondary" type="button" onClick={onFitView}><Maximize2 size={15} />Fit view</button>
-        <button type="button" className={viewMode === "mesh" ? "primary" : "secondary"} aria-pressed={viewMode === "mesh"} onClick={() => onViewModeChange(viewMode === "mesh" ? "model" : "mesh")}>
-          <Grid3x3 size={15} />
-          {viewMode === "mesh" ? "Hide mesh" : "Show mesh"}
-        </button>
-      </div>
+      {/* Fit, views, section, mesh and dimensions live on the viewer toolbar now (plan 035,
+          increment 3), so they work from every step. The measured dimensions still read
+          here when they are switched on. */}
       {showDimensions && (
         <div className="view-tool-detail">
           <HelpLabel helpId="dimensions">Overall dimensions</HelpLabel>
           <ModelDimensions displayModel={displayModel} />
         </div>
       )}
-      {sectionPlane.enabled ? (
-        <div className="section-plane-controls view-tool-detail">
-          <HelpLabel helpId="sectionPlane">Open section</HelpLabel>
-          <div className="segmented" role="group" aria-label="Section plane axis">
-            {(["x", "y", "z"] as const).map((axis) => (
-              <button
-                key={axis}
-                className={sectionPlane.axis === axis ? "active" : ""}
-                type="button"
-                aria-pressed={sectionPlane.axis === axis}
-                onClick={() => onSectionPlaneChange?.({ ...sectionPlane, axis })}
-              >{axis.toUpperCase()}</button>
-            ))}
-          </div>
-          <label className="field">
-            <span>Normalized offset · {Math.round(sectionPlane.offset * 100)}%</span>
-            <input type="range" min="0" max="1" step="0.01" value={sectionPlane.offset} onChange={(event) => onSectionPlaneChange?.({ ...sectionPlane, offset: Number(event.currentTarget.value) })} />
-          </label>
-          <button className="secondary wide" type="button" aria-pressed={sectionPlane.flipped} onClick={() => onSectionPlaneChange?.({ ...sectionPlane, flipped: !sectionPlane.flipped })}>
-            <RotateCcw size={15} />Flip cut side
-          </button>
-          <p className="panel-copy">Geometry, mesh, result contours, feature edges, and the undeformed outline are clipped. Loads, supports, probes, and annotations stay visible.</p>
-        </div>
-      ) : null}
       <SectionTitle helpId="orientation">Orientation</SectionTitle>
       <div className="orientation-controls" role="group" aria-label="Axis view">
         {(["x", "y", "z"] as const).map((axis) => (

@@ -66,7 +66,7 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
   const loadProfile = isDynamicLoadProfile(dynamic?.loadProfile) ? dynamic.loadProfile : "ramp";
   const loadProfileHelper = DYNAMIC_LOAD_PROFILE_OPTIONS.find((option) => option.value === loadProfile)?.helper ?? DEFAULT_DYNAMIC_LOAD_PROFILE_HELPER;
   return (
-    <Panel title="Run" step="run" helper={modal ? "Solve for natural frequencies and normalized mode shapes." : thermal ? "Solve for steady temperature and heat-flux fields." : "Run the simulation to estimate stress and displacement."} study={study}>
+    <Panel title="Run" question="Ready to solve?" step="run" helper={modal ? "Solve for natural frequencies and normalized mode shapes." : thermal ? "Solve for steady temperature and heat-flux fields." : "Run the simulation to estimate stress and displacement."} study={study}>
       <SectionTitle helpId="runReadiness">Readiness</SectionTitle>
       <div className="checklist">
         {runReadiness.map(({ label, done, blockers }) => (

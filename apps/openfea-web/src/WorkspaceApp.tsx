@@ -2796,6 +2796,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             unitSystem={displayUnitSystem}
             themeMode={themeMode}
             projectionMode={projectionMode}
+            onFitView={handleFitDefaultView}
+            onToggleDimensions={() => setShowDimensions((value) => !value)}
+            onViewModeChange={setViewMode}
+            onSectionPlaneChange={setSectionPlane}
             onProjectionModeChange={setProjectionMode}
             fitSignal={fitSignal}
             viewAxis={viewAxis}
