@@ -44,7 +44,7 @@ dark canvas.
 7. **Report cover leads with the verdict.** The order is verdict, a KPI row,
    then a large figure.
 
-## Deviations from the Esau system (decision required)
+## Deviations from the Esau system (accepted 2026-10-18)
 
 | Esau rule | This plan | Why |
 | - | - | - |
@@ -52,8 +52,8 @@ dark canvas.
 | Uppercase `mono-eyebrow` labels sections | No uppercase eyebrows **inside panels**. Section labels use sentence-case 14px/500. Eyebrows stay in chrome and in the report. | Uppercase tracked mono reads as instrument output, not as a question. |
 | `fs-xl` 22px is the ceiling in chrome | Kept. The panel question title is 22px. | — |
 
-If you accept these, amend the Esau README in the same week. Otherwise the
-next Open\* app will copy the 13px panels.
+The maintainer accepted both on 2026-10-18. Amend the Esau README to match, or
+the next Open\* app will copy the 13px panels. Increment 0 shipped as #166.
 
 ## Increments
 
@@ -63,21 +63,26 @@ increment N (see the stacking trap below). Recommended merge order:
 **0 → 1 → 2 → 3 → 4 → 5 → 6**. Increments 5 and 6 are independent of 1–4 and
 can run in parallel sessions.
 
-### 0 — Panel type and tokens (small, enables everything else)
+### 0 — Panel type and tokens (implemented in #166)
 
-- `theme/tokens.css`: add `--panel-fs: var(--fs-md)`,
-  `--panel-title-fs: var(--fs-xl)` and `--panel-gap: var(--sp-5)`. Re-declare
-  them in the `.theme-light` scope too, because they are composed tokens
-  (trap 2).
-- `styles/app.css`: scope the 14px body to `.context-panel` (the right panel).
-  Leave `.topbar`, `.statusbar` and the viewer overlays at 13px.
-- Replace `.panel-section-title` eyebrow styling inside panels with sentence
-  case. Grep `appCss.test.ts` for each selector you touch first. Several
-  eyebrow literals are pinned.
-- Primary panel controls (Next, the Direction radios, Show-on-model radios)
-  use `--control-h-touch` (40px).
-- **Done when** the panel text is 14px in both themes, chrome is unchanged, and
-  `appCss.test.ts` and the target-size tests pass.
+As built (this differs from the first draft of this section):
+
+- `theme/tokens.css` gains a panel type tier: `--panel-fs-mini/xs/sm/base` =
+  11/12/13/14px. These are plain values, not composed tokens, so they need no
+  light-scope copy.
+- `.side-panel` (the right panel; there is no `.context-panel`) remaps
+  `--fs-mini..--fs-base` onto that tier and restates `font-size`. Every panel
+  rule moves up one step, and the top bar, status bar, overlays and portalled
+  popovers stay at 13px.
+- `:where(.side-panel) button` keeps button labels at 13px. At 14px,
+  "Show dimensions" wrapped in the two-up View grid.
+- `.section-title`, `.editable-list h3`, `.panel-eyebrow` and the result KPI
+  labels leave the uppercase mono eyebrow group. Their markup is now sentence
+  case.
+- Back/Next use `--control-h-touch`. The Direction and Show-on-model radios
+  pick it up when increments 2 and 4 build them.
+- The collapsible subtitle wraps instead of truncating at 390px.
+- The question title at `--fs-xl` and the panel gap belong to increment 2.
 
 ### 1 — Horizontal stepper in the top bar
 
