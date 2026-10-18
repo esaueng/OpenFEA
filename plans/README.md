@@ -163,6 +163,7 @@ Dependency notes:
 | 026 End-to-End QA Remediation | COMPLETE | Eleven live-verified defects from the E2E testing report: imperial display rounding to zero, an unwired domain validator behind the Run gate, undo/redo persistence, invalid dynamic drafts, four accessibility repairs, the start-screen flash, upload copy, and lazy/precache budgets. |
 | 027 UI/UX Overhaul | COMPLETE | Increments A (Plex on screen), B (panel information architecture), D (copy sweep) and E (analysis-type switch warning) merged 2026-09-05 as PRs #102–#105; C (viewer chrome) withdrawn after measurement. |
 | 028 Interaction Review Remediation | IN PROGRESS | Twenty-six live-verified defects from the 2026-09-12 design and interaction review, staged: Stage 0 setup guards and number/word fixes (this branch), Stage 1 feedback layer, Stage 2 selection and mesh visibility, Stage 3 product decisions. |
+| 035 Guided Design Overhaul | PROPOSED | Chosen direction from three mockups: a horizontal stepper in the top bar replaces the rail, one question per panel, a floating viewer toolbar, verdict-first results, a single-page start screen, a quieter status bar and a verdict-first report cover. Seven increments; 14px panel type needs a decision. |
 
 Run 2 was non-interactive: plans 006–010 are the top findings by leverage (impact ÷ effort, confidence-weighted), selected by default per the advisor skill's non-interactive rule rather than by maintainer choice. Re-cut as desired.
 
