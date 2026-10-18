@@ -16,7 +16,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { meshStepToMshV2 } from "./wasmMesher";
 import { generateBentShellStandStep, generateThinClipStandStep, generateThinSheetStandStep } from "./stepFixtures";
-import { MESH_QUALITY_REJECT_MIN_SICN } from "./meshQualityGate";
+import { MESH_QUALITY_REJECT_MIN_SICN, MESH_QUALITY_WARN_MIN_SICN } from "./meshQualityGate";
+import { parseGmshMeshToCoreVolumeMesh } from "./gmshMeshParser";
 
 const MEDIUM_PRESET_MM = 12;
 
@@ -29,13 +30,39 @@ describe("STEP Tet10 elevation rescue", () => {
     });
 
     expect(meshed.elevation).toBe("straight_edge");
-    // The 3 mm shell's linear mesh is healthy — the elevation was the problem,
-    // so the Netgen pass must not have been needed.
-    expect(meshed.optimizer).toBeUndefined();
+    // Corner-node optimization is attempted before the straight-edge rescue,
+    // but this thin shell still needs the fallback to clear the same floor.
+    expect(meshed.optimizer).toBe("netgen");
     expect(meshed.qualityMinSICN).toBeDefined();
     expect(meshed.qualityMinSICN!).toBeGreaterThanOrEqual(MESH_QUALITY_REJECT_MIN_SICN);
     // Still a quadratic mesh: msh2 element type 11 = Tet10.
     expect(/^\d+ 11 /m.test(meshed.msh)).toBe(true);
+  }, 120_000);
+
+  test.each([8, 6])("filleted block retains valid CAD-curved Tet10 at %s mm (Fine/Ultra)", async (meshSizeMm) => {
+    const step = readFileSync(new URL("../fixtures/filleted-block.step", import.meta.url), "utf8");
+    const meshed = await meshStepToMshV2(step, { elementOrder: 2, meshSizeMm });
+    expect(meshed.elevation).toBe("curved");
+    expect(meshed.optimizer).toBe("netgen");
+    expect(meshed.qualityMinSICN).toBeGreaterThanOrEqual(MESH_QUALITY_WARN_MIN_SICN);
+    expect(meshed.elementOrderFallback).toBeUndefined();
+    expect(meshed.qualityRefinement).toBeUndefined();
+    const artifact = parseGmshMeshToCoreVolumeMesh(meshed.msh, { units: "mm" });
+    expect(artifact.elements.every((element) => element.type === "Tet10")).toBe(true);
+    expect(artifact.metadata.meshQuality.invertedElementCount).toBe(0);
+    expect(artifact.metadata.meshQuality.minTetVolume).toBeGreaterThan(0);
+    expect(artifact.metadata.connectedComponentCount).toBe(1);
+
+    // The analytic boundary is the 3 mm offset of [3,57]x[3,37]x[3,17].
+    // Verify actual boundary coordinates, not just the elevation label: a
+    // straight-edge fallback would put fillet midside nodes inside this skin.
+    const boundaryNodes = new Set(artifact.surfaceFacets.flatMap((facet) => facet.nodes));
+    expect(boundaryNodes.size).toBeGreaterThan(0);
+    for (const node of boundaryNodes) {
+      const point = artifact.nodes.coordinates.slice(node * 3, node * 3 + 3).map((value) => value * 1_000);
+      const distance = Math.hypot(...point.map((value, axis) => Math.max(3 - value, value - [57, 37, 17][axis]!, 0)));
+      expect(distance).toBeCloseTo(3, 6);
+    }
   }, 120_000);
 
   test("geometry that elevates cleanly keeps gmsh's curved elevation", async () => {
