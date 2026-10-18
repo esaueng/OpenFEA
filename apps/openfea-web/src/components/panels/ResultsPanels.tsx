@@ -27,7 +27,7 @@ const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : us
 import type { RightPanelProps } from "./RightPanelProps";
 import { Panel, formatProbeReading, themedPortalRoot } from "./PanelChrome";
 import { STRESS_EXAGGERATION_COMMIT_DELAY_MS, stressComponentLabel } from "./RightPanelProps";
-import { Callout, Headline, HelpLabel, Info, SectionTitle, formatLoadCapacity, interpolatedFrameTimeSeconds, peakDisplacementFrame } from "./PanelChrome";
+import { Callout, Collapsible, Headline, HelpLabel, Info, SectionTitle, formatLoadCapacity, interpolatedFrameTimeSeconds, peakDisplacementFrame } from "./PanelChrome";
 export function ResultsPanel(props: RightPanelProps) {
   if (!props.resultSummary) {
     return (
@@ -46,6 +46,7 @@ export function ResultsPanel(props: RightPanelProps) {
 }
 
 export function ThermalResultsPanelContent({
+  footerSlot,
   project,
   study,
   resultSummary,
@@ -68,15 +69,17 @@ export function ThermalResultsPanelContent({
 }: RightPanelProps & { resultSummary: ThermalResultSummary }) {
   return (
     <Panel title="Thermal results" step="results" helper="Inspect steady temperature and conductive heat-flux fields on the solved mesh." study={study}>
-      <div className="segmented" role="group" aria-label="Thermal result field">
-        <button type="button" className={resultMode === "temperature" ? "active" : ""} aria-pressed={resultMode === "temperature"} onClick={() => onResultModeChange("temperature")}>Temperature</button>
-        <button type="button" className={resultMode === "heat_flux" ? "active" : ""} aria-pressed={resultMode === "heat_flux"} onClick={() => onResultModeChange("heat_flux")}>Heat flux</button>
-      </div>
       <Headline items={[
         { label: "Min temperature", value: formatResultMetric(resultSummary.minTemperature, resultSummary.temperatureUnits) },
         { label: "Max temperature", value: formatResultMetric(resultSummary.maxTemperature, resultSummary.temperatureUnits) },
         { label: "Peak heat flux", value: formatResultMetric(resultSummary.maxHeatFlux, resultSummary.heatFluxUnits) }
       ]} />
+      {/* Answer first, then what to colour the model by (plan 035, increment 4). */}
+      <SectionTitle>Show on model</SectionTitle>
+      <div className="segmented" role="group" aria-label="Thermal result field">
+        <button type="button" className={resultMode === "temperature" ? "active" : ""} aria-pressed={resultMode === "temperature"} onClick={() => onResultModeChange("temperature")}>Temperature</button>
+        <button type="button" className={resultMode === "heat_flux" ? "active" : ""} aria-pressed={resultMode === "heat_flux"} onClick={() => onResultModeChange("heat_flux")}>Heat flux</button>
+      </div>
       {project.unitSystem === "US" && (
         <p className="muted">Imperial display converts temperatures only. Heat flux and heat rates stay in {resultSummary.heatFluxUnits} and W.</p>
       )}
@@ -89,9 +92,10 @@ export function ThermalResultsPanelContent({
         <Info label="Boundary reaction" value={formatResultMetric(resultSummary.reactionHeat, "W")} />
         <Info label="Result source" value={resultSourceLabelForPanel(resultSummary)} />
       </div>
+      <ResultActionsSlot slot={footerSlot}>
       <div className="result-actions">
         {onGenerateReport && (
-          <button className="primary wide" type="button" disabled={reportBusy || reportDisabled} onClick={() => void onGenerateReport()}><FileDown size={18} />{reportBusy ? "Generating…" : "Generate report"}</button>
+          <button className="primary wide" type="button" disabled={reportBusy || reportDisabled} onClick={() => void onGenerateReport()}><FileDown size={18} />{reportBusy ? "Generating…" : "Download report"}</button>
         )}
         <ResultExportMenu items={resultExportMenuItems({ onExportResultPng, onExportResultHtml, onExportResultData, onSaveProject, pngExportBusy, htmlExportBusy, dataExportBusy, reportDisabled }, "state")} />
       </div>
@@ -99,6 +103,7 @@ export function ThermalResultsPanelContent({
       {pngExportError && <p className="panel-warning">{pngExportError}</p>}
       {htmlExportError && <p className="panel-warning">{htmlExportError}</p>}
       {dataExportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{dataExportError}</p>}
+      </ResultActionsSlot>
     </Panel>
   );
 }
@@ -299,6 +304,8 @@ export function resultExportMenuItems(source: ResultExportMenuSource, scope: "st
   ];
 }
 
+const EXPORT_MENU_MIN_WIDTH = 240;
+
 function ResultExportMenu({ items }: { items: ResultExportItem[] }) {
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>();
@@ -312,7 +319,9 @@ function ResultExportMenu({ items }: { items: ResultExportItem[] }) {
     if (!trigger || typeof window === "undefined") return;
     const triggerRect = trigger.getBoundingClientRect();
     const menuRect = menuRef.current?.getBoundingClientRect();
-    const menuWidth = triggerRect.width;
+    // Never narrower than its items: in the Results footer the trigger is ~100px wide,
+    // and a menu that narrow wrapped every item and ran off the bottom of the screen.
+    const menuWidth = Math.max(triggerRect.width, EXPORT_MENU_MIN_WIDTH);
     const position = getViewportTooltipPosition({
       triggerRect,
       viewport: { width: window.innerWidth, height: window.innerHeight },
@@ -326,6 +335,10 @@ function ResultExportMenu({ items }: { items: ResultExportItem[] }) {
   useIsomorphicLayoutEffect(() => {
     if (!open) return;
     updateMenuPosition();
+    // The first pass guesses the menu's height; measure again once it has rendered so
+    // a menu opened from the footer flips above its trigger by its real height.
+    const frame = window.requestAnimationFrame(updateMenuPosition);
+    return () => window.cancelAnimationFrame(frame);
   }, [open, updateMenuPosition]);
 
   useEffect(() => {
@@ -396,6 +409,7 @@ function ResultExportMenu({ items }: { items: ResultExportItem[] }) {
 }
 
 export function ResultsPanelContent({
+  footerSlot,
   displayModel,
   resultControlsBusy = false,
   resultMode,
@@ -553,7 +567,7 @@ export function ResultsPanelContent({
         </label>
       )}
       <div className={`failure-assessment ${assessment.status}`}>
-        <span className="assessment-icon"><AssessmentIcon size={20} /></span>
+        <span className="assessment-icon"><AssessmentIcon size={26} strokeWidth={1.8} aria-hidden="true" /></span>
         <span>
           <strong>{assessment.title}</strong>
           <small>{assessment.message}</small>
@@ -565,6 +579,9 @@ export function ResultsPanelContent({
         { label: "Safety factor", value: formatResultNumber(resultSummary.safetyFactor) },
         { label: "Reaction force", value: formatResultMetric(resultSummary.reactionForce, resultSummary.reactionForceUnits) }
       ]} />
+      {/* Where the numbers came from, one line under them. The full run details fold away
+          below; preview, estimate and legacy results keep their warnings in view. */}
+      <p className="result-provenance">{resultSourceLabelForPanel(resultSummary)} · {formatMeshSourceLabel(resultProvenance?.meshSource, displayModel)}</p>
       {hasPlayback && (
         <div className="dynamic-playback">
           <SectionTitle helpId="resultFrame">Frame</SectionTitle>
@@ -631,7 +648,7 @@ export function ResultsPanelContent({
           <Info label="Peak displacement" value={peakDisplacement ? `${formatDisplayNumber(peakDisplacement.value)} ${peakDisplacement.units} at ${peakDisplacement.timeSeconds.toFixed(4)} s` : "Unavailable"} />
         </div>
       )}
-      <SectionTitle helpId="resultMode">Result mode</SectionTitle>
+      <SectionTitle helpId="resultMode">Show on model</SectionTitle>
       <div className="segmented result-mode" role="group" aria-label="Result mode" aria-busy={resultControlsBusy || undefined} title={resultControlsBusy ? "Preparing report figures; the view switches briefly." : undefined}>
         <button type="button" className={resultMode === "stress" ? "active" : ""} aria-pressed={resultMode === "stress"} disabled={resultControlsBusy} onClick={() => onResultModeChange("stress")}>Stress</button>
         <button type="button" className={resultMode === "displacement" ? "active" : ""} aria-pressed={resultMode === "displacement"} disabled={resultControlsBusy} onClick={() => onResultModeChange("displacement")}>Displacement</button>
@@ -639,6 +656,35 @@ export function ResultsPanelContent({
         {resultFields.some((field) => field.type === "acceleration") && <button type="button" className={resultMode === "acceleration" ? "active" : ""} aria-pressed={resultMode === "acceleration"} onClick={() => onResultModeChange("acceleration")}>Acceleration</button>}
         <button type="button" className={resultMode === "safety_factor" ? "active" : ""} aria-pressed={resultMode === "safety_factor"} onClick={() => onResultModeChange("safety_factor")}>Safety factor</button>
       </div>
+      <p className="panel-copy">{resultModeExplanation(resultMode)}</p>
+      {blockPreviewResults && <p className="panel-warning">{PREVIEW_GEOMETRY_WARNING}</p>}
+      {legacyResultWarning && <p className="panel-warning">{legacyResultWarning}</p>}
+      {reactionForceInvalid && <p className="panel-warning">{INVALID_REACTION_WARNING}</p>}
+      {unitMissingDiagnostic && <p className="panel-warning">{unitMissingDiagnostic}</p>}
+      {(resultProbes.length > 0 || resultProbeLimitReached) && (
+        <section className="result-probe-list" aria-label="Pinned result probes">
+          <div className="result-probe-list-header">
+            <SectionTitle helpId="pinnedProbes">Pinned probes</SectionTitle>
+            {resultProbes.length > 0 && onClearResultProbes && <button className="text-button" type="button" onClick={onClearResultProbes}>Clear all</button>}
+          </div>
+          {resultProbeLimitReached && <p className="panel-warning" role="status">Probe limit reached. Remove a pin to place another.</p>}
+          {resultProbes.length > 0 && (
+            <ol>
+              {resultProbes.map((probe, index) => (
+                <li key={probe.id}>
+                  <span>
+                    <strong>{`P${index + 1}`}</strong>
+                    <small>{formatProbeReading(probe)}</small>
+                    {probe.governingVariantName && <small>{`Governed near probe by ${probe.governingVariantName}`}</small>}
+                  </span>
+                  {onRemoveResultProbe && <button className="icon-button" type="button" aria-label={`Remove probe ${index + 1}`} onClick={() => onRemoveResultProbe(probe.id)}><X size={14} /></button>}
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+      )}
+      <Collapsible title="Display options" subtitle={resultMode === "stress" ? "Measure, color scale, deformation" : "Color scale, deformation"}>
       {resultMode === "stress" && stressComponents.length > 0 && (
         <div className="field">
           <SectionTitle helpId="stressMeasure">Stress measure</SectionTitle>
@@ -692,29 +738,6 @@ export function ResultsPanelContent({
           <small>{`Automatic run range: ${formatDisplayNumber(resultColorScaleControl.automaticMin)}–${formatDisplayNumber(resultColorScaleControl.automaticMax)}${resultColorScaleControl.units ? ` ${resultColorScaleControl.units}` : ""}`}</small>
         </section>
       )}
-      {(resultProbes.length > 0 || resultProbeLimitReached) && (
-        <section className="result-probe-list" aria-label="Pinned result probes">
-          <div className="result-probe-list-header">
-            <SectionTitle helpId="pinnedProbes">Pinned probes</SectionTitle>
-            {resultProbes.length > 0 && onClearResultProbes && <button className="text-button" type="button" onClick={onClearResultProbes}>Clear all</button>}
-          </div>
-          {resultProbeLimitReached && <p className="panel-warning" role="status">Probe limit reached. Remove a pin to place another.</p>}
-          {resultProbes.length > 0 && (
-            <ol>
-              {resultProbes.map((probe, index) => (
-                <li key={probe.id}>
-                  <span>
-                    <strong>{`P${index + 1}`}</strong>
-                    <small>{formatProbeReading(probe)}</small>
-                    {probe.governingVariantName && <small>{`Governed near probe by ${probe.governingVariantName}`}</small>}
-                  </span>
-                  {onRemoveResultProbe && <button className="icon-button" type="button" aria-label={`Remove probe ${index + 1}`} onClick={() => onRemoveResultProbe(probe.id)}><X size={14} /></button>}
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-      )}
       {/* One deformation control in every structural mode; it used to render only in Stress (2026-09 review D25). */}
       {(
         <label className="field range-field">
@@ -734,20 +757,10 @@ export function ResultsPanelContent({
         </label>
       )}
       <label className="toggle"><input type="checkbox" aria-label="Deformed shape" checked={showDeformed && !blockPreviewResults} disabled={blockPreviewResults} onChange={onToggleDeformed} /> <HelpLabel helpId="deformedShape">Deformed shape</HelpLabel></label>
-      {blockPreviewResults && <p className="panel-warning">{PREVIEW_GEOMETRY_WARNING}</p>}
-      {legacyResultWarning && <p className="panel-warning">{legacyResultWarning}</p>}
-      {reactionForceInvalid && <p className="panel-warning">{INVALID_REACTION_WARNING}</p>}
-      {unitMissingDiagnostic && <p className="panel-warning">{unitMissingDiagnostic}</p>}
-      <p className="panel-copy">{resultModeExplanation(resultMode)}</p>
-      <div className="summary-box">
-        <Info label="Result source" value={resultSourceLabelForPanel(resultSummary)} />
-        <Info label="Mesh source" value={formatMeshSourceLabel(resultProvenance?.meshSource, displayModel)} />
-        <Info label="Solver method" value={solverMethodForResult(resultSummary, study)} />
-        <Info label="Runner" value={solverRunnerLabelForResult(resultProvenance)} />
-      </div>
+      <div className="legend"><small>Low</small><span style={resultColorScale ? { background: resultScaleCssGradient(resultColorScale) } : undefined} /><small>High</small></div>
+      </Collapsible>
       {canEstimateLoad && (
-        <>
-          <SectionTitle helpId="targetSafetyFactor">Reverse check</SectionTitle>
+        <Collapsible title="Reverse check" subtitle="Load for a target safety factor" helpId="targetSafetyFactor">
           {/* The linearity caveat used to appear only in the PDF (2026-09 review F9). */}
           <p className="muted">Linear scaling of this result against the material yield limit. Verify with a run at the target load.</p>
           <div className="load-capacity-tool">
@@ -774,14 +787,22 @@ export function ResultsPanelContent({
               <small>{`Max force at 1.0 FoS · ${formatLoadCapacity(loadCapacityAtOne.allowableLoad)} ${loadCapacityAtOne.loadUnits}`}</small>
             </div>
           </div>
-        </>
+        </Collapsible>
       )}
-      <div className="legend"><small>Low</small><span style={resultColorScale ? { background: resultScaleCssGradient(resultColorScale) } : undefined} /><small>High</small></div>
+      <Collapsible title="Run details" subtitle={solverMethodForResult(resultSummary, study)}>
+      <div className="summary-box">
+        <Info label="Result source" value={resultSourceLabelForPanel(resultSummary)} />
+        <Info label="Mesh source" value={formatMeshSourceLabel(resultProvenance?.meshSource, displayModel)} />
+        <Info label="Solver method" value={solverMethodForResult(resultSummary, study)} />
+        <Info label="Runner" value={solverRunnerLabelForResult(resultProvenance)} />
+      </div>
+      </Collapsible>
+      <ResultActionsSlot slot={footerSlot}>
       {(onGenerateReport || exportMenuItems.length > 0) && (
         <div className="result-actions">
           {onGenerateReport && (
             <button className="primary wide" type="button" disabled={reportBusy || reportDisabled} onClick={() => void onGenerateReport({ targetSafetyFactor })}>
-              <FileDown size={18} />{reportBusy ? "Generating…" : "Generate report"}
+              <FileDown size={18} />{reportBusy ? "Generating…" : "Download report"}
             </button>
           )}
           <ResultExportMenu items={exportMenuItems} />
@@ -791,8 +812,18 @@ export function ResultsPanelContent({
       {pngExportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{pngExportError}</p>}
       {htmlExportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{htmlExportError}</p>}
       {dataExportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{dataExportError}</p>}
+      </ResultActionsSlot>
     </Panel>
   );
+}
+
+/**
+ * On screen, Results puts its report and export actions in the panel footer, where the
+ * other steps keep Continue; in server-rendered markup (and before the footer mounts)
+ * they stay inline at the end of the panel, so nothing is ever lost.
+ */
+function ResultActionsSlot({ slot, children }: { slot?: HTMLElement | null; children: ReactNode }) {
+  return slot ? createPortal(<div className="result-actions-footer">{children}</div>, slot) : <>{children}</>;
 }
 
 function resultSourceLabelForPanel(resultSummary: ResultSummary): string {

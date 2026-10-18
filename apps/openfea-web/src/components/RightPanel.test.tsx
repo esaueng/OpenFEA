@@ -770,7 +770,7 @@ describe("RightPanel payload mass controls", () => {
   test("does not expose report generation from the results panel", () => {
     const html = renderPanel("results");
 
-    expect(html).not.toContain("Generate report");
+    expect(html).not.toContain("Download report");
     expect(html).not.toContain("Report");
   });
 
@@ -2004,25 +2004,47 @@ describe("RightPanel payload mass controls", () => {
 
     const verdict = markup.indexOf("failure-assessment");
     const maxStress = markup.indexOf("Max stress");
-    const provenance = markup.indexOf("Result source");
-    const exports = markup.indexOf("Generate report");
+    const provenance = markup.indexOf("result-provenance");
+    const showOnModel = markup.indexOf(">Show on model<");
+    const displayOptions = markup.indexOf(">Display options<");
+    const exports = markup.indexOf("Download report");
 
     // Five stacked export buttons used to be the first thing in the panel, pushing the
     // number the user ran the solve for to row five of a nine-row table below them.
     expect(verdict).toBeGreaterThan(-1);
     expect(verdict).toBeLessThan(maxStress);
     expect(maxStress).toBeLessThan(provenance);
-    expect(provenance).toBeLessThan(exports);
+    // Plan 035: then one choice of what to colour the model by, with display tuning
+    // folded away below it, and the actions last.
+    expect(provenance).toBeLessThan(showOnModel);
+    expect(showOnModel).toBeLessThan(displayOptions);
+    expect(displayOptions).toBeLessThan(exports);
+    expect(markup).toMatch(/<details class="collapsible-section"><summary class="collapsible-summary"><span class="collapsible-title">Display options/);
+    expect(markup).toMatch(/<details class="collapsible-section"><summary class="collapsible-summary"><span class="collapsible-title">Run details/);
+    // The full provenance rows are still in the panel, inside Run details.
+    expect(markup).toContain("Result source");
 
     // The secondary exports collapse into one reachable "Export" menu next to the
     // primary action, rather than a column of five equally weighted buttons.
     expect(markup).toContain("export-menu-trigger");
     expect(markup).toContain('aria-haspopup="menu"');
-    expect(markup.indexOf("Generate report")).toBeLessThan(markup.indexOf("export-menu-trigger"));
+    expect(markup.indexOf("Download report")).toBeLessThan(markup.indexOf("export-menu-trigger"));
     // The verdict card already states the assessment title, so the row that repeated it
     // is gone. Matched as the row's own label, since the card's title can itself read
     // "Failure check unavailable".
     expect(markup).not.toContain("<span>Failure check</span>");
+  });
+
+  test("gives the last step's footer slot to the results actions instead of a dead Continue", () => {
+    // Results has nowhere to continue to. The footer keeps Back and hands its second slot
+    // to Download report and Export, which portal into it on screen. In static markup
+    // the slot is empty and the actions stay inline, so neither copy is ever lost.
+    const html = renderPanel("results", { onGenerateReport: vi.fn() });
+    expect(html).toContain('<div class="workflow-nav-slot"></div>');
+    expect(html).not.toContain('<span class="workflow-nav-label">Continue</span>');
+    expect(html).toContain("Download report");
+    // Every other step keeps its Continue button.
+    expect(renderPanel("run")).toContain('<span class="workflow-nav-label">Continue to results</span>');
   });
 
   test("offers one-click report generation with busy and error states", () => {
@@ -2030,7 +2052,7 @@ describe("RightPanel payload mass controls", () => {
     const busy = renderPanel("results", { onGenerateReport: vi.fn(), reportBusy: true });
     const failed = renderPanel("results", { onGenerateReport: vi.fn(), reportError: "Capture failed." });
 
-    expect(idle).toContain("Generate report");
+    expect(idle).toContain("Download report");
     expect(busy).toContain("Generating…");
     expect(busy).toContain('disabled=""');
     expect(failed).toContain('role="alert"');

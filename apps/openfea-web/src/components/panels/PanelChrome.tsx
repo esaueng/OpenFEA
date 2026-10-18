@@ -137,7 +137,7 @@ export function workflowStepsForStudy(study: Study) {
   return study.type === "modal_analysis" ? WORKFLOW_STEPS.filter((step) => step.id !== "loads") : WORKFLOW_STEPS;
 }
 
-export function WorkflowNav({ activeStep, study, onStepSelect }: { activeStep: StepId; study: Study; onStepSelect: (step: StepId) => void }) {
+export function WorkflowNav({ activeStep, study, onStepSelect, slotRef }: { activeStep: StepId; study: Study; onStepSelect: (step: StepId) => void; slotRef?: (element: HTMLDivElement | null) => void }) {
   const workflowSteps = workflowStepsForStudy(study);
   const index = workflowSteps.findIndex((step) => step.id === activeStep);
   const previousStep = index > 0 ? workflowSteps[index - 1] : undefined;
@@ -155,10 +155,14 @@ export function WorkflowNav({ activeStep, study, onStepSelect }: { activeStep: S
         <span className="workflow-nav-label">{backLabel}</span>
         <kbd>B</kbd>
       </button>
-      <button className="primary" type="button" title="Next workflow step (N)" aria-label={nextAriaLabel} disabled={!canGoNext} onClick={() => nextStep && canGoNext && onStepSelect(nextStep.id)}>
-        <span className="workflow-nav-label">{nextLabel}</span>
-        <kbd>N</kbd>
-      </button>
+      {/* The last step has nowhere to continue to; Results puts its own primary action
+          (Download report, Export) here instead of a permanently disabled button. */}
+      {!nextStep && slotRef ? <div className="workflow-nav-slot" ref={slotRef} /> : (
+        <button className="primary" type="button" title="Next workflow step (N)" aria-label={nextAriaLabel} disabled={!canGoNext} onClick={() => nextStep && canGoNext && onStepSelect(nextStep.id)}>
+          <span className="workflow-nav-label">{nextLabel}</span>
+          <kbd>N</kbd>
+        </button>
+      )}
     </div>
   );
 }
