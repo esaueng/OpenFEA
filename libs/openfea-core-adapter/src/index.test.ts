@@ -834,6 +834,32 @@ describe("static result envelopes", () => {
     expect(envelope?.summary).toMatchObject({ maxStress: 250, maxDisplacement: 2, reactionForce: 750 });
     expect(envelope?.fields.find((field) => field.type === "stress")).toMatchObject({ min: -4, max: 250 });
     expect(envelope?.fields.find((field) => field.type === "displacement")).toMatchObject({ min: 2, max: 2 });
+    // Without a surface mesh reference there is nothing to anchor a peak to.
+    expect(envelope?.summary).not.toHaveProperty("peakLocations");
+  });
+
+  test("locates envelope peaks at their solver surface nodes", () => {
+    const variant = (id: string, stress: number[], displacement: number[]): RunVariantResult => ({
+      id,
+      name: id,
+      kind: "case",
+      summary: { maxStress: Math.max(...stress), maxStressUnits: "MPa", maxDisplacement: Math.max(...displacement), maxDisplacementUnits: "mm", safetyFactor: 2, reactionForce: 1, reactionForceUnits: "N" },
+      fields: [
+        { id: `${id}-stress`, runId: "run", type: "stress", component: "von_mises", location: "node", values: stress, min: Math.min(...stress), max: Math.max(...stress), units: "MPa", surfaceMeshRef: "solver-surface" },
+        { id: `${id}-displacement`, runId: "run", type: "displacement", location: "node", values: displacement, vectors: displacement.map((value) => [0, 0, value] as [number, number, number]), min: Math.min(...displacement), max: Math.max(...displacement), units: "mm", surfaceMeshRef: "solver-surface" }
+      ]
+    } as RunVariantResult);
+    const envelope = staticEnvelopeVariant([
+      variant("case-a", [1, 7, 2, 3], [0.1, 0.2, 0.3, 0.9]),
+      variant("case-b", [4, 2, 9, 1], [0.5, 0.2, 0.1, 0.4])
+    ], "run");
+    expect(envelope.summary).toMatchObject({
+      maxStress: 9,
+      peakLocations: {
+        stress: { surfaceMeshId: "solver-surface", surfaceNodeIndex: 2 },
+        displacement: { surfaceMeshId: "solver-surface", surfaceNodeIndex: 3 }
+      }
+    });
   });
 });
 

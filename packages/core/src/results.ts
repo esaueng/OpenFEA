@@ -58,6 +58,20 @@ export type CoreTransientSummary = {
   peakAcceleration?: number;
 };
 
+/** A reported peak's position as a node of the solver surface mesh it was computed on. */
+export type CoreResultPeakLocation = {
+  surfaceMeshId: string;
+  surfaceNodeIndex: number;
+  /** Solver volume element whose unaveraged value is the reported peak (stress only). */
+  elementIndex?: number;
+};
+
+/** Present only for peaks that lie on the solver surface; an interior peak has no entry. */
+export type CoreResultPeakLocations = {
+  stress?: CoreResultPeakLocation;
+  displacement?: CoreResultPeakLocation;
+};
+
 export type CoreStructuralSolveSummary = {
   maxStress: number;
   maxStressUnits: "MPa";
@@ -68,6 +82,7 @@ export type CoreStructuralSolveSummary = {
   reactionForceUnits: "N";
   provenance: CoreSolveProvenance;
   transient?: CoreTransientSummary;
+  peakLocations?: CoreResultPeakLocations;
 };
 
 export type CoreModalModeSummary = {

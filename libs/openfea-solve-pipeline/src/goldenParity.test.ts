@@ -206,6 +206,9 @@ function additiveKeysAfterRecordedRunner(path: string): string[] {
   if (/^response\.diagnostics\[\d+\]$/u.test(path)) {
     return ["estimatedMatrixBytes", "preconditioner", "connections", "truncation"];
   }
+  // Where the reported peaks sit on the solver surface mesh (on-model callout);
+  // the recorded peak values themselves are still compared.
+  if (path === "response.summary") return ["peakLocations"];
   return [];
 }
 

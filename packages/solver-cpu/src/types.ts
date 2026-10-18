@@ -156,6 +156,8 @@ export type StaticLinearTet4CpuResult = {
   nodalStress?: Float64Array;
   /** Per-element peak von Mises over the element's node samples; conservative basis for safety factors. */
   vonMisesPeak?: Float64Array;
+  /** Volume node index carrying each element's peak sample (-1 when the centroid governs). */
+  vonMisesPeakNode?: Int32Array;
   coreResult?: CoreStructuralSolveResult;
   provenance?: {
     kind: "opencae_core_fea" | "local_estimate";

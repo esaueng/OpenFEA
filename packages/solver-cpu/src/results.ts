@@ -11,6 +11,7 @@ import {
   type BoundaryConditionJson,
   type CoreResultField,
   type CoreModalSolveResult,
+  type CoreResultPeakLocations,
   type CoreSolveDiagnostics,
   type CoreSolveProvenance,
   type CoreStructuralSolveResult,
@@ -156,7 +157,8 @@ export function staticCoreResultFromSolve(
       safetyFactor: minSafetyFactor,
       reactionForce,
       reactionForceUnits: "N",
-      provenance
+      provenance,
+      ...peakLocationsEntry(staticPeakSurfaceLocations(model, surfaceMesh, result))
     },
     fields,
     surfaceMesh,
@@ -574,6 +576,79 @@ function peakDisplacementTime(result: DynamicTet4CpuResult): number {
     }
   }
   return time;
+}
+
+/**
+ * Locate the reported static peaks on the solver surface mesh. The stress peak is the
+ * element carrying the unaveraged peak von Mises, at the node where that sample sits
+ * (any node of an element whose field is constant). A peak that only lies inside the
+ * body gets no location rather than a guessed one.
+ */
+export function staticPeakSurfaceLocations(
+  model: NormalizedOpenFEAModel,
+  surfaceMesh: SolverSurfaceMesh,
+  result: Pick<StaticLinearTet4CpuResult, "displacement" | "vonMises" | "vonMisesPeak" | "vonMisesPeakNode">
+): CoreResultPeakLocations {
+  const surfaceIndexByVolumeNode = new Map<number, number>();
+  surfaceMesh.nodeMap.forEach((volumeNode, surfaceIndex) => {
+    if (!surfaceIndexByVolumeNode.has(volumeNode)) surfaceIndexByVolumeNode.set(volumeNode, surfaceIndex);
+  });
+  const locations: CoreResultPeakLocations = {};
+
+  const elementPeaks = result.vonMisesPeak ?? result.vonMises;
+  const peakStress = maxAbs(elementPeaks);
+  if (peakStress > 0) {
+    const elementNodes = elementNodeLookup(model);
+    for (let element = 0; element < elementPeaks.length && !locations.stress; element += 1) {
+      if (Math.abs(elementPeaks[element]!) !== peakStress) continue;
+      const entry = elementNodes(element);
+      if (!entry) continue;
+      const peakNode = result.vonMisesPeak ? result.vonMisesPeakNode?.[element] ?? -1 : -1;
+      // Tet4 stress is constant per element, and a centroid-governed peak (-1) means the
+      // node samples did not exceed it: either way every node of the element carries it.
+      const candidates = entry.type === "Tet4" || peakNode < 0 ? entry.nodes : [peakNode];
+      for (const node of candidates) {
+        const surfaceNodeIndex = surfaceIndexByVolumeNode.get(node);
+        if (surfaceNodeIndex === undefined) continue;
+        locations.stress = { surfaceMeshId: surfaceMesh.id, surfaceNodeIndex, elementIndex: element };
+        break;
+      }
+    }
+  }
+
+  const peakDisplacement = maxNodeVectorNorm(result.displacement);
+  if (peakDisplacement > 0) {
+    for (let node = 0; node < result.displacement.length / 3; node += 1) {
+      const magnitude = Math.hypot(result.displacement[node * 3]!, result.displacement[node * 3 + 1]!, result.displacement[node * 3 + 2]!);
+      if (magnitude !== peakDisplacement) continue;
+      const surfaceNodeIndex = surfaceIndexByVolumeNode.get(node);
+      if (surfaceNodeIndex === undefined) continue;
+      locations.displacement = { surfaceMeshId: surfaceMesh.id, surfaceNodeIndex };
+      break;
+    }
+  }
+  return locations;
+}
+
+function peakLocationsEntry(locations: CoreResultPeakLocations): { peakLocations?: CoreResultPeakLocations } {
+  return locations.stress || locations.displacement ? { peakLocations: locations } : {};
+}
+
+function elementNodeLookup(model: NormalizedOpenFEAModel): (element: number) => { type: "Tet4" | "Tet10"; nodes: number[] } | undefined {
+  const blocks: { start: number; count: number; nodeCount: number; type: "Tet4" | "Tet10"; connectivity: ArrayLike<number> }[] = [];
+  let start = 0;
+  for (const block of model.elementBlocks) {
+    const nodeCount = nodesPerElement(block.type);
+    const count = Math.floor(block.connectivity.length / nodeCount);
+    blocks.push({ start, count, nodeCount, type: block.type, connectivity: block.connectivity });
+    start += count;
+  }
+  return (element) => {
+    const block = blocks.find((candidate) => element >= candidate.start && element < candidate.start + candidate.count);
+    if (!block) return undefined;
+    const offset = (element - block.start) * block.nodeCount;
+    return { type: block.type, nodes: Array.from({ length: block.nodeCount }, (_, local) => block.connectivity[offset + local]!) };
+  };
 }
 
 function maxNodeVectorNorm(values: Float64Array): number {
