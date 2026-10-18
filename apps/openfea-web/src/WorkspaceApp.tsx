@@ -6,7 +6,7 @@ import { addLoad, addSupport, assignMaterial, cancelRun, createProject, generate
 import { cancelWasmMeshing, type WasmMeshPhaseProgress } from "./lib/wasmMeshing";
 import { buildOpenFeaCoreModelForStudy, resolveSolverBackend } from "./workers/openfeaCoreSolve";
 import { manufacturingProcessForId, normalizeManufacturingParameters, resolveMaterial } from "@openfea/materials";
-import { BottomPanel, KeyboardShortcutGuide, type WorkspaceLogEntry } from "./components/BottomPanel";
+import { BottomPanel, studySummaryLine, KeyboardShortcutGuide, type WorkspaceLogEntry } from "./components/BottomPanel";
 import { OpenFeaLogoMark } from "./components/OpenFeaLogoMark";
 import { ProjectStorageNotice } from "./components/ProjectStorageNotice";
 import { RightPanel } from "./components/RightPanel";
@@ -3082,6 +3082,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         logs={logs}
         meshStatus={study?.meshSettings.status === "complete" ? "Ready" : "Not generated"}
         solverStatus={solverRunning ? "Running" : runError ? "Error" : resultsOutdatedBy ? "Outdated" : runProgress >= 100 ? "Complete" : "Idle"}
+        studySummary={studySummaryLine(study)}
         onClearLogs={clearLogs}
       />
       {renderStorageRecoveryNotice()}

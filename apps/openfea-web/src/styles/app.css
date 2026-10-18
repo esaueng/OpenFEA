@@ -1879,8 +1879,12 @@ img {
   z-index: 1;
 }
 
-.status-link.donate-link {
+.donate-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   color: #ffd6a3;
+  text-decoration: none;
   text-transform: none;
 }
 
@@ -1987,15 +1991,18 @@ img {
   animation-delay: calc(var(--coffee-letter-index) * 28ms);
 }
 
-.status-link.donate-link:hover,
-.status-link.donate-link:focus-visible {
+.donate-link:hover,
+.donate-link:focus-visible,
+.start-footer a.donate-link:hover,
+.start-footer a.donate-link:focus-visible {
   color: #ffe2bd;
+  text-decoration: none;
 }
 
 /* The warm peach only reads on dark surfaces; light theme reuses its amber token. */
-.theme-light .status-link.donate-link,
-.theme-light .status-link.donate-link:hover,
-.theme-light .status-link.donate-link:focus-visible {
+.theme-light .donate-link,
+.theme-light .donate-link:hover,
+.theme-light .donate-link:focus-visible {
   color: var(--color-warning);
 }
 
@@ -5056,6 +5063,17 @@ input[aria-invalid="true"] {
   font-size: var(--fs-xs);
 }
 
+/* The study summary is the part of the strip that gives way first: the status
+   dot and word stay whole while "2 supports, 3 loads" ellipsizes. */
+.status-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: var(--sp-3);
+  color: var(--color-text-subtle);
+  border-left: var(--border-thin);
+}
+
 .status-links {
   display: inline-flex;
   align-items: center;
@@ -5656,8 +5674,7 @@ input[aria-invalid="true"] {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* The mug alone still reads as the donate action; the wordmark is what pushed
-     .status-links wide enough to squeeze the tab group out of its track. */
+  /* The mug alone still reads as the donate action on a phone-width start footer. */
   .coffee-label {
     display: none;
   }

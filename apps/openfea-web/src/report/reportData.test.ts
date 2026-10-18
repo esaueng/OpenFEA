@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { bracketDemoProject, bracketDisplayModel } from "@openfea/samples";
 import type { Project, ResultField, ResultSummary, Study } from "@openfea/schema";
-import { buildReportData, suggestedReportFilename } from "./reportData";
+import { buildReportData, coverContextLine, suggestedReportFilename } from "./reportData";
 import { formatDeformationFactor, resolvedDeformation } from "../resultDeformation";
 
 const productionSummary: ResultSummary = {
@@ -419,6 +419,12 @@ describe("buildReportData", () => {
     expect(data.solver).toContainEqual({ label: "Time step", value: "0.005 s" });
     expect(data.transientResults).toContainEqual({ label: "Frames", value: "11" });
     expect(data.transientResults).toContainEqual({ label: "Peak displacement", value: "0.184 mm at 0.08 s" });
+    // US report: the peak shares maxDisplacementUnits, so it converts with it.
+    const us = report({ study: dynamicStudy, resultSummary: dynamicSummary, resultFields: dynamicFields, unitSystem: "US" });
+    const peak = us.transientResults.find((row) => row.label === "Peak displacement")?.value ?? "";
+    expect(peak).toMatch(/ in at 0\.08 s$/);
+    expect(peak).not.toContain("0.184");
+    expect(us.keyResults.find((row) => row.label === "Max displacement")?.value).toBe(peak.replace(" at 0.08 s", ""));
     expect(data.figures.stress.legendMax).toBe("142 MPa");
     expect(data.figures.stress.caption).toContain("Automatically selected peak von Mises stress frame (frame 2 of 3, 0.0400 s)");
     expect(data.figures.displacement.caption).toContain("Automatically selected peak displacement magnitude frame (frame 3 of 3, 0.0800 s)");
@@ -470,5 +476,21 @@ describe("suggestedReportFilename", () => {
   test("sanitizes the project name like the project-save filename", () => {
     expect(suggestedReportFilename("  Wing / Rev B!  ", new Date("2026-07-10T23:59:00Z")))
       .toBe("OpenFEA-Report_wing-rev-b_2026-07-10.pdf");
+  });
+});
+
+describe("coverContextLine", () => {
+  test("reads model · material · load for the cover", () => {
+    const line = coverContextLine({ project: bracketDemoProject, study: bracketDemoProject.studies[0]!, displayModel: bracketDisplayModel, unitSystem: "SI" });
+    const parts = line.split(" · ");
+    expect(parts).toHaveLength(3);
+    expect(parts[0]).toBe(bracketDisplayModel.name);
+    expect(report().coverContext).toBe(line);
+  });
+
+  test("names what is missing instead of leaving gaps", () => {
+    const study: Study = { ...bracketDemoProject.studies[0]!, materialAssignments: [], loads: [] };
+    expect(coverContextLine({ project: bracketDemoProject, study, displayModel: null, unitSystem: "SI" }))
+      .toBe(`${bracketDemoProject.name} · No material · No loads`);
   });
 });

@@ -20,6 +20,10 @@ describe("StartScreen", () => {
     expect(html).toContain('href="https://github.com/esaueng/OpenFEA"');
     // Same casing as the workspace status bar's GitHub link.
     expect(html).toContain(">GitHub</a>");
+    // Ko-fi moved here from the workspace status bar (plan 035 increment 6), beside GitHub.
+    expect(html).toContain('href="https://ko-fi.com/esau"');
+    expect(html.indexOf('href="https://ko-fi.com/esau"')).toBeLessThan(html.indexOf('href="https://github.com/esaueng/OpenFEA"'));
+    expect(html).toContain('class="start-footer-links"');
     expect(html).toContain("Runs locally in your browser");
     expect(html).not.toContain("v0.1.0-mvp");
     expect(html).not.toContain("local mode");
