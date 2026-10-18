@@ -3910,6 +3910,40 @@ button:disabled {
   margin: 14px 0 0;
 }
 
+/* On Results the footer's last slot holds the report and export actions (plan 035,
+   increment 4): the step has nowhere to continue to, and the primary action stays in
+   view however long the panel scrolls. */
+.workflow-nav-slot {
+  min-width: 0;
+}
+
+.result-actions-footer {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.result-actions-footer .result-actions {
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin: 0;
+}
+
+.result-actions-footer .panel-warning {
+  margin: 0;
+}
+
+/* The footer slot is ~240px wide: the leading file icons go and the labels hold one
+   line, so "Download report" never clips beside Export. */
+.result-actions-footer .result-actions .primary > svg:first-child,
+.result-actions-footer .export-menu-trigger > svg:first-child {
+  display: none;
+}
+
+.result-actions-footer .result-actions .primary,
+.result-actions-footer .export-menu-trigger {
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .result-actions .primary,
 .result-actions .secondary {
   justify-content: flex-start;
@@ -4267,44 +4301,26 @@ button:disabled {
   flex: none;
 }
 
+/* The verdict is the answer the user ran the solve for (plan 035, increment 4): an
+   icon, a 22px title and one sentence, not a tinted card. Status reads from the glyph
+   (shield or warning triangle) and the title's words, never from colour alone. */
 .failure-assessment {
   margin-top: 0;
-  margin-bottom: var(--sp-2);
+  margin-bottom: var(--gap-block);
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: var(--sp-25);
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: var(--sp-3);
   align-items: start;
-  /* 3px left border + 9px padding = 12px content start, matching the export buttons
-     (1px border + 11px padding) so icons and text share a column even though the two
-     blocks now sit at opposite ends of the panel. */
-  padding: var(--sp-3) var(--sp-3) var(--sp-3) 9px;
+  padding: 0;
   color: var(--color-text);
-  background: rgba(77, 163, 255, 0.12);
-  border-left: 3px solid var(--color-accent);
-  border-radius: var(--radius-sm);
-}
-
-.failure-assessment.fail {
-  background: rgba(239, 68, 68, 0.12);
-  border-left-color: var(--color-error);
-}
-
-.failure-assessment.warning {
-  background: rgba(245, 158, 11, 0.13);
-  border-left-color: var(--color-warning);
-}
-
-.failure-assessment.pass {
-  background: rgba(34, 197, 94, 0.12);
-  border-left-color: var(--color-success);
 }
 
 .failure-assessment .assessment-icon {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   display: inline-grid;
   place-items: center;
-  align-self: center;
+  align-self: start;
   color: var(--color-accent);
 }
 
@@ -4326,8 +4342,15 @@ button:disabled {
 }
 
 .failure-assessment strong {
-  font-size: var(--fs-md);
+  font-size: var(--fs-xl);
   font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+.result-provenance {
+  margin: var(--sp-2) 0 var(--gap-block);
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
 }
 
 .failure-assessment small {
