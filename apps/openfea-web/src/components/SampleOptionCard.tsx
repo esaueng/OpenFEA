@@ -7,6 +7,10 @@ interface SampleOptionCardProps {
   selected: boolean;
   compact?: boolean;
   analysisType?: SampleAnalysisType;
+  /** One click (or Enter/Space) opens the sample instead of selecting it. The start
+   *  screen uses this so a sample loads straight into the workspace (plan 035, 5). */
+  openOnClick?: boolean;
+  disabled?: boolean;
   onSelect: (sample: SampleModelId) => void;
   onOpen: (sample: SampleModelId) => void;
 }
@@ -241,23 +245,25 @@ const ART_KIND: Record<SampleAnalysisType, ArtKind> = {
   steady_state_thermal: "thermal"
 };
 
-export function SampleOptionCard({ option, selected, compact = false, analysisType = "static_stress", onSelect, onOpen }: SampleOptionCardProps) {
+export function SampleOptionCard({ option, selected, compact = false, analysisType = "static_stress", openOnClick = false, disabled = false, onSelect, onOpen }: SampleOptionCardProps) {
   const meta = sampleMetaForAnalysis(option, analysisType);
+  const activate = openOnClick ? onOpen : onSelect;
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    onSelect(option.id);
+    activate(option.id);
   }
 
   return (
     <button
       className={`sample-option-card ${selected ? "selected" : ""} ${compact ? "compact" : ""}`}
       type="button"
-      aria-pressed={selected}
-      aria-label={`Select ${option.title} sample`}
-      onClick={() => onSelect(option.id)}
-      onDoubleClick={() => onOpen(option.id)}
+      disabled={disabled || undefined}
+      aria-pressed={openOnClick ? undefined : selected}
+      aria-label={`${openOnClick ? "Open" : "Select"} ${option.title} sample`}
+      onClick={() => activate(option.id)}
+      onDoubleClick={openOnClick ? undefined : () => onOpen(option.id)}
       onKeyDown={handleKeyDown}
     >
       <SampleThumbnail option={option} analysisType={analysisType} />

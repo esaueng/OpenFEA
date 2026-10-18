@@ -121,7 +121,7 @@ async function runBrowserProbe(url) {
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await page.goto(url, { waitUntil: "networkidle" });
-    await page.getByText("Load sample project").click();
+    await page.getByRole("button", { name: "Try a sample" }).click();
     await page.locator("canvas").waitFor({ timeout: 15_000 });
     const frameStats = await page.evaluate(async () => {
       const samples = [];
