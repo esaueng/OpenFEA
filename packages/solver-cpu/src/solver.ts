@@ -309,6 +309,7 @@ export function combineStaticLinearTetResults(
     vonMises,
     nodalVonMises: recovered.nodalVonMises,
     vonMisesPeak: recovered.vonMisesPeak,
+    vonMisesPeakNode: recovered.vonMisesPeakNode,
     provenance: terms[0]!.result.provenance
   };
   const diagnostics: CpuSolverDiagnostics = {
@@ -692,6 +693,7 @@ function finishSolve(
     nodalVonMises: recovery.nodalVonMises,
     nodalStress: recovery.nodalStress,
     vonMisesPeak: recovery.vonMisesPeak,
+    vonMisesPeakNode: recovery.vonMisesPeakNode,
     provenance: {
       kind: "opencae_core_fea",
       solver: "opencae-core-sparse-tet",
@@ -874,12 +876,14 @@ function setConstraint(
 }
 
 export function recoverElementResults(model: NormalizedOpenFEAModel, displacement: Float64Array):
-  | { ok: true; strain: Float64Array; stress: Float64Array; vonMises: Float64Array; nodalVonMises: Float64Array; nodalStress: Float64Array; vonMisesPeak: Float64Array }
+  | { ok: true; strain: Float64Array; stress: Float64Array; vonMises: Float64Array; nodalVonMises: Float64Array; nodalStress: Float64Array; vonMisesPeak: Float64Array; vonMisesPeakNode: Int32Array }
   | { ok: false; error: CpuSolverError } {
   const strain = new Float64Array(model.counts.elements * 6);
   const stress = new Float64Array(model.counts.elements * 6);
   const vonMises = new Float64Array(model.counts.elements);
   const vonMisesPeak = new Float64Array(model.counts.elements);
+  // Volume node carrying each element's peak sample, or -1 when the centroid governs.
+  const vonMisesPeakNode = new Int32Array(model.counts.elements).fill(-1);
   const nodalSum = new Float64Array(model.counts.nodes);
   const nodalStressSum = new Float64Array(model.counts.nodes * 6);
   const nodalWeight = new Float64Array(model.counts.nodes);
@@ -948,9 +952,11 @@ export function recoverElementResults(model: NormalizedOpenFEAModel, displacemen
       stress.set(elementStress, globalElement * 6);
       vonMises[globalElement] = computeVonMisesStress(elementStress);
       let peak = vonMises[globalElement];
+      let peakNode = -1;
       for (let localNode = 0; localNode < nodeCount; localNode += 1) {
-        peak = Math.max(peak, nodalValues[localNode]);
         const node = block.connectivity[elementOffset + localNode];
+        if (nodalValues[localNode] > peak || (peakNode < 0 && nodalValues[localNode] === peak)) peakNode = node;
+        peak = Math.max(peak, nodalValues[localNode]);
         nodalSum[node] += nodalValues[localNode] * elementVolume;
         nodalWeight[node] += elementVolume;
         for (let component = 0; component < 6; component += 1) {
@@ -958,6 +964,7 @@ export function recoverElementResults(model: NormalizedOpenFEAModel, displacemen
         }
       }
       vonMisesPeak[globalElement] = peak;
+      vonMisesPeakNode[globalElement] = peakNode;
       globalElement += 1;
     }
   }
@@ -972,7 +979,7 @@ export function recoverElementResults(model: NormalizedOpenFEAModel, displacemen
         : 0;
     }
   }
-  return { ok: true, strain, stress, vonMises, nodalVonMises, nodalStress, vonMisesPeak };
+  return { ok: true, strain, stress, vonMises, nodalVonMises, nodalStress, vonMisesPeak, vonMisesPeakNode };
 }
 
 function multiplyDenseMatrixVector(matrix: Float64Array, size: number): (vector: Float64Array) => Float64Array {

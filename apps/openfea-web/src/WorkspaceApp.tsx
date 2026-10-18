@@ -353,6 +353,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       displacement: `Peak ${formatResultMetric(resultSummaryForUi.maxDisplacement, resultSummaryForUi.maxDisplacementUnits)}`
     };
   }, [resultSummaryForUi]);
+  const resultPeakLocations = resultSummary && isStructuralResultSummary(resultSummary) ? resultSummary.peakLocations : undefined;
   const resultFieldsForUi = useMemo(() => {
     const converted = resultFields.map((field) => resultFieldForUnits(field, displayUnitSystem));
     return resultSummary && isModalResultSummary(resultSummary)
@@ -2789,6 +2790,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             captureBusy={reportCaptureBusy}
             resultsStale={Boolean(resultsOutdatedBy)}
             resultPeaks={resultPeaks}
+            resultPeakLocations={resultPeakLocations}
             assignedFaceTints={assignedFaceTints}
             resultPlaybackBufferCache={resultPlaybackBufferCacheForViewer}
             resultPlaybackFrameController={resultPlaybackPlaying && resultPlaybackCacheState.status === "ready" && resultPlaybackCacheState.cache.packed ? resultPlaybackFrameControllerRef.current : undefined}

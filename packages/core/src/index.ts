@@ -135,6 +135,8 @@ export type {
   CoreSolveSummary,
   CoreStructuralSolveResult,
   CoreStructuralSolveSummary,
+  CoreResultPeakLocation,
+  CoreResultPeakLocations,
   CoreTransientSummary,
   ProductionSurfaceFieldInvariantInput,
   ProductionSurfaceFieldInvariantOptions,
