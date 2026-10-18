@@ -29,7 +29,7 @@ describe("workspace restore shell", () => {
 
     expect(html).toContain('class="workspace-restoring theme-dark"');
     expect(html).toContain("Restoring your workspace");
-    expect(html).not.toContain("Create new project");
+    expect(html).not.toContain("New study");
   });
 
   test("uses the saved light theme before the workspace chunk loads", () => {
@@ -53,7 +53,7 @@ describe("workspace restore shell", () => {
 
     const html = renderToStaticMarkup(<App />);
 
-    expect(html).toContain("Create new project");
+    expect(html).toContain("New study");
     expect(html).not.toContain('class="workspace-restoring"');
   });
 
@@ -64,6 +64,6 @@ describe("workspace restore shell", () => {
 
     expect(html).toContain("Page not found");
     expect(html).toContain('href="/"');
-    expect(html).not.toContain("Create new project");
+    expect(html).not.toContain("New study");
   });
 });

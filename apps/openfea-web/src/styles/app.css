@@ -86,16 +86,10 @@ img {
 }
 
 .start-brand {
-  position: relative;
-  z-index: 1;
-  width: min(340px, 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.start-brand.sample-menu-open {
-  width: min(430px, 100%);
+  text-align: center;
 }
 
 .app-not-found-code {
@@ -120,8 +114,8 @@ img {
 }
 
 .start-mark {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   color: var(--color-accent);
   margin-bottom: var(--sp-4);
 }
@@ -134,33 +128,10 @@ img {
   letter-spacing: 0;
 }
 
-.start-tagline {
-  margin: var(--sp-3) 0 var(--sp-6);
-  color: var(--color-text-subtle);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  letter-spacing: var(--ls-tagline);
-  text-transform: uppercase;
-}
-
-.start-sample-setup {
-  width: 100%;
-  margin-bottom: 14px;
-}
-
-.start-sample-menu {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
 /* One eyebrow. This recipe was retyped across twelve rules; each of them still owns its
    own colour and layout, but the type treatment lives here so changing it is one edit.
    Every class name is unchanged — the pinned CSS tests look selectors up literally, and
    RightPanel.test.tsx pins .panel-eyebrow's exact markup. */
-.start-sample-menu-bar,
-.start-sample-header,
 .simulation-type-header small,
 .storage-recovery-header small,
 .app-crash-eyebrow,
@@ -171,72 +142,14 @@ img {
   text-transform: uppercase;
 }
 
-.start-sample-menu-bar {
-  width: min(430px, 100%);
-  margin: 0 auto var(--sp-25);
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr) 70px;
-  align-items: center;
-  color: var(--color-text-subtle);
-  text-align: center;
-}
-
-.start-menu-back {
-  min-height: var(--control-h-md);
-  justify-self: start;
-  padding: 0 var(--sp-25);
-  color: var(--color-text-muted);
-  background: rgba(17, 24, 33, 0.72);
-  border: var(--border-thin);
-  border-radius: var(--radius-md);
-  font-size: var(--fs-xs);
-}
-
-.start-menu-back:hover,
-.start-menu-back:focus-visible {
-  color: var(--color-text);
-  border-color: var(--color-accent-border);
-}
-
-.start-menu-load {
-  width: min(430px, 100%);
-  max-width: 100%;
-}
-
-.start-sample-header {
-  width: min(430px, 100%);
-  margin: 0 auto var(--sp-25);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px;
-  align-items: center;
-  gap: var(--sp-3);
-  color: var(--color-text-subtle);
-}
-
-.start-analysis-type {
-  justify-self: end;
-  width: 180px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
 .start-actions {
-  width: 320px;
-  max-width: 100%;
   display: grid;
-  gap: var(--sp-25);
+  gap: var(--sp-3);
 }
 
-/* Same column as the actions above it; at 430px (capped to the brand's 340) it
-   overhung the 320px buttons by 10px a side. */
 .recent-projects {
-  width: min(320px, 100%);
-  margin-top: var(--sp-4);
-  padding: var(--sp-25);
+  width: 100%;
   color: var(--color-text-muted);
-  background: rgba(17, 24, 33, 0.72);
-  border: var(--border-thin);
-  border-radius: var(--radius-md);
 }
 
 .recent-projects-header,
@@ -248,34 +161,24 @@ img {
 
 .recent-projects-header {
   justify-content: space-between;
-  margin-bottom: var(--sp-2);
 }
 
 .recent-projects h2 {
   margin: 0;
-  color: var(--color-text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-medium);
-  letter-spacing: var(--ls-eyebrow);
-  text-transform: uppercase;
-}
-
-.recent-projects p {
-  margin: 0;
-  font-size: var(--fs-xs);
 }
 
 .recent-projects ul {
   display: grid;
-  gap: var(--sp-15);
   margin: 0;
-  padding: 0;
+  padding: 0 var(--sp-3);
   list-style: none;
+  background: rgba(17, 24, 33, 0.72);
+  border: var(--border-thin);
+  border-radius: var(--radius-md);
 }
 
 .recent-projects li {
-  padding-top: var(--sp-15);
+  padding: var(--sp-25) 0;
   border-top: 1px solid rgba(139, 148, 158, 0.16);
 }
 
@@ -321,12 +224,92 @@ img {
 }
 
 .start-inline-error {
-  width: min(430px, 100%);
-  margin: var(--sp-25) 0 0;
+  margin: 0;
   color: var(--color-error);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   line-height: var(--lh-loose);
   text-align: center;
+}
+
+/* Plan 035, increment 5: one column — header, three action cards, the inline
+   sample gallery, Recent and the footer. The column scrolls inside .start-screen. */
+.start-column {
+  position: relative;
+  z-index: 1;
+  width: min(880px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.start-lede {
+  max-width: 46ch;
+  margin: var(--sp-3) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-loose);
+}
+
+.start-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.start-action-grid .start-action {
+  align-items: flex-start;
+}
+
+.start-action strong {
+  font-size: var(--fs-md);
+}
+
+/* The label takes the free width, so it stays left-aligned when the phone tier
+   centres .primary/.secondary content and hides the shortcut. */
+.start-action > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Sentence-case section labels, not mono eyebrows (plan 035 deviation table). */
+.start-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.start-section-header h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+}
+
+.segmented.start-analysis-type {
+  flex: 0 0 auto;
+  grid-template-columns: repeat(4, auto);
+}
+
+.start-analysis-type button {
+  padding: 0 var(--sp-3);
+  white-space: nowrap;
+}
+
+.recent-projects li:first-child {
+  border-top: 0;
+}
+
+.recent-projects-empty {
+  margin: 0;
+  padding: var(--sp-4);
+  color: var(--color-text-subtle);
+  font-size: var(--fs-sm);
+  text-align: center;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
 }
 
 .start-action {
@@ -336,26 +319,17 @@ img {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  padding: var(--sp-2) 11px;
+  padding: var(--sp-3) var(--sp-4);
   border-radius: var(--radius-md);
   border: var(--border-thin);
   text-align: left;
   transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
 
-.start-actions .start-action,
-.start-menu-load {
-  justify-content: space-between;
-}
-
 .start-action.primary {
   color: var(--color-on-accent);
   background: var(--color-accent);
   border-color: var(--color-accent);
-}
-
-.start-action.sample-action {
-  margin-top: var(--sp-15);
 }
 
 .start-action.secondary {
@@ -379,9 +353,10 @@ img {
 }
 
 .start-action small {
-  margin-top: 1px;
+  margin-top: var(--sp-1);
   color: rgba(6, 17, 30, 0.85);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
 }
 
 .start-action > span:last-child {
@@ -400,24 +375,13 @@ img {
   text-align: right;
 }
 
-.start-caption {
-  width: min(430px, 100%);
-  margin: 20px 0 0;
-  color: var(--color-text-muted);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-loose);
-  text-align: center;
-}
-
 .sample-option-grid {
   display: grid;
   gap: var(--sp-25);
 }
 
 .start-sample-grid {
-  grid-template-columns: minmax(0, 1fr);
-  width: min(430px, 100%);
-  margin: 0 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .panel-sample-grid {
@@ -465,27 +429,6 @@ img {
   box-shadow:
     inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 32%, transparent),
     0 14px 32px rgba(0, 0, 0, 0.22);
-}
-
-.start-sample-grid .sample-option-card {
-  min-height: 112px;
-  grid-template-columns: 126px minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  align-items: center;
-  gap: var(--sp-2) var(--sp-3);
-}
-
-.start-sample-grid .sample-thumbnail {
-  grid-row: 1 / span 2;
-  height: 72px;
-}
-
-.start-sample-grid .sample-option-copy {
-  align-self: end;
-}
-
-.start-sample-grid .sample-option-meta {
-  align-self: start;
 }
 
 .sample-option-card.compact {
@@ -680,10 +623,6 @@ img {
   line-height: 1.25;
 }
 
-.start-caption span {
-  display: block;
-}
-
 .start-credit {
   color: var(--color-text-muted);
   text-decoration: none;
@@ -698,22 +637,17 @@ img {
 }
 
 .start-footer {
-  position: absolute;
-  right: 24px;
-  bottom: 20px;
-  left: 24px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--sp-4);
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+  padding-top: var(--sp-4);
   color: var(--color-text-subtle);
+  border-top: 1px solid rgba(139, 148, 158, 0.16);
   font-family: var(--font-mono);
   font-size: var(--fs-mini);
   line-height: 1;
-}
-
-.start-brand.sample-menu-open + .start-footer {
-  display: none;
 }
 
 .local-runtime {
@@ -727,13 +661,10 @@ img {
 }
 
 .start-footer a {
+  color: inherit;
   text-decoration: none;
   text-decoration-color: currentColor;
   text-underline-offset: 3px;
-}
-
-.start-github {
-  justify-self: end;
 }
 
 .start-footer a:hover,
@@ -5606,40 +5537,6 @@ input[aria-invalid="true"] {
   border-color: var(--color-accent-border);
 }
 
-/* Short screens: with the sample menu open the masthead took ~170px above Back and
-   pushed "Load sample project" below the fold at 600-700px tall. */
-@media (max-height: 760px) {
-  .start-brand.sample-menu-open .start-mark {
-    width: 36px;
-    height: 36px;
-    margin-bottom: var(--sp-2);
-  }
-
-  .start-brand.sample-menu-open h1 {
-    font-size: var(--fs-xl);
-  }
-
-  .start-brand.sample-menu-open .start-tagline {
-    display: none;
-  }
-
-  .start-brand.sample-menu-open .start-sample-grid .sample-option-card {
-    min-height: 0;
-  }
-
-  .start-brand.sample-menu-open .start-sample-grid .sample-thumbnail {
-    height: 64px;
-  }
-
-  /* The primary action stays on screen while the cards scroll under it. */
-  .start-menu-load {
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-    box-shadow: 0 -12px 24px 4px #0b0f14;
-  }
-}
-
 @media (max-width: 980px) {
   .storage-recovery-card {
     right: var(--sp-3);
@@ -5707,12 +5604,17 @@ input[aria-invalid="true"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .start-action-grid,
   .start-sample-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .start-action-grid .start-action {
+    align-items: center;
+  }
+
   .sample-option-card:not(.compact) {
-    min-height: 122px;
+    min-height: 0;
     grid-template-columns: 112px minmax(0, 1fr);
     grid-template-rows: auto auto;
     align-items: center;
@@ -5720,7 +5622,7 @@ input[aria-invalid="true"] {
 
   .sample-option-card:not(.compact) .sample-thumbnail {
     grid-row: 1 / span 2;
-    height: 82px;
+    height: 72px;
   }
 }
 
@@ -5806,27 +5708,27 @@ input[aria-invalid="true"] {
   }
 
   .start-screen {
-    padding: var(--sp-4) var(--sp-3) 80px;
+    padding: var(--sp-5) var(--sp-4);
     overflow: auto;
   }
 
-  .start-sample-header {
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: center;
+  .start-column {
+    gap: var(--sp-5);
   }
 
-  .start-analysis-type {
-    justify-self: center;
+  .segmented.start-analysis-type {
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .start-analysis-type button {
+    padding: 0;
   }
 
   .start-footer {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    gap: var(--sp-2);
-  }
-
-  .start-github {
-    justify-self: center;
+    flex-direction: column;
+    align-items: center;
+    line-height: var(--lh-loose);
   }
 
   .breadcrumb-chip {
@@ -5858,7 +5760,6 @@ input[aria-invalid="true"] {
   .topbar-action,
   .storage-status-button,
   .start-action,
-  .start-menu-back,
   .start-analysis-type button,
   .workflow-nav button {
     min-height: var(--control-h-touch);
@@ -6280,7 +6181,7 @@ input[aria-invalid="true"] {
   cursor: progress;
 }
 
-/* The Continue action takes the primary slot, so the sample action can be secondary; its subtitle needs readable ink there. */
+/* The Continue action takes the primary slot, so Try a sample turns secondary; its subtitle needs readable ink there. */
 .start-action.secondary small {
   color: var(--color-text-muted);
 }
