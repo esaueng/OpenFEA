@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import { bracketDisplayModel } from "@openfea/samples";
 import type { DisplayModel, Project, ResultField, ResultSummary, Study } from "@openfea/schema";
 import { dynamicSettingConstraintMessage, editableNumberCommitValue, playbackPeakMarkerPercent, resultModeExplanation, RightPanel, rangeProgressPercent } from "./RightPanel";
-import type { StepId } from "./StepBar";
+import type { StepId } from "./StepNav";
 import { resultExportMenuItems } from "./panels/ResultsPanels";
 import { readinessForStudy } from "../runReadiness";
 import { StudySchema } from "@openfea/schema";
@@ -310,19 +310,19 @@ describe("RightPanel result probes", () => {
   });
 });
 
-describe("RightPanel open section", () => {
-  test("shows axis, normalized offset, and flip controls when the plane is active", () => {
+describe("RightPanel view tools", () => {
+  test("leaves fit, section, mesh and dimensions to the viewer toolbar (plan 035)", () => {
     const html = renderPanel("model", {
       sectionPlane: { enabled: true, axis: "y", offset: 0.37, flipped: false },
       onSectionPlaneChange: vi.fn()
     });
-
-    expect(html).toContain("Open section");
-    expect(html).toContain("Close section");
-    expect(html).toContain("Normalized offset · 37%");
-    expect(html).toContain("Flip cut side");
-    expect(html).toContain("Section plane axis");
-    expect(html).toContain('aria-pressed="false"');
+    expect(html).not.toContain("view-tool-grid");
+    expect(html).not.toContain("Open section");
+    expect(html).not.toContain("Section plane axis");
+    // Orientation stays in the panel.
+    expect(html).toContain('aria-label="Axis view"');
+    // The measured dimensions still read in the panel when they are switched on.
+    expect(renderPanel("model", { showDimensions: true })).toContain("Overall dimensions");
   });
 });
 
@@ -379,10 +379,31 @@ describe("RightPanel run variants and load cases", () => {
   });
 });
 describe("RightPanel payload mass controls", () => {
-  test("offers the opposite face normal as a load direction", () => {
-    const markup = renderPanel("loads");
+  test("offers into-face, out-of-face and axis directions over the unchanged stored values", () => {
+    // Default draft direction is -Z: the axis choice is selected and the axis select shows it.
+    const axis = renderPanel("loads");
+    expect(axis).toContain('role="radiogroup" aria-label="Direction"');
+    expect(axis).toMatch(/role="radio" aria-checked="true" class="active" title="Acts along a global axis">Along axis</);
+    expect(axis).toContain('<select aria-label="Axis direction"><option value="-Y">Global -Y</option>');
+    expect(axis).toContain('<option value="-Z" selected="">Global -Z</option>');
+    expect(axis).not.toContain('<option value="Opposite normal"');
 
-    expect(markup).toContain('<option value="Opposite normal">Opposite face normal</option>');
+    // "Opposite normal" (into the face) and "Normal" (out of it) map to the face choices.
+    const into = renderPanel("loads", { draftLoadDirection: "Opposite normal" });
+    expect(into).toMatch(/role="radio" aria-checked="true" class="active" title="Pushes into the selected face[^"]*">Into face</);
+    expect(into).not.toContain('aria-label="Axis direction"');
+    const out = renderPanel("loads", { draftLoadDirection: "Normal" });
+    expect(out).toMatch(/role="radio" aria-checked="true" class="active" title="Pulls away from the selected face[^"]*">Out of face</);
+  });
+
+  test("folds load type, its explanation and extra faces into More options", () => {
+    const html = renderPanel("loads");
+    const more = html.match(/<details class="collapsible-section"[^>]*>[\s\S]*?More options[\s\S]*?<\/details>/)?.[0] ?? "";
+    expect(more).toContain("Load type");
+    expect(more).toContain("Face force is a total force");
+    // Closed for the default face force; opens itself for any other type.
+    expect(more).not.toMatch(/^<details class="collapsible-section" open/);
+    expect(renderPanel("loads", { draftLoadType: "pressure" })).toMatch(/<details class="collapsible-section" open="">[\s\S]*?More options/);
   });
 
   test("maps range slider values to a full visual fill at the maximum", () => {
@@ -712,39 +733,44 @@ describe("RightPanel payload mass controls", () => {
   });
 
   test("counts modal steps against the rail the user can actually see", () => {
-    // A modal study has no loads step: StepBar and the Back/Next pair both filter it out,
+    // A modal study has no loads step: StepNav and the Back/Next pair both filter it out,
     // but the eyebrow counted the unfiltered list against a hardcoded 7, so the Mesh
     // panel read "Step 5 of 7" beside a six-item rail.
     const modalStudy: Study = { ...study, name: "Modal", type: "modal_analysis", solverSettings: { modeCount: 6 } };
 
-    expect(renderPanel("mesh", { study: modalStudy })).toContain(">Step 4 of 6<");
-    expect(renderPanel("run", { study: modalStudy })).toContain(">Step 5 of 6<");
-    expect(renderPanel("supports", { study: modalStudy })).toContain(">Step 3 of 6<");
+    expect(renderPanel("mesh", { study: modalStudy })).toContain(">Step 4 of 6 · Mesh<");
+    expect(renderPanel("run", { study: modalStudy })).toContain(">Step 5 of 6 · Run<");
+    expect(renderPanel("supports", { study: modalStudy })).toContain(">Step 3 of 6 · Supports<");
     // Everything that keeps its loads step still counts to seven.
-    expect(renderPanel("mesh")).toContain(">Step 5 of 7<");
+    expect(renderPanel("mesh")).toContain(">Step 5 of 7 · Mesh<");
   });
 
-  test("places every step title and step number on the same header row", () => {
-    const steps: Array<{ id: StepId; title: string; step: number }> = [
-      { id: "model", title: "Model", step: 1 },
-      { id: "material", title: "Material", step: 2 },
-      { id: "supports", title: "Supports", step: 3 },
-      { id: "loads", title: "Loads", step: 4 },
-      { id: "mesh", title: "Mesh", step: 5 },
-      { id: "run", title: "Run", step: 6 },
-      { id: "results", title: "Results", step: 7 }
+  test("leads every setup step with the question it answers (plan 035)", () => {
+    const steps: Array<{ id: StepId; title: string; question: string; step: number }> = [
+      { id: "model", title: "Model", question: "Is this the right part?", step: 1 },
+      { id: "material", title: "Material", question: "What is it made of?", step: 2 },
+      { id: "supports", title: "Supports", question: "Where is it held still?", step: 3 },
+      { id: "loads", title: "Loads", question: "Where does the force push?", step: 4 },
+      { id: "mesh", title: "Mesh", question: "How finely should it be divided?", step: 5 },
+      { id: "run", title: "Run", question: "Ready to solve?", step: 6 }
     ];
 
     for (const item of steps) {
       const html = renderPanel(item.id);
-      expect(html).toContain(`<div class="panel-title-row"><h2>${item.title}</h2><div class="panel-eyebrow">Step ${item.step} of 7</div></div>`);
+      expect(html).toContain(`<div class="panel-header"><div class="panel-eyebrow">Step ${item.step} of 7 · ${item.title}</div><h2 class="panel-question">${item.question}</h2>`);
     }
+    // Results has no question: its verdict is the answer, so the title stays the heading.
+    expect(renderPanel("results")).toContain('<div class="panel-header"><div class="panel-eyebrow">Step 7 of 7</div><h2>Results</h2>');
+    // Thermal studies ask about heat, not force.
+    const thermalStudy: Study = { ...study, name: "Steady Thermal", type: "steady_state_thermal" };
+    expect(renderPanel("supports", { study: thermalStudy })).toContain(">Where is the temperature fixed?</h2>");
+    expect(renderPanel("loads", { study: thermalStudy })).toContain(">Where does heat go in or out?</h2>");
   });
 
   test("does not expose report generation from the results panel", () => {
     const html = renderPanel("results");
 
-    expect(html).not.toContain("Generate report");
+    expect(html).not.toContain("Download report");
     expect(html).not.toContain("Report");
   });
 
@@ -772,9 +798,6 @@ describe("RightPanel payload mass controls", () => {
     expect(supportsHtml).not.toContain("Select the actual model face");
     expect(loadsHtml).not.toContain("<strong>Load placement</strong>");
     expect(loadsHtml).not.toContain("Click the exact point for force");
-    // Dimensions, section, fit and mesh share one View section whose help covers all four;
-    // the dimensions-specific help sits on the panel the Show dimensions button opens.
-    expect(`${modelHtml}${supportsHtml}${loadsHtml}`).toContain('aria-label="View tools help"');
     expect(`${modelHtml}${supportsHtml}${loadsHtml}`).toContain('aria-label="Support placement help"');
     expect(`${modelHtml}${supportsHtml}${loadsHtml}`).toContain('aria-label="Load placement help"');
   });
@@ -1551,21 +1574,21 @@ describe("RightPanel payload mass controls", () => {
       }
     });
 
-    expect(html).toContain("Base Material");
+    expect(html).toContain("Base material");
     expect(html).toContain("ABS Plastic");
     expect(html).toContain("Thermoplastic");
-    expect(html).toContain("Manufacturing Process");
+    expect(html).toContain("Manufacturing process");
     expect(html).toContain("Compatible with ABS Plastic. Only validated options are shown.");
     expect(html).toContain('role="radiogroup" aria-label="Manufacturing process"');
     expect(html).toContain("CNC machining");
     expect(html).toContain("Injection molding");
     expect(html).toContain("FDM printing");
     expect(html).not.toContain("SLA printing");
-    expect(html).toContain("FDM Settings");
+    expect(html).toContain("FDM settings");
     expect(html).toContain("Infill density");
     expect(html).toContain("Wall count");
     expect(html).toContain("Build direction");
-    expect(html).toContain("Simulation Properties");
+    expect(html).toContain("Simulation properties");
     expect(html).toContain("Effective modulus");
     expect(html).toContain("Effective density");
     expect(html).toContain("Effective yield");
@@ -1595,7 +1618,7 @@ describe("RightPanel payload mass controls", () => {
     expect(cncHtml).toContain('role="radio" aria-checked="true"');
     expect(cncHtml).toContain("CNC machining");
     expect(cncHtml).toContain("FDM printing");
-    expect(cncHtml).not.toContain("FDM Settings");
+    expect(cncHtml).not.toContain("FDM settings");
     expect(cncHtml).not.toContain("Infill density");
     expect(cncHtml).not.toContain("Wall count");
     expect(cncHtml).not.toContain("Build direction");
@@ -1866,7 +1889,7 @@ describe("RightPanel payload mass controls", () => {
 
     expect(html).toContain('title="Next workflow step (N)"');
     expect(html).toContain('aria-label="Next workflow step: Run. Shortcut N"');
-    expect(html).toContain('<span class="workflow-nav-label">Next: Run</span><kbd>N</kbd>');
+    expect(html).toContain('<span class="workflow-nav-label">Continue to run</span><kbd>N</kbd>');
   });
 
   test("turns the active meshing button into an enabled stop action", () => {
@@ -1937,10 +1960,10 @@ describe("RightPanel payload mass controls", () => {
 
     expect(html).toContain('title="Previous workflow step (B)"');
     expect(html).toContain('aria-label="Previous workflow step: Supports. Shortcut B"');
-    expect(html).toContain('<span class="workflow-nav-label">Back: Supports</span><kbd>B</kbd>');
+    expect(html).toContain('<button class="workflow-nav-back" type="button" title="Previous workflow step (B)" aria-label="Previous workflow step: Supports. Shortcut B"><span class="workflow-nav-label">Back</span><kbd>B</kbd>');
     expect(html).toContain('title="Next workflow step (N)"');
     expect(html).toContain('aria-label="Next workflow step: Mesh. Shortcut N"');
-    expect(html).toContain('<span class="workflow-nav-label">Next: Mesh</span><kbd>N</kbd>');
+    expect(html).toContain('<span class="workflow-nav-label">Continue to mesh</span><kbd>N</kbd>');
   });
 
   test("requires a selected face before adding a face force", () => {
@@ -1981,25 +2004,47 @@ describe("RightPanel payload mass controls", () => {
 
     const verdict = markup.indexOf("failure-assessment");
     const maxStress = markup.indexOf("Max stress");
-    const provenance = markup.indexOf("Result source");
-    const exports = markup.indexOf("Generate report");
+    const provenance = markup.indexOf("result-provenance");
+    const showOnModel = markup.indexOf(">Show on model<");
+    const displayOptions = markup.indexOf(">Display options<");
+    const exports = markup.indexOf("Download report");
 
     // Five stacked export buttons used to be the first thing in the panel, pushing the
     // number the user ran the solve for to row five of a nine-row table below them.
     expect(verdict).toBeGreaterThan(-1);
     expect(verdict).toBeLessThan(maxStress);
     expect(maxStress).toBeLessThan(provenance);
-    expect(provenance).toBeLessThan(exports);
+    // Plan 035: then one choice of what to colour the model by, with display tuning
+    // folded away below it, and the actions last.
+    expect(provenance).toBeLessThan(showOnModel);
+    expect(showOnModel).toBeLessThan(displayOptions);
+    expect(displayOptions).toBeLessThan(exports);
+    expect(markup).toMatch(/<details class="collapsible-section"><summary class="collapsible-summary"><span class="collapsible-title">Display options/);
+    expect(markup).toMatch(/<details class="collapsible-section"><summary class="collapsible-summary"><span class="collapsible-title">Run details/);
+    // The full provenance rows are still in the panel, inside Run details.
+    expect(markup).toContain("Result source");
 
     // The secondary exports collapse into one reachable "Export" menu next to the
     // primary action, rather than a column of five equally weighted buttons.
     expect(markup).toContain("export-menu-trigger");
     expect(markup).toContain('aria-haspopup="menu"');
-    expect(markup.indexOf("Generate report")).toBeLessThan(markup.indexOf("export-menu-trigger"));
+    expect(markup.indexOf("Download report")).toBeLessThan(markup.indexOf("export-menu-trigger"));
     // The verdict card already states the assessment title, so the row that repeated it
     // is gone. Matched as the row's own label, since the card's title can itself read
     // "Failure check unavailable".
     expect(markup).not.toContain("<span>Failure check</span>");
+  });
+
+  test("gives the last step's footer slot to the results actions instead of a dead Continue", () => {
+    // Results has nowhere to continue to. The footer keeps Back and hands its second slot
+    // to Download report and Export, which portal into it on screen. In static markup
+    // the slot is empty and the actions stay inline, so neither copy is ever lost.
+    const html = renderPanel("results", { onGenerateReport: vi.fn() });
+    expect(html).toContain('<div class="workflow-nav-slot"></div>');
+    expect(html).not.toContain('<span class="workflow-nav-label">Continue</span>');
+    expect(html).toContain("Download report");
+    // Every other step keeps its Continue button.
+    expect(renderPanel("run")).toContain('<span class="workflow-nav-label">Continue to results</span>');
   });
 
   test("offers one-click report generation with busy and error states", () => {
@@ -2007,7 +2052,7 @@ describe("RightPanel payload mass controls", () => {
     const busy = renderPanel("results", { onGenerateReport: vi.fn(), reportBusy: true });
     const failed = renderPanel("results", { onGenerateReport: vi.fn(), reportError: "Capture failed." });
 
-    expect(idle).toContain("Generate report");
+    expect(idle).toContain("Download report");
     expect(busy).toContain("Generating…");
     expect(busy).toContain('disabled=""');
     expect(failed).toContain('role="alert"');

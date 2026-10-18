@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { ViewerToolbar } from "./ViewerToolbar";
 import type { CSSProperties, ElementRef, MouseEvent as ReactMouseEvent, MutableRefObject, PointerEvent as ReactPointerEvent } from "react";
 import { Billboard, Bounds, Edges, GizmoHelper, Html, Line, OrbitControls, Text, useBounds } from "@react-three/drei";
 import { addAfterEffect, Canvas, useFrame, useThree } from "@react-three/fiber";
@@ -12,7 +13,7 @@ import { SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../geometryFormats";
 import { meshVolumeM3FromTriangleSource, type Triangle } from "@openfea/units";
 import * as THREE from "three";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
-import type { StepId } from "./StepBar";
+import type { StepId } from "./StepNav";
 import { faceForModelHit, type SampleModelKind } from "../modelSelection";
 import { baseModelRotationRadians, modelRotationRadians, modelToViewerMatrix, viewerNormalToModelSpace, viewerPointToModelSpace, type RotationAxis } from "../modelOrientation";
 import { dimensionValuesForDisplayModel } from "../modelDimensions";
@@ -79,6 +80,11 @@ interface CadViewerProps {
   themeMode: ThemeMode;
   projectionMode?: ProjectionMode;
   onProjectionModeChange?: (mode: ProjectionMode) => void;
+  /** View toolbar actions (plan 035, increment 3). */
+  onFitView?: () => void;
+  onToggleDimensions?: () => void;
+  onViewModeChange?: (mode: ViewMode) => void;
+  onSectionPlaneChange?: (plane: SectionPlaneState) => void;
   fitSignal: number;
   viewAxis: RotationAxis | null;
   viewAxisSignal: number;
@@ -197,6 +203,7 @@ export const VIEWER_VIEW_CUBE_CORNER_RADIUS = 0.082;
 export const VIEWER_VIEW_CUBE_CORNER_HIT_RADIUS = 0.19;
 const VIEWER_VIEW_CUBE_FACE_VISIBILITY_THRESHOLD = 0;
 export const VIEWER_ISOMETRIC_GIZMO_VIEW = "iso";
+const ORBIT_HINT_STORAGE_KEY = "openfea.viewer.orbitHintDismissed";
 export const VIEWER_CREDIT_URL = "https://esauengineering.com/";
 const VIEWER_FIT_MARGIN = 1.28;
 const DEFAULT_HOME_FIT_MARGIN = 1.46;
@@ -282,6 +289,14 @@ export function CadViewer(props: CadViewerProps) {
   const [uploadedPreviewBounds, setUploadedPreviewBounds] = useState<THREE.Box3 | null>(null);
   const [gizmoViewRequest, setGizmoViewRequest] = useState<{ view: GizmoViewRequest | null; signal: number }>({ view: null, signal: 0 });
   const [viewerInteracting, setViewerInteracting] = useState(false);
+  // The orbit hint teaches the three gestures once, then stays gone (per browser).
+  const [orbitHintDismissed, setOrbitHintDismissed] = useState(() => {
+    try { return window.localStorage.getItem(ORBIT_HINT_STORAGE_KEY) === "1"; } catch { return false; }
+  });
+  const dismissOrbitHint = useCallback(() => {
+    setOrbitHintDismissed(true);
+    try { window.localStorage.setItem(ORBIT_HINT_STORAGE_KEY, "1"); } catch { /* storage unavailable */ }
+  }, []);
   // The viewer's own render returns in a few tens of milliseconds; what takes seconds on a
   // cold boot is the Three scene building and compiling inside <Canvas>, during which the
   // shell paints an empty viewport with nothing to say for itself. This overlay is a DOM
@@ -371,6 +386,11 @@ export function CadViewer(props: CadViewerProps) {
     const bounds = kind === "uploaded" && uploadedPreviewBounds ? uploadedPreviewBounds : dimensionBoundsForDisplayModel(props.displayModel);
     props.onResultRenderBoundsChange?.(bounds ? resultRenderBoundsForBox(bounds) : null);
   }, [props.displayModel, props.onResultRenderBoundsChange, uploadedPreviewBounds]);
+  // The pick the setup steps act on, named on the canvas where the eye already is.
+  const selectedFaceChip = (props.activeStep === "supports" || props.activeStep === "loads") && props.selectedFaceId
+    ? props.displayModel.faces.find((face) => face.id === props.selectedFaceId)?.label ?? null
+    : null;
+
   return (
     <ResultColorScaleContext.Provider value={resultColorScale}>
       <SceneThemeContext.Provider value={props.themeMode}>
@@ -379,6 +399,7 @@ export function CadViewer(props: CadViewerProps) {
       className={`viewer-shell ${effectiveViewMode === "results" ? "results-view" : ""}`}
       aria-busy={props.importingModelFilename ? true : undefined}
       aria-label="3D CAD viewer"
+      onPointerDown={orbitHintDismissed ? undefined : dismissOrbitHint}
     >
       <Canvas frameloop="demand" dpr={viewerDpr} camera={{ position: [4.8, 4.8, 4.8], up: ISO_CAMERA_UP.toArray(), fov: DEFAULT_CAMERA_FOV }} onCreated={({ gl }) => { gl.localClippingEnabled = true; }} onPointerMissed={props.onViewerMiss}>
         <SceneFirstFrameSignal onPainted={handleScenePainted} />
@@ -521,15 +542,26 @@ export function CadViewer(props: CadViewerProps) {
           {props.displayModel.faces.length > MAX_A11Y_FACE_BUTTONS ? <span>Use pointer selection for additional faces.</span> : null}
         </div>
       )}
-      <div className="viewer-view-presets" role="group" aria-label="Camera views">
-        <button type="button" onClick={() => setGizmoViewRequest((request) => ({ view: "x", signal: request.signal + 1 }))}>X</button>
-        <button type="button" onClick={() => setGizmoViewRequest((request) => ({ view: "y", signal: request.signal + 1 }))}>Y</button>
-        <button type="button" onClick={() => setGizmoViewRequest((request) => ({ view: "z", signal: request.signal + 1 }))}>Z</button>
-        <button type="button" onClick={() => setGizmoViewRequest((request) => ({ view: VIEWER_ISOMETRIC_GIZMO_VIEW, signal: request.signal + 1 }))}>Iso</button>
-        <span className="projection-divider" aria-hidden="true" />
-        <button type="button" aria-pressed={projectionMode === "perspective"} onClick={() => props.onProjectionModeChange?.("perspective")}>Perspective</button>
-        <button type="button" aria-pressed={projectionMode === "orthographic"} onClick={() => props.onProjectionModeChange?.("orthographic")}>Orthographic</button>
-      </div>
+      {selectedFaceChip ? (
+        <div className="viewer-selection-chip" role="status" aria-live="polite">
+          <span className="viewer-selection-dot" aria-hidden="true" />Selected: {selectedFaceChip}
+        </div>
+      ) : null}
+      {!orbitHintDismissed ? (
+        <p className="viewer-orbit-hint">Drag to orbit · right-drag to pan · scroll to zoom</p>
+      ) : null}
+      <ViewerToolbar
+        projectionMode={projectionMode}
+        showDimensions={props.showDimensions}
+        sectionPlane={props.sectionPlane}
+        meshShown={effectiveViewMode === "results" ? null : props.viewMode === "mesh"}
+        onCameraView={(view) => setGizmoViewRequest((request) => ({ view: view === "iso" ? VIEWER_ISOMETRIC_GIZMO_VIEW : view, signal: request.signal + 1 }))}
+        onProjectionModeChange={props.onProjectionModeChange}
+        onFitView={props.onFitView}
+        onToggleDimensions={props.onToggleDimensions}
+        onToggleMesh={() => props.onViewModeChange?.(props.viewMode === "mesh" ? "model" : "mesh")}
+        onSectionPlaneChange={props.onSectionPlaneChange}
+      />
       {effectiveViewMode === "results" && <ResultLegend resultMode={props.resultMode} resultFields={resultFields} unitSystem={props.unitSystem} meshSummary={props.meshSummary} surfaceMesh={props.surfaceMesh} showDeformed={effectiveShowDeformed} deformationScale={props.stressExaggeration} peakLabel={props.resultPeaks?.[props.resultMode]} stale={props.resultsStale} />}
     </section>
       </StressComponentContext.Provider>

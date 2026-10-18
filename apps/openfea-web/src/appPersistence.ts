@@ -21,7 +21,7 @@ import { buildLocalProjectFile, type EmbeddedModelFile, type LocalProjectFile, t
 import { LOAD_DIRECTION_LABELS, type LoadApplicationPoint, type LoadDirectionLabel, type LoadType } from "./loadPreview";
 import { AUTOSAVE_STORAGE_KEY, AUTOSAVE_UI_STORAGE_KEY, getBrowserStorage, readStorageItem, type StorageLike } from "./autosaveStorage";
 import type { WorkspaceLogEntry } from "./components/BottomPanel";
-import type { StepId } from "./components/StepBar";
+import type { StepId } from "./components/StepNav";
 import type { SampleAnalysisType, SampleModelId } from "./lib/api";
 import type { CapturedResultView } from "./report/captureResultViews";
 import type { PayloadObjectSelection, ProjectionMode, ResultMode, StressComponent, ThemeMode, ViewMode } from "./workspaceViewTypes";
@@ -57,7 +57,6 @@ export interface WorkspaceUiSnapshot {
   resultFrameIndex?: number;
   resultPlaybackFps?: number;
   resultPlaybackReverseLoop?: boolean;
-  isStepbarCollapsed?: boolean;
   draftLoadType: LoadType;
   draftLoadValue: number;
   draftLoadDirection: LoadDirectionLabel;
@@ -629,7 +628,6 @@ function parseUiSnapshot(value: unknown): WorkspaceUiSnapshot | null {
     resultFrameIndex: Math.max(0, Math.trunc(readFiniteNumber(value.resultFrameIndex, 0))),
     resultPlaybackFps: clamp(readFiniteNumber(value.resultPlaybackFps, 12), 1, 60),
     resultPlaybackReverseLoop: value.resultPlaybackReverseLoop === true,
-    isStepbarCollapsed: value.isStepbarCollapsed === true,
     draftLoadType: readEnum(value.draftLoadType, LOAD_TYPES, "force"),
     draftLoadValue: readFiniteNumber(value.draftLoadValue, 500),
     draftLoadDirection: readEnum(value.draftLoadDirection, LOAD_DIRECTIONS, "-Z"),

@@ -53,6 +53,15 @@
   --fs-xl: 22px;
   --fs-display: 38px;
 
+  /* Panel type tier. The side panel is read more than it is operated, so it runs one
+     step above the chrome's 13px. .side-panel remaps --fs-mini..--fs-base onto these;
+     the top bar, status bar, viewer overlays and portalled popovers keep the base scale.
+     11px is the readability floor. */
+  --panel-fs-mini: 11px;
+  --panel-fs-xs: 12px;
+  --panel-fs-sm: 13px;
+  --panel-fs-base: 14px;
+
   --fw-regular: 400;
   --fw-medium: 500;
 
@@ -120,7 +129,6 @@
   /* ── Layout dimensions ────────────────────────────────── */
   --topbar-h: 44px;
   --statusbar-h: 30px;
-  --stepbar-w: 124px;
   /* Grows past 1560px wide so the panel keeps pace with a large viewer; at
      1920 the fixed 344px left it 18% of the screen and wrapped its headline. */
   --context-w: clamp(344px, 22vw, 420px);

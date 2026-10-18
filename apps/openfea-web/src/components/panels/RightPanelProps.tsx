@@ -7,7 +7,7 @@ import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolv
 import type { RunReadinessItem } from "../../runReadiness";
 import type { WorkspaceNotice } from "../../workspaceNotice";
 
-import type { StepId } from "../StepBar";
+import type { StepId } from "../StepNav";
 import { type LoadApplicationPoint, type LoadDirectionLabel, type LoadType, type PayloadLoadMetadata } from "../../loadPreview";
 import { type PayloadObjectSelection, type ResultMode, type SectionPlaneState, type StressComponent, type ViewMode } from "../../workspaceViewTypes";
 import { type ResolvedResultProbe } from "../../resultSelection";
@@ -71,6 +71,8 @@ export interface RightPanelProps {
   /** Wall time of the run that produced the current results, once it is no longer an estimate. */
   solveElapsedMs?: number | null;
   onGenerateReport?: (options?: { targetSafetyFactor?: number }) => Promise<void>;
+  /** Set by RightPanel on the last step: where Results puts its report and export actions. */
+  footerSlot?: HTMLElement | null;
   onExportResultPng?: () => Promise<void>;
   onExportResultHtml?: () => Promise<void>;
   onExportResultData?: (format: "csv" | "vtu") => Promise<void>;
