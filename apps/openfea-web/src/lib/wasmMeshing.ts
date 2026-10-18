@@ -259,7 +259,7 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
     actualMeshSizeMm = stepResult.qualityRefinement?.usedMeshSizeMm ?? requestedMeshSizeMm;
     meshedPacked = stepResult;
     if (stepResult.algorithm3D === "frontal") {
-      algorithmNote = "Delaunay 3D meshing failed in the browser mesher; the Frontal algorithm produced this mesh.";
+      algorithmNote = "The Delaunay attempt could not produce an acceptable mesh; the Frontal 3D algorithm produced this mesh.";
     }
     if (stepResult.elevation === "straight_edge") {
       elevationNote = "Curved Tet10 elevation produced near-degenerate elements on this geometry; mid-side nodes were placed on straight edges instead (slightly less accurate on curved boundaries).";

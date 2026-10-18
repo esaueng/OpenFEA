@@ -63,8 +63,8 @@ export type StepMeshResult = GeoMeshResult & {
    */
   elevation?: "curved" | "straight_edge";
   /**
-   * Present when the linear mesh missed the quality floor and gmsh's Netgen
-   * optimizer repaired it in-session (local sliver splitting/smoothing).
+   * Present when gmsh's Netgen optimizer repaired linear slivers or the
+   * corner-node mesh needed for safe curved elevation (splitting/smoothing).
    */
   optimizer?: "netgen";
   /**
@@ -589,8 +589,10 @@ async function meshStepAlgorithmCandidates(
     }
 
     if (result !== undefined) {
-      if (best === undefined || qualityOf(result) > qualityOf(best)) best = result;
-      if (meshResultPassesQuality(result)) return { best, delaunayError, frontalError };
+      if (best === undefined || preferStepMeshCandidate(result, best)) best = result;
+      // A valid straight-edge rescue is still a fallback: give the other 3D
+      // algorithm a chance to preserve the CAD curvature before accepting it.
+      if (meshResultPassesQuality(result) && result.elevation !== "straight_edge") return { best, delaunayError, frontalError };
       // A large solid with residual seam edges needs bounded OCC healing, not
       // another unhealed Frontal or characteristic-size attempt. Returning
       // this hint avoids retaining many fresh gmsh WASM heaps in one worker.
@@ -603,6 +605,17 @@ async function meshStepAlgorithmCandidates(
 
 function qualityOf(result: Pick<StepMeshResult, "qualityMinSICN">): number {
   return result.qualityMinSICN ?? -Infinity;
+}
+
+function preferStepMeshCandidate(candidate: StepMeshCandidate, current: StepMeshCandidate): boolean {
+  const candidatePasses = meshResultPassesQuality(candidate);
+  const currentPasses = meshResultPassesQuality(current);
+  if (candidatePasses !== currentPasses) return candidatePasses;
+  if (candidatePasses && candidate.elevation !== current.elevation) {
+    if (candidate.elevation === "curved" && current.elevation === "straight_edge") return true;
+    if (candidate.elevation === "straight_edge" && current.elevation === "curved") return false;
+  }
+  return qualityOf(candidate) > qualityOf(current);
 }
 
 function meshResultPassesQuality(result: Pick<StepMeshResult, "qualityMinSICN">): boolean {
@@ -719,13 +732,7 @@ function meshStepSession(
     let optimizer: StepMeshResult["optimizer"];
     let linearQuality = minSICNQuality(gmsh);
     if (allowNetgen && !preferQualityRepair && linearQuality !== undefined && linearQuality < MESH_QUALITY_REJECT_MIN_SICN) {
-      try {
-        gmsh.model.mesh.optimize("Netgen");
-      } catch (error) {
-        const crash = new Error(`gmsh Netgen optimizer crashed: ${messageOf(error)}`);
-        crash.name = NETGEN_CRASH_ERROR_NAME;
-        throw crash;
-      }
+      optimizeLinearMeshWithNetgen(gmsh);
       optimizer = "netgen";
       linearQuality = minSICNQuality(gmsh);
     }
@@ -740,6 +747,22 @@ function meshStepSession(
       elevation = "curved";
     }
     let qualityMinSICN = options.elementOrder === 2 ? minSICNQuality(gmsh) : linearQuality;
+    if (
+      elevation === "curved" &&
+      qualityMinSICN !== undefined &&
+      qualityMinSICN < MESH_QUALITY_REJECT_MIN_SICN &&
+      allowNetgen && !optimizer && !preferQualityRepair
+    ) {
+      // A healthy linear mesh can still invert when its boundary midpoints
+      // snap to a fillet. Repair the corner-node mesh, then curve it again,
+      // before sacrificing curved boundaries. Netgen only accepts linear
+      // elements; a WASM crash must use the existing fresh-module retry.
+      gmsh.model.mesh.setOrder(1);
+      optimizeLinearMeshWithNetgen(gmsh);
+      optimizer = "netgen";
+      gmsh.model.mesh.setOrder(2);
+      qualityMinSICN = minSICNQuality(gmsh);
+    }
     if (
       elevation === "curved" &&
       qualityMinSICN !== undefined &&
@@ -1512,6 +1535,16 @@ function tetElementCount(gmsh: GmshApi): number {
     count += gmsh.model.mesh.getElementsByType(typeCode).elementTags.length;
   }
   return count;
+}
+
+function optimizeLinearMeshWithNetgen(gmsh: GmshApi): void {
+  try {
+    gmsh.model.mesh.optimize("Netgen");
+  } catch (error) {
+    const crash = new Error(`gmsh Netgen optimizer crashed: ${messageOf(error)}`);
+    crash.name = NETGEN_CRASH_ERROR_NAME;
+    throw crash;
+  }
 }
 
 function meshNodeCount(gmsh: GmshApi): number {
