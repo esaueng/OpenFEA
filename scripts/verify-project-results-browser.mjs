@@ -125,7 +125,7 @@ async function run() {
   await cdp.send("Page.enable");
   cdp.on("Runtime.exceptionThrown", (params) => errors.push(params.exceptionDetails?.exception?.description ?? params.exceptionDetails?.text));
   await cdp.send("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
-  await waitFor("app", () => evaluate(cdp, 'document.title.includes("OpenFEA") && document.body.innerText.includes("Create new project")'));
+  await waitFor("app", () => evaluate(cdp, 'document.title.includes("OpenFEA") && document.body.innerText.includes("New study")'));
   const fixture = await waitFor("fixture imports", () => evaluate(cdp, `(async () => {
     const { loadSampleProject } = await import('/src/lib/api.ts');
     const { project, displayModel } = await loadSampleProject('cantilever', 'dynamic_structural');

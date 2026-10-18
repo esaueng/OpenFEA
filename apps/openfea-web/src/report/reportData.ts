@@ -79,6 +79,8 @@ export interface ReportData {
   title: string;
   projectName: string;
   studyName: string;
+  /** Cover context line: model · material · load. */
+  coverContext: string;
   unitSystemLabel: string;
   provenanceTier: ReturnType<typeof classifyResultProvenance>;
   provenanceLabel: string;
@@ -172,6 +174,7 @@ export function buildReportData(input: BuildReportDataInput): ReportData {
     title: input.study.type === "dynamic_structural" ? "Dynamic Structural Simulation Report" : "Structural Simulation Report",
     projectName: input.project.name,
     studyName: input.study.name,
+    coverContext: coverContextLine(input),
     unitSystemLabel: input.unitSystem === "US" ? "US (in, psi)" : "SI (m, Pa)",
     provenanceTier,
     provenanceLabel: formatResultProvenanceLabel(provenance),
@@ -252,6 +255,7 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
     title: "Modal Analysis Report",
     projectName: input.project.name,
     studyName: input.study.name,
+    coverContext: coverContextLine(input),
     unitSystemLabel: input.unitSystem === "US" ? "US (in, psi)" : "SI (m, Pa)",
     provenanceTier: classifyResultProvenance(provenance),
     provenanceLabel: formatResultProvenanceLabel(provenance),
@@ -326,6 +330,7 @@ function buildThermalReportData(input: BuildReportDataInput, summary: ThermalRes
     title: "Steady-State Thermal Simulation Report",
     projectName: input.project.name,
     studyName: input.study.name,
+    coverContext: coverContextLine(input),
     unitSystemLabel: input.unitSystem === "US" ? "US display units" : "SI display units",
     provenanceTier: classifyResultProvenance(provenance),
     provenanceLabel: formatResultProvenanceLabel(provenance),
@@ -388,6 +393,26 @@ function localIsoDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * One line under the cover title: model · material · load. Extra materials or
+ * loads are counted rather than listed so the line stays one line.
+ */
+export function coverContextLine(input: Pick<BuildReportDataInput, "project" | "study" | "displayModel" | "unitSystem">): string {
+  const more = (count: number) => (count > 1 ? ` (+${count - 1} more)` : "");
+  const model = input.displayModel?.name || input.project.name;
+  const assignments = input.study.materialAssignments;
+  const firstMaterial = assignments[0] ? tryResolveReportMaterial(assignments[0].materialId, input.project.customMaterials) : undefined;
+  const material = assignments[0]
+    ? `${firstMaterial ? reportMaterialName(firstMaterial) : assignments[0].materialId}${more(assignments.length)}`
+    : "No material";
+  const loads = input.study.loads;
+  const firstLoad = loads[0] ? loadTable({ ...input.study, loads: [loads[0]] }, input.unitSystem).rows[0] : undefined;
+  const load = firstLoad
+    ? `${firstLoad[1] === MISSING ? firstLoad[0] : `${firstLoad[1]} ${(firstLoad[0] ?? "").toLowerCase()}`}${more(loads.length)}`
+    : input.study.type === "modal_analysis" ? "Free vibration" : "No loads";
+  return [model, material, load].join(" · ");
 }
 
 function coverMetaRows(input: BuildReportDataInput, summary: ResultSummary, meshSummary: SolverMeshSummary | Study["meshSettings"]["summary"] | null): ReportRow[] {
@@ -689,7 +714,8 @@ function transientRows(summary: StructuralResultSummary): ReportRow[] {
     { label: "Output interval", value: `${transient.outputInterval} s` },
     { label: "Damping ratio", value: transient.dampingRatio === undefined ? MISSING : String(transient.dampingRatio) },
     { label: "Frames", value: String(transient.frameCount) },
-    { label: "Peak displacement", value: `${transient.peakDisplacement} ${summary.maxDisplacementUnits} at ${transient.peakDisplacementTimeSeconds} s` }
+    // Already converted with maxDisplacementUnits by resultSummaryForUnits (it has no unit of its own).
+    { label: "Peak displacement", value: `${formatResultMetric(transient.peakDisplacement, summary.maxDisplacementUnits)} at ${transient.peakDisplacementTimeSeconds} s` }
   ];
 }
 
