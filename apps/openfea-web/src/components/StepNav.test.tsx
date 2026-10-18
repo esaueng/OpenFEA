@@ -112,7 +112,7 @@ describe("ProjectMenu", () => {
     const html = renderToStaticMarkup(
       <ProjectMenu themeMode="dark" unitSystem={project.unitSystem} onThemeModeChange={vi.fn()} onUnitSystemChange={vi.fn()} />
     );
-    expect(html).toContain('aria-label="Appearance and units"');
+    expect(html).toContain('aria-label="Project"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain('aria-controls="workspace-project-menu"');
   });

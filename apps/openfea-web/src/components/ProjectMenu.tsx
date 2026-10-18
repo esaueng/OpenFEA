@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Moon, Settings2, Sun, X } from "lucide-react";
 import { useFocusTrap } from "../hooks/useFocusTrap";
+import { GITHUB_URL, KofiLink } from "./KofiLink";
 import type { UnitSystem } from "../unitDisplay";
 import type { ThemeMode } from "../workspaceViewTypes";
 
@@ -14,8 +15,9 @@ interface ProjectMenuProps {
 }
 
 /**
- * Appearance and units. These lived in the workflow rail's footer; when the rail became
- * a top-bar stepper (plan 035, increment 1) they moved here so they stay one click away.
+ * Appearance, units and project links. Theme and units lived in the workflow rail's footer;
+ * when the rail became a top-bar stepper (plan 035, increment 1) they moved here so they stay
+ * one click away. The Ko-fi and GitHub links left the status bar in increment 6.
  */
 export function ProjectMenu({ themeMode, unitSystem, onThemeModeChange, onUnitSystemChange, onOpen }: ProjectMenuProps) {
   const [open, setOpen] = useState(false);
@@ -28,8 +30,8 @@ export function ProjectMenu({ themeMode, unitSystem, onThemeModeChange, onUnitSy
         type="button"
         aria-expanded={open}
         aria-controls="workspace-project-menu"
-        title="Appearance and units"
-        aria-label="Appearance and units"
+        title="Project"
+        aria-label="Project"
         onClick={() => { if (!open) onOpen?.(); setOpen((value) => !value); }}
       >
         <Settings2 size={17} aria-hidden="true" />
@@ -37,10 +39,10 @@ export function ProjectMenu({ themeMode, unitSystem, onThemeModeChange, onUnitSy
       {open ? (
         <>
           <div className="shortcut-popover-backdrop" aria-hidden="true" onMouseDown={() => setOpen(false)} />
-          <div ref={popoverRef} className="project-menu-popover" id="workspace-project-menu" role="dialog" aria-modal="true" aria-label="Appearance and units">
+          <div ref={popoverRef} className="project-menu-popover" id="workspace-project-menu" role="dialog" aria-modal="true" aria-label="Project">
             <div className="project-menu-header">
-              <strong>Appearance and units</strong>
-              <button className="shortcut-popover-close" type="button" aria-label="Close appearance and units" onClick={() => setOpen(false)}>
+              <strong>Project</strong>
+              <button className="shortcut-popover-close" type="button" aria-label="Close project menu" onClick={() => setOpen(false)}>
                 <X size={16} aria-hidden="true" />
               </button>
             </div>
@@ -66,9 +68,22 @@ export function ProjectMenu({ themeMode, unitSystem, onThemeModeChange, onUnitSy
                 </button>
               </div>
             </div>
+            <ProjectMenuLinks />
           </div>
         </>
       ) : null}
     </>
+  );
+}
+
+/** Support and source links, under Theme and Units. */
+export function ProjectMenuLinks() {
+  return (
+    <div className="project-menu-links">
+      <KofiLink />
+      <a className="project-menu-github" href={GITHUB_URL} target="_blank" rel="noreferrer">
+        GitHub
+      </a>
+    </div>
   );
 }

@@ -1619,6 +1619,36 @@ img {
   gap: var(--sp-15);
 }
 
+/* Ko-fi and GitHub moved here from the status bar (plan 035, increment 6). */
+.project-menu-links {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: var(--border-thin);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mini);
+}
+
+.project-menu-links a {
+  min-height: var(--control-h-sm);
+}
+
+.project-menu-github {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  text-underline-offset: 3px;
+}
+
+.project-menu-github:hover,
+.project-menu-github:focus-visible {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
 .storage-status-button {
   min-height: var(--control-h-lg);
   display: inline-flex;
