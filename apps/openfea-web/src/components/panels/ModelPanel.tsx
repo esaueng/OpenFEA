@@ -156,7 +156,7 @@ export function ModelPanel({ project, displayModel, study, viewMode, showDimensi
      closed collapsibles below the actions; a blank project inverts that, since
      getting a model in is its only state. */
   return (
-    <Panel title="Model" step="model" helper="Inspect the 3D part. Orbit with left-drag, pan with right-drag, zoom with scroll." study={study}>
+    <Panel title="Model" question="Is this the right part?" step="model" helper="Inspect the 3D part. Orbit with left-drag, pan with right-drag, zoom with scroll." study={study}>
       {uploadInput}
       {isBlankProject && uploadAction}
       {isBlankProject && parametricBuilder}

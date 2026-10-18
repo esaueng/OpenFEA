@@ -379,10 +379,31 @@ describe("RightPanel run variants and load cases", () => {
   });
 });
 describe("RightPanel payload mass controls", () => {
-  test("offers the opposite face normal as a load direction", () => {
-    const markup = renderPanel("loads");
+  test("offers into-face, out-of-face and axis directions over the unchanged stored values", () => {
+    // Default draft direction is -Z: the axis choice is selected and the axis select shows it.
+    const axis = renderPanel("loads");
+    expect(axis).toContain('role="radiogroup" aria-label="Direction"');
+    expect(axis).toMatch(/role="radio" aria-checked="true" class="active" title="Acts along a global axis">Along axis</);
+    expect(axis).toContain('<select aria-label="Axis direction"><option value="-Y">Global -Y</option>');
+    expect(axis).toContain('<option value="-Z" selected="">Global -Z</option>');
+    expect(axis).not.toContain('<option value="Opposite normal"');
 
-    expect(markup).toContain('<option value="Opposite normal">Opposite face normal</option>');
+    // "Opposite normal" (into the face) and "Normal" (out of it) map to the face choices.
+    const into = renderPanel("loads", { draftLoadDirection: "Opposite normal" });
+    expect(into).toMatch(/role="radio" aria-checked="true" class="active" title="Pushes into the selected face[^"]*">Into face</);
+    expect(into).not.toContain('aria-label="Axis direction"');
+    const out = renderPanel("loads", { draftLoadDirection: "Normal" });
+    expect(out).toMatch(/role="radio" aria-checked="true" class="active" title="Pulls away from the selected face[^"]*">Out of face</);
+  });
+
+  test("folds load type, its explanation and extra faces into More options", () => {
+    const html = renderPanel("loads");
+    const more = html.match(/<details class="collapsible-section"[^>]*>[\s\S]*?More options[\s\S]*?<\/details>/)?.[0] ?? "";
+    expect(more).toContain("Load type");
+    expect(more).toContain("Face force is a total force");
+    // Closed for the default face force; opens itself for any other type.
+    expect(more).not.toMatch(/^<details class="collapsible-section" open/);
+    expect(renderPanel("loads", { draftLoadType: "pressure" })).toMatch(/<details class="collapsible-section" open="">[\s\S]*?More options/);
   });
 
   test("maps range slider values to a full visual fill at the maximum", () => {
@@ -717,28 +738,33 @@ describe("RightPanel payload mass controls", () => {
     // panel read "Step 5 of 7" beside a six-item rail.
     const modalStudy: Study = { ...study, name: "Modal", type: "modal_analysis", solverSettings: { modeCount: 6 } };
 
-    expect(renderPanel("mesh", { study: modalStudy })).toContain(">Step 4 of 6<");
-    expect(renderPanel("run", { study: modalStudy })).toContain(">Step 5 of 6<");
-    expect(renderPanel("supports", { study: modalStudy })).toContain(">Step 3 of 6<");
+    expect(renderPanel("mesh", { study: modalStudy })).toContain(">Step 4 of 6 · Mesh<");
+    expect(renderPanel("run", { study: modalStudy })).toContain(">Step 5 of 6 · Run<");
+    expect(renderPanel("supports", { study: modalStudy })).toContain(">Step 3 of 6 · Supports<");
     // Everything that keeps its loads step still counts to seven.
-    expect(renderPanel("mesh")).toContain(">Step 5 of 7<");
+    expect(renderPanel("mesh")).toContain(">Step 5 of 7 · Mesh<");
   });
 
-  test("places every step title and step number on the same header row", () => {
-    const steps: Array<{ id: StepId; title: string; step: number }> = [
-      { id: "model", title: "Model", step: 1 },
-      { id: "material", title: "Material", step: 2 },
-      { id: "supports", title: "Supports", step: 3 },
-      { id: "loads", title: "Loads", step: 4 },
-      { id: "mesh", title: "Mesh", step: 5 },
-      { id: "run", title: "Run", step: 6 },
-      { id: "results", title: "Results", step: 7 }
+  test("leads every setup step with the question it answers (plan 035)", () => {
+    const steps: Array<{ id: StepId; title: string; question: string; step: number }> = [
+      { id: "model", title: "Model", question: "Is this the right part?", step: 1 },
+      { id: "material", title: "Material", question: "What is it made of?", step: 2 },
+      { id: "supports", title: "Supports", question: "Where is it held still?", step: 3 },
+      { id: "loads", title: "Loads", question: "Where does the force push?", step: 4 },
+      { id: "mesh", title: "Mesh", question: "How finely should it be divided?", step: 5 },
+      { id: "run", title: "Run", question: "Ready to solve?", step: 6 }
     ];
 
     for (const item of steps) {
       const html = renderPanel(item.id);
-      expect(html).toContain(`<div class="panel-title-row"><h2>${item.title}</h2><div class="panel-eyebrow">Step ${item.step} of 7</div></div>`);
+      expect(html).toContain(`<div class="panel-header"><div class="panel-eyebrow">Step ${item.step} of 7 · ${item.title}</div><h2 class="panel-question">${item.question}</h2>`);
     }
+    // Results has no question: its verdict is the answer, so the title stays the heading.
+    expect(renderPanel("results")).toContain('<div class="panel-header"><div class="panel-eyebrow">Step 7 of 7</div><h2>Results</h2>');
+    // Thermal studies ask about heat, not force.
+    const thermalStudy: Study = { ...study, name: "Steady Thermal", type: "steady_state_thermal" };
+    expect(renderPanel("supports", { study: thermalStudy })).toContain(">Where is the temperature fixed?</h2>");
+    expect(renderPanel("loads", { study: thermalStudy })).toContain(">Where does heat go in or out?</h2>");
   });
 
   test("does not expose report generation from the results panel", () => {
@@ -1866,7 +1892,7 @@ describe("RightPanel payload mass controls", () => {
 
     expect(html).toContain('title="Next workflow step (N)"');
     expect(html).toContain('aria-label="Next workflow step: Run. Shortcut N"');
-    expect(html).toContain('<span class="workflow-nav-label">Next: Run</span><kbd>N</kbd>');
+    expect(html).toContain('<span class="workflow-nav-label">Continue to run</span><kbd>N</kbd>');
   });
 
   test("turns the active meshing button into an enabled stop action", () => {
@@ -1937,10 +1963,10 @@ describe("RightPanel payload mass controls", () => {
 
     expect(html).toContain('title="Previous workflow step (B)"');
     expect(html).toContain('aria-label="Previous workflow step: Supports. Shortcut B"');
-    expect(html).toContain('<span class="workflow-nav-label">Back: Supports</span><kbd>B</kbd>');
+    expect(html).toContain('<button class="workflow-nav-back" type="button" title="Previous workflow step (B)" aria-label="Previous workflow step: Supports. Shortcut B"><span class="workflow-nav-label">Back</span><kbd>B</kbd>');
     expect(html).toContain('title="Next workflow step (N)"');
     expect(html).toContain('aria-label="Next workflow step: Mesh. Shortcut N"');
-    expect(html).toContain('<span class="workflow-nav-label">Next: Mesh</span><kbd>N</kbd>');
+    expect(html).toContain('<span class="workflow-nav-label">Continue to mesh</span><kbd>N</kbd>');
   });
 
   test("requires a selected face before adding a face force", () => {
