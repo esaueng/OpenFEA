@@ -33,6 +33,31 @@ describe("Cloudflare deployment config guard (post cloud retirement)", () => {
     expect(() => validateCloudflareConfigs({ defaultConfig, retiredDoCleanupConfig, staticConfig, packageJson })).not.toThrow();
   });
 
+  test("Wrangler accepts isolated Preview bindings while production retains its resources", async () => {
+    const { unstable_readConfig } = await import("wrangler");
+    const normalized = unstable_readConfig({ config: resolve(rootDir, "wrangler.jsonc") });
+    expect(normalized.previews).toMatchObject({
+      vars: { GLIMPSE_BASIC_ENABLED: "false", GLIMPSE_USAGE_ENABLED: "false" },
+      services: [], r2_buckets: [], ratelimits: []
+    });
+    expect(normalized.r2_buckets[0].bucket_name).toBe("opencae-project-backups");
+  });
+
+  test.each(["services", "r2_buckets", "ratelimits"])("rejects production %s in a Preview", (binding) => {
+    const configs = readCloudflareConfigs(rootDir);
+    configs.defaultConfig.previews[binding] = structuredClone(configs.defaultConfig[binding]);
+    expect(() => validateCloudflareConfigs(configs)).toThrow(/Preview must not bind production/);
+  });
+
+  test("rejects missing Preview settings or enabled preview analytics", () => {
+    const configs = readCloudflareConfigs(rootDir);
+    delete configs.defaultConfig.previews;
+    expect(() => validateCloudflareConfigs(configs)).toThrow(/Preview settings/);
+    configs.defaultConfig = clone(readConfig("wrangler.jsonc"));
+    configs.defaultConfig.previews.vars.GLIMPSE_USAGE_ENABLED = "true";
+    expect(() => validateCloudflareConfigs(configs)).toThrow(/analytics disabled/);
+  });
+
   test("retired container and local-first wrangler variants stay deleted", () => {
     expect(existsSync(resolve(rootDir, "wrangler.containers.jsonc"))).toBe(false);
     expect(existsSync(resolve(rootDir, "wrangler.local-first.jsonc"))).toBe(false);

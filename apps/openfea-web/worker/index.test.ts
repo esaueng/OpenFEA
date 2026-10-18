@@ -74,6 +74,18 @@ async function dispatchScheduled(env: Env): Promise<void> {
   await Promise.all(pending);
 }
 
+test("Preview workspace serves assets and refuses recovery without production bindings", async () => {
+  const config = readJsonc("../../../wrangler.jsonc") as { previews: { vars: Record<string, string> } };
+  const env = {
+    ASSETS: { fetch: async () => new Response("preview workspace") },
+    ...config.previews.vars
+  } as unknown as Env;
+  expect(await (await dispatchWorker(new Request("https://preview.test/"), env)).text()).toBe("preview workspace");
+  const backup = await dispatchWorker(new Request("https://preview.test/api/project-backups/11111111-1111-4111-8111-111111111111"), env);
+  expect(backup.status).toBe(503);
+  expect(await backup.json()).toEqual({ error: "Encrypted cloud recovery is unavailable on this deployment." });
+});
+
 describe("Cloudflare local-first worker", () => {
   test("carries no cloud solve infrastructure (retired 2026-07)", () => {
     const workerSource = readFileSync(resolve(__dirname, "index.ts"), "utf8");

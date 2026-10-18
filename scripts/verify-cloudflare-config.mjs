@@ -52,6 +52,16 @@ export function validateCloudflareConfigs({ defaultConfig, retiredDoCleanupConfi
 }
 
 function validateProductionConfig(label, config, failures) {
+  const preview = config.previews;
+  if (!preview || preview.vars?.GLIMPSE_BASIC_ENABLED !== "false" || preview.vars?.GLIMPSE_USAGE_ENABLED !== "false") {
+    failures.push(`${label} config must define Preview settings with analytics disabled`);
+  }
+  for (const binding of ["services", "r2_buckets", "ratelimits"]) {
+    if (!Array.isArray(preview?.[binding]) || preview[binding].length !== 0) {
+      failures.push(`${label} Preview must not bind production ${binding}`);
+    }
+  }
+
   validateProductionTarget(label, config, failures);
   validateRetiredCloudAbsent(label, config, failures);
   const expectedBackupBinding = [{ binding: "PROJECT_BACKUPS", bucket_name: "opencae-project-backups" }];
