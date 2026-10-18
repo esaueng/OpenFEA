@@ -747,7 +747,7 @@ export function ResultsPanelContent({
       </div>
       {canEstimateLoad && (
         <>
-          <SectionTitle helpId="targetSafetyFactor">Reverse Check</SectionTitle>
+          <SectionTitle helpId="targetSafetyFactor">Reverse check</SectionTitle>
           {/* The linearity caveat used to appear only in the PDF (2026-09 review F9). */}
           <p className="muted">Linear scaling of this result against the material yield limit. Verify with a run at the target load.</p>
           <div className="load-capacity-tool">

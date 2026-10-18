@@ -1551,21 +1551,21 @@ describe("RightPanel payload mass controls", () => {
       }
     });
 
-    expect(html).toContain("Base Material");
+    expect(html).toContain("Base material");
     expect(html).toContain("ABS Plastic");
     expect(html).toContain("Thermoplastic");
-    expect(html).toContain("Manufacturing Process");
+    expect(html).toContain("Manufacturing process");
     expect(html).toContain("Compatible with ABS Plastic. Only validated options are shown.");
     expect(html).toContain('role="radiogroup" aria-label="Manufacturing process"');
     expect(html).toContain("CNC machining");
     expect(html).toContain("Injection molding");
     expect(html).toContain("FDM printing");
     expect(html).not.toContain("SLA printing");
-    expect(html).toContain("FDM Settings");
+    expect(html).toContain("FDM settings");
     expect(html).toContain("Infill density");
     expect(html).toContain("Wall count");
     expect(html).toContain("Build direction");
-    expect(html).toContain("Simulation Properties");
+    expect(html).toContain("Simulation properties");
     expect(html).toContain("Effective modulus");
     expect(html).toContain("Effective density");
     expect(html).toContain("Effective yield");
@@ -1595,7 +1595,7 @@ describe("RightPanel payload mass controls", () => {
     expect(cncHtml).toContain('role="radio" aria-checked="true"');
     expect(cncHtml).toContain("CNC machining");
     expect(cncHtml).toContain("FDM printing");
-    expect(cncHtml).not.toContain("FDM Settings");
+    expect(cncHtml).not.toContain("FDM settings");
     expect(cncHtml).not.toContain("Infill density");
     expect(cncHtml).not.toContain("Wall count");
     expect(cncHtml).not.toContain("Build direction");

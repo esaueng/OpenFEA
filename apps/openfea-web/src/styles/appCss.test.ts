@@ -682,4 +682,31 @@ describe("app CSS", () => {
 
     expect(unresolved).toEqual([]);
   });
+
+  test("sets the side panel one type step above the chrome, in sentence case", () => {
+    // Plan 035 increment 0: the panel reads at 14px while the top bar, status bar and
+    // viewer overlays stay at 13px. The panel remaps the scale rather than retyping rules.
+    expect(tokens).toMatch(/--fs-base:\s*13px;/);
+    expect(tokens).toMatch(/--panel-fs-base:\s*14px;/);
+    expect(tokens).toMatch(/--panel-fs-mini:\s*11px;/);
+    const sidePanel = baseRule(".side-panel");
+    for (const step of ["mini", "xs", "sm", "base"]) {
+      expect(sidePanel, step).toMatch(new RegExp(`--fs-${step}:\\s*var\\(--panel-fs-${step}\\);`));
+    }
+    // Inherited font-size is computed at body, so the panel must restate it.
+    expect(sidePanel).toMatch(/font-size:\s*var\(--fs-base\);/);
+    // Button labels stay at 13px so the two-up view grid and Back/Next fit one line.
+    expect(baseRule(":where(.side-panel) button")).toMatch(/font-size:\s*var\(--fs-sm\);/);
+
+    // No uppercase tracked eyebrows inside the panel; the chrome keeps them.
+    const eyebrowGroup = css.replace(/\/\*[\s\S]*?\*\//g, "").match(/^[^{}]*\{\s*font-family:\s*var\(--font-mono\);\s*font-size:\s*var\(--fs-mini\);\s*letter-spacing:\s*var\(--ls-eyebrow\);\s*text-transform:\s*uppercase;\s*\}/m)?.[0] ?? "";
+    expect(eyebrowGroup).toContain(".stepbar-eyebrow");
+    for (const selector of [".panel-eyebrow", ".section-title", ".editable-list h3"]) {
+      expect(eyebrowGroup, selector).not.toContain(selector);
+    }
+    expect(baseRule(".result-headline-item span")).not.toMatch(/text-transform/);
+
+    // The step navigation is the panel's primary action and gets the touch-size floor.
+    expect(baseRule(".workflow-nav button")).toMatch(/min-height:\s*var\(--control-h-touch\);/);
+  });
 });

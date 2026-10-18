@@ -165,9 +165,6 @@ img {
 .storage-recovery-header small,
 .stepbar-eyebrow,
 .stepbar-footer,
-.panel-eyebrow,
-.editable-list h3,
-.section-title,
 .app-crash-eyebrow,
 .app-crash-detail span {
   font-family: var(--font-mono);
@@ -2550,12 +2547,28 @@ img {
 }
 
 .side-panel {
+  /* Every panel rule sizes text through --fs-*, so remapping the scale here moves the
+     whole panel one step up without touching a component rule. font-size is restated
+     because the inherited value was already computed at body. */
+  --fs-mini: var(--panel-fs-mini);
+  --fs-xs: var(--panel-fs-xs);
+  --fs-sm: var(--panel-fs-sm);
+  --fs-base: var(--panel-fs-base);
   min-width: 0;
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
   border-left: var(--border-thin);
   overflow: hidden;
+  font-size: var(--fs-base);
+}
+
+/* Reading text moves up a step; button labels stay one step down, at the chrome's
+   13px, so two-up action grids and the Back/Next labels keep to one line in a
+   344px panel. :where() keeps this at element specificity, so a component rule that
+   sizes its own buttons still wins. */
+:where(.side-panel) button {
+  font-size: var(--fs-sm);
 }
 
 .panel-section {
@@ -2579,8 +2592,11 @@ img {
   margin-bottom: var(--sp-1);
 }
 
+/* Inside the panel, labels are sentence case at reading size: uppercase tracked mono
+   reads as instrument output, not as a heading. Eyebrows stay in the chrome. */
 .panel-eyebrow {
   color: var(--color-text-subtle);
+  font-size: var(--fs-sm);
 }
 
 .panel-section h2 {
@@ -2694,6 +2710,7 @@ img {
 
 .workflow-nav button {
   min-width: 0;
+  min-height: var(--control-h-touch);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3933,9 +3950,7 @@ button:disabled {
 
 .result-headline-item span {
   color: var(--color-text-muted);
-  font-size: var(--fs-mini);
-  letter-spacing: var(--ls-eyebrow);
-  text-transform: uppercase;
+  font-size: var(--fs-sm);
 }
 
 .result-headline-item strong {
@@ -3993,8 +4008,9 @@ button:disabled {
 .editable-list h3,
 .section-title {
   margin: 0 0 var(--sp-2);
-  color: var(--color-text-subtle);
-  font-weight: var(--fw-regular);
+  color: var(--color-text);
+  font-size: var(--fs-base);
+  font-weight: var(--fw-medium);
 }
 
 /* The section boundary was 22px against a 14px block gap — a 1.57x ratio, too close for
@@ -4062,8 +4078,11 @@ button:disabled {
   color: var(--color-text-subtle);
   font-size: var(--fs-xs);
   font-weight: var(--fw-regular);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: var(--lh-tight);
+  /* At the panel's 14px tier "Sample and analysis type" overran a 390px panel by
+     12px; it wraps under itself rather than losing its last word. */
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .collapsible-chevron {
