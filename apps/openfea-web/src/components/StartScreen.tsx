@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { SampleAnalysisType, SampleModelId } from "../lib/api";
 import { getOfflineReadiness, offlineReadinessLabel, subscribeOfflineReadiness } from "../lib/offlineStatus";
+import { GITHUB_URL, KofiLink } from "./KofiLink";
 import { OpenFeaLogoMark } from "./OpenFeaLogoMark";
 import { SampleOptionCard } from "./SampleOptionCard";
 import { SAMPLE_ANALYSIS_OPTIONS } from "./sampleAnalysisOptions";
@@ -223,7 +224,11 @@ export function StartScreen({ onLoadSample, onCreateProject, onOpenProject, busy
         <a className="start-credit" href="https://esauengineering.com/" target="_blank" rel="noreferrer">
           Built by Esau Engineering
         </a>
-        <a className="start-github" href="https://github.com/esaueng/OpenFEA" target="_blank" rel="noreferrer">GitHub</a>
+        <span className="start-footer-links">
+          <KofiLink />
+          <span aria-hidden="true"> · </span>
+          <a className="start-github" href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub</a>
+        </span>
       </footer>
     </main>
   );

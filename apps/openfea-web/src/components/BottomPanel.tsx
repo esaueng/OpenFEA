@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { Coffee, Github, MessageSquare } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { MessageSquare } from "lucide-react";
 import type { Study } from "@openfea/schema";
 import { REQUIRED_SETTING_HELP_IDS, SETTING_HELP, type SettingHelpVisual } from "../settingHelp";
 
@@ -27,9 +27,6 @@ export const WORKSPACE_SHORTCUT_GUIDE: Array<{ keys: string[]; label: string }> 
   { keys: ["Shift", "Ctrl/Cmd", "Z"], label: "Redo" }
 ];
 
-export const COFFEE_ANIMATION_DURATION_MS = 1800;
-export const COFFEE_ANIMATION_REPLAY_DELAY_MS = { min: 18000, max: 45000 } as const;
-const COFFEE_LINK_TEXT = "Buy me a coffee";
 const ESAU_ENGINEERING_URL = "https://esauengineering.com/";
 const COPY_FEEDBACK_DURATION_MS = 2200;
 
@@ -43,24 +40,13 @@ export async function writeWorkspaceLogsToClipboard(text: string, clipboard?: Pi
   }
 }
 
-export function coffeeAnimationReplayDelayMs(randomValue = Math.random()) {
-  const safeRandomValue = Number.isFinite(randomValue) ? randomValue : 0;
-  const boundedRandomValue = Math.min(1, Math.max(0, safeRandomValue));
-  const delayRange = COFFEE_ANIMATION_REPLAY_DELAY_MS.max - COFFEE_ANIMATION_REPLAY_DELAY_MS.min;
-  return Math.round(COFFEE_ANIMATION_REPLAY_DELAY_MS.min + delayRange * boundedRandomValue);
-}
-
 export function BottomPanel({ status, logs, meshStatus, solverStatus, studySummary, onClearLogs }: BottomPanelProps) {
   const [tab, setTab] = useState<"help" | "logs" | null>(null);
   const [drawerHeight, setDrawerHeight] = useState(320);
   const [clearPromptVisible, setClearPromptVisible] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "copied" | "unavailable" | "failed">("idle");
   const [tipFilter, setTipFilter] = useState("");
-  const [coffeeAnimating, setCoffeeAnimating] = useState(false);
-  const [coffeeAnimationRun, setCoffeeAnimationRun] = useState(0);
   const dragStart = useRef<{ y: number; height: number } | null>(null);
-  const animationTimeoutRef = useRef(0);
-  const replayTimeoutRef = useRef(0);
   const copyFeedbackTimeoutRef = useRef(0);
   const expanded = tab !== null;
   const displayStatus = statusForDisplay(status, solverStatus);
@@ -75,7 +61,6 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, studySumma
         return help.title.toLowerCase().includes(needle) || help.body.toLowerCase().includes(needle);
       })
     : REQUIRED_SETTING_HELP_IDS;
-  const donateLinkClassName = `status-link donate-link${coffeeAnimating ? " coffee-animating" : ""}`;
 
   useEffect(() => {
     if (!clearPromptVisible) return undefined;
@@ -84,38 +69,6 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, studySumma
   }, [clearPromptVisible]);
 
   useEffect(() => () => window.clearTimeout(copyFeedbackTimeoutRef.current), []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    if (prefersReducedCoffeeMotion()) return undefined;
-
-    function scheduleCoffeeAnimation() {
-      replayTimeoutRef.current = window.setTimeout(() => {
-        runCoffeeAnimation();
-        scheduleCoffeeAnimation();
-      }, coffeeAnimationReplayDelayMs());
-    }
-
-    runCoffeeAnimation();
-    scheduleCoffeeAnimation();
-
-    return () => {
-      window.clearTimeout(animationTimeoutRef.current);
-      window.clearTimeout(replayTimeoutRef.current);
-    };
-  }, []);
-
-  function prefersReducedCoffeeMotion() {
-    return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
-  }
-
-  function runCoffeeAnimation() {
-    if (typeof window === "undefined" || prefersReducedCoffeeMotion()) return;
-    setCoffeeAnimationRun((run) => run + 1);
-    setCoffeeAnimating(true);
-    window.clearTimeout(animationTimeoutRef.current);
-    animationTimeoutRef.current = window.setTimeout(() => setCoffeeAnimating(false), COFFEE_ANIMATION_DURATION_MS);
-  }
 
   function selectTab(nextTab: NonNullable<typeof tab>, event: MouseEvent<HTMLButtonElement>) {
     if (tab === nextTab) {
@@ -288,32 +241,7 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, studySumma
           </div>
         </div>
         <a className="status-attribution" href={ESAU_ENGINEERING_URL} target="_blank" rel="noreferrer">Built by Esau Engineering</a>
-        <div className="status-links" aria-label="Project links">
-          {/* Ko-fi and GitHub stay here until the maintainer decides where they move
-              (plan 035 increment 6 proposes the Project menu plus the start-screen footer). */}
-          <a className={donateLinkClassName} href="https://ko-fi.com/esau" target="_blank" rel="noreferrer" title="Support OpenFEA on Ko-fi" onMouseEnter={runCoffeeAnimation}>
-            <span className="coffee-mark" aria-hidden="true" key={`coffee-mark-${coffeeAnimationRun}`}>
-              <span className="coffee-steam coffee-steam-one" />
-              <span className="coffee-steam coffee-steam-two" />
-              <Coffee size={13} aria-hidden="true" />
-              <span className="coffee-sparkle" />
-            </span>
-            <span className="coffee-label" key={`coffee-label-${coffeeAnimationRun}`}>
-              {COFFEE_LINK_TEXT.split("").map((letter, index) => (
-                <span
-                  className={letter === " " ? "coffee-letter coffee-letter-space" : "coffee-letter"}
-                  key={`${letter}-${index}`}
-                  style={{ "--coffee-letter-index": index } as CSSProperties}
-                >
-                  {letter}
-                </span>
-              ))}
-            </span>
-          </a>
-          <a className="status-link" href="https://github.com/esaueng/OpenFEA" target="_blank" rel="noreferrer">
-            <Github size={13} aria-hidden="true" />
-            GitHub
-          </a>
+        <div className="status-links" aria-label="Help and feedback">
           <div className="status-tabs">
             {(["help", "logs"] as const).map((item) => (
               <button key={item} type="button" className={tab === item ? "active" : ""} aria-pressed={tab === item} aria-expanded={tab === item} onClick={(event) => selectTab(item, event)}>

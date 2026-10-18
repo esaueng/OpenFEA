@@ -4,12 +4,10 @@ import { resolve } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import {
   BottomPanel,
-  COFFEE_ANIMATION_REPLAY_DELAY_MS,
   KeyboardShortcutGuide,
   statusForDisplay,
   studySummaryLine,
   WORKSPACE_SHORTCUT_GUIDE,
-  coffeeAnimationReplayDelayMs,
   resolveLogClearIntent,
   workspaceLogLevel,
   writeWorkspaceLogsToClipboard
@@ -36,7 +34,7 @@ function textContent(html: string) {
 }
 
 describe("BottomPanel", () => {
-  test("keeps the GitHub link in the bottom status area", () => {
+  test("keeps feedback and attribution in the status bar; Ko-fi and GitHub moved out", () => {
     const html = renderToStaticMarkup(
       <BottomPanel
         status="Results ready"
@@ -48,57 +46,15 @@ describe("BottomPanel", () => {
     );
 
     expect(html).toContain('class="status-links"');
-    expect(html).toContain('class="status-link"');
     expect(html).toContain('href="https://form.esauengineering.com/opencae-feedback"');
-    expect(html).toContain('href="https://ko-fi.com/esau"');
-    expect(html).toContain('href="https://github.com/esaueng/OpenFEA"');
     expect(html).toContain(">Feedback</a>");
-    expect(textContent(html)).toContain("Buy me a coffee");
-    expect(html).toContain(">GitHub</a>");
     expect(html).toContain('class="status-attribution"');
-    expect(html).toContain('href="https://esauengineering.com/"');
     expect(html).toContain("Built by Esau Engineering");
     expect(html.indexOf("Results ready")).toBeLessThan(html.indexOf("Built by Esau Engineering"));
-    expect(html.indexOf("Built by Esau Engineering")).toBeLessThan(html.indexOf('href="https://ko-fi.com/esau"'));
-    expect(html.indexOf('href="https://ko-fi.com/esau"')).toBeLessThan(html.indexOf('href="https://form.esauengineering.com/opencae-feedback"'));
-    expect(html.indexOf('href="https://ko-fi.com/esau"')).toBeLessThan(html.indexOf('href="https://github.com/esaueng/OpenFEA"'));
-  });
-
-  test("renders decorative coffee animation elements and wave text without changing link copy", () => {
-    const html = renderToStaticMarkup(
-      <BottomPanel
-        status="Results ready"
-        logs={[{ message: "Ready", at: 1714000000000 }]}
-        meshStatus="Ready"
-        solverStatus="Complete"
-        onClearLogs={() => undefined}
-      />
-    );
-
-    expect(html).toContain('class="coffee-mark"');
-    expect(html).toContain('class="coffee-steam coffee-steam-one"');
-    expect(html).toContain('class="coffee-steam coffee-steam-two"');
-    expect(html).toContain('class="coffee-sparkle"');
-    expect(html).toContain('class="coffee-label"');
-    expect(html).toContain('class="coffee-letter"');
-    expect(html).toContain("--coffee-letter-index:0");
-    expect(html).toContain("--coffee-letter-index:14");
-    expect(textContent(html)).toContain("Buy me a coffee");
-  });
-
-  test("wires hover to play the coffee animation once", () => {
-    expect(bottomPanelSource).toContain("function runCoffeeAnimation()");
-    expect(bottomPanelSource).toContain("onMouseEnter={runCoffeeAnimation}");
-    expect(bottomPanelSource).toContain("window.clearTimeout(animationTimeoutRef.current)");
-  });
-
-  test("bounds the randomized coffee animation replay delay", () => {
-    expect(COFFEE_ANIMATION_REPLAY_DELAY_MS).toEqual({ min: 18000, max: 45000 });
-    expect(coffeeAnimationReplayDelayMs(0)).toBe(18000);
-    expect(coffeeAnimationReplayDelayMs(0.5)).toBe(31500);
-    expect(coffeeAnimationReplayDelayMs(1)).toBe(45000);
-    expect(coffeeAnimationReplayDelayMs(-1)).toBe(18000);
-    expect(coffeeAnimationReplayDelayMs(2)).toBe(45000);
+    // Plan 035 increment 6: these live in the start-screen footer and the Project menu now.
+    expect(html).not.toContain("ko-fi.com");
+    expect(html).not.toContain("Buy me a coffee");
+    expect(html).not.toContain("github.com/esaueng/OpenFEA");
   });
 
   test("omits backend and verbose workspace metadata from the status strip", () => {
