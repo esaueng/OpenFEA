@@ -1,4 +1,4 @@
-import type { StepId } from "./components/StepBar";
+import type { StepId } from "./components/StepNav";
 import type { PayloadObjectSelection } from "./workspaceViewTypes";
 
 export function nextSelectedPayloadObject({

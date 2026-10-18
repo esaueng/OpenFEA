@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vitest";
 import { bracketDisplayModel } from "@openfea/samples";
 import type { DisplayModel, Project, ResultField, ResultSummary, Study } from "@openfea/schema";
 import { dynamicSettingConstraintMessage, editableNumberCommitValue, playbackPeakMarkerPercent, resultModeExplanation, RightPanel, rangeProgressPercent } from "./RightPanel";
-import type { StepId } from "./StepBar";
+import type { StepId } from "./StepNav";
 import { resultExportMenuItems } from "./panels/ResultsPanels";
 import { readinessForStudy } from "../runReadiness";
 import { StudySchema } from "@openfea/schema";
@@ -712,7 +712,7 @@ describe("RightPanel payload mass controls", () => {
   });
 
   test("counts modal steps against the rail the user can actually see", () => {
-    // A modal study has no loads step: StepBar and the Back/Next pair both filter it out,
+    // A modal study has no loads step: StepNav and the Back/Next pair both filter it out,
     // but the eyebrow counted the unfiltered list against a hardcoded 7, so the Mesh
     // panel read "Step 5 of 7" beside a six-item rail.
     const modalStudy: Study = { ...study, name: "Modal", type: "modal_analysis", solverSettings: { modeCount: 6 } };

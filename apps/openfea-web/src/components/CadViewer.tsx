@@ -12,7 +12,7 @@ import { SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../geometryFormats";
 import { meshVolumeM3FromTriangleSource, type Triangle } from "@openfea/units";
 import * as THREE from "three";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
-import type { StepId } from "./StepBar";
+import type { StepId } from "./StepNav";
 import { faceForModelHit, type SampleModelKind } from "../modelSelection";
 import { baseModelRotationRadians, modelRotationRadians, modelToViewerMatrix, viewerNormalToModelSpace, viewerPointToModelSpace, type RotationAxis } from "../modelOrientation";
 import { dimensionValuesForDisplayModel } from "../modelDimensions";
