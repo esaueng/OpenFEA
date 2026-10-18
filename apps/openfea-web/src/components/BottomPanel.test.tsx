@@ -7,6 +7,7 @@ import {
   COFFEE_ANIMATION_REPLAY_DELAY_MS,
   KeyboardShortcutGuide,
   statusForDisplay,
+  studySummaryLine,
   WORKSPACE_SHORTCUT_GUIDE,
   coffeeAnimationReplayDelayMs,
   resolveLogClearIntent,
@@ -267,5 +268,36 @@ describe("BottomPanel", () => {
   test("reports cleared results as outdated until the next run", () => {
     expect(statusForDisplay("Load updated.", "Outdated")).toBe("Results outdated");
     expect(statusForDisplay("Load updated.", "Running")).toBe("Simulating");
+  });
+
+  test("shows the status dot, status text and study summary, with Help · Logs · Feedback on the right", () => {
+    const html = renderToStaticMarkup(
+      <BottomPanel status="Ready" logs={[]} meshStatus="Ready" solverStatus="Idle" studySummary="1 support, 1 load" onClearLogs={() => undefined} />
+    );
+    expect(html).toContain('<span class="status-state ready"><i></i><span class="status-state-label">Ready</span></span>');
+    expect(html).toContain('<span class="status-summary">1 support, 1 load</span>');
+    // Tips now lives under Help; there is no separate Tips tab.
+    expect(textContent(html)).not.toContain("Tips");
+    const links = html.slice(html.indexOf('class="status-links"'));
+    expect(links.indexOf(">Help<")).toBeGreaterThan(-1);
+    expect(links.indexOf(">Help<")).toBeLessThan(links.indexOf(">Logs<"));
+    expect(links.indexOf(">Logs<")).toBeLessThan(links.indexOf(">Feedback</a>"));
+    expect(html.indexOf("1 support, 1 load")).toBeLessThan(html.indexOf('class="status-links"'));
+    expect(bottomPanelSource).toContain('tab === "help"');
+    expect(workspaceSource).toContain("studySummary={studySummaryLine(study)}");
+  });
+
+  test("omits the summary when there is no study", () => {
+    const html = renderToStaticMarkup(<BottomPanel status="Ready" logs={[]} meshStatus="Not generated" solverStatus="Idle" onClearLogs={() => undefined} />);
+    expect(html).not.toContain("status-summary");
+    expect(studySummaryLine(null)).toBe("");
+  });
+
+  test("summarises the study in one line by its own boundary-condition vocabulary", () => {
+    const bc = (n: number) => Array.from({ length: n }, () => ({}) as never);
+    expect(studySummaryLine({ type: "static_stress", constraints: bc(1), loads: bc(1) })).toBe("1 support, 1 load");
+    expect(studySummaryLine({ type: "dynamic_structural", constraints: bc(2), loads: bc(0) })).toBe("2 supports, 0 loads");
+    expect(studySummaryLine({ type: "modal_analysis", constraints: bc(3), loads: bc(0) })).toBe("3 supports");
+    expect(studySummaryLine({ type: "steady_state_thermal", constraints: bc(1), loads: bc(2) })).toBe("1 fixed temperature, 2 heat loads");
   });
 });

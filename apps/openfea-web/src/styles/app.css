@@ -4962,6 +4962,17 @@ input[aria-invalid="true"] {
   font-size: var(--fs-xs);
 }
 
+/* The study summary is the part of the strip that gives way first: the status
+   dot and word stay whole while "2 supports, 3 loads" ellipsizes. */
+.status-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: var(--sp-3);
+  color: var(--color-text-subtle);
+  border-left: var(--border-thin);
+}
+
 .status-links {
   display: inline-flex;
   align-items: center;

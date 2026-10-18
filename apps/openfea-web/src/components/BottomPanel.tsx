@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { Coffee, Github, MessageSquare } from "lucide-react";
+import type { Study } from "@openfea/schema";
 import { REQUIRED_SETTING_HELP_IDS, SETTING_HELP, type SettingHelpVisual } from "../settingHelp";
 
 export interface WorkspaceLogEntry {
@@ -12,6 +13,8 @@ interface BottomPanelProps {
   logs: WorkspaceLogEntry[];
   meshStatus: string;
   solverStatus: string;
+  /** One-line study summary shown beside the status, e.g. "1 support, 1 load". */
+  studySummary?: string;
   onClearLogs: () => void;
 }
 
@@ -47,8 +50,8 @@ export function coffeeAnimationReplayDelayMs(randomValue = Math.random()) {
   return Math.round(COFFEE_ANIMATION_REPLAY_DELAY_MS.min + delayRange * boundedRandomValue);
 }
 
-export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLogs }: BottomPanelProps) {
-  const [tab, setTab] = useState<"tips" | "logs" | null>(null);
+export function BottomPanel({ status, logs, meshStatus, solverStatus, studySummary, onClearLogs }: BottomPanelProps) {
+  const [tab, setTab] = useState<"help" | "logs" | null>(null);
   const [drawerHeight, setDrawerHeight] = useState(320);
   const [clearPromptVisible, setClearPromptVisible] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "copied" | "unavailable" | "failed">("idle");
@@ -230,7 +233,7 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLog
           </pre>
         </div>
       )}
-      {expanded && tab === "tips" && (
+      {expanded && tab === "help" && (
         <div className="bottom-content tips-content" style={{ height: drawerHeight }}>
           <button
             type="button"
@@ -249,7 +252,7 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLog
             onKeyDown={resizeDrawerByKey}
           />
           <div className="tips-drawer-header">
-            <span>Settings tips</span>
+            <span>Help · Settings tips</span>
             <input
               type="search"
               className="tips-filter"
@@ -279,20 +282,15 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLog
       )}
       <div className="status-strip">
         <div className="status-primary">
-          <div className="status-tabs">
-            {(["tips", "logs"] as const).map((item) => (
-              <button key={item} className={tab === item ? "active" : ""} aria-pressed={tab === item} aria-expanded={tab === item} onClick={(event) => selectTab(item, event)}>
-                {item[0]?.toUpperCase()}{item.slice(1)}
-                {item === "logs" && <span className="count-pill">{logs.length}</span>}
-              </button>
-            ))}
-          </div>
           <div className="status-groups" aria-label="Simulation status">
             <span className={`status-state ${healthy}`}><i /><span className="status-state-label">{displayStatus}</span></span>
+            {studySummary ? <span className="status-summary">{studySummary}</span> : null}
           </div>
         </div>
         <a className="status-attribution" href={ESAU_ENGINEERING_URL} target="_blank" rel="noreferrer">Built by Esau Engineering</a>
         <div className="status-links" aria-label="Project links">
+          {/* Ko-fi and GitHub stay here until the maintainer decides where they move
+              (plan 035 increment 6 proposes the Project menu plus the start-screen footer). */}
           <a className={donateLinkClassName} href="https://ko-fi.com/esau" target="_blank" rel="noreferrer" title="Support OpenFEA on Ko-fi" onMouseEnter={runCoffeeAnimation}>
             <span className="coffee-mark" aria-hidden="true" key={`coffee-mark-${coffeeAnimationRun}`}>
               <span className="coffee-steam coffee-steam-one" />
@@ -312,13 +310,21 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, onClearLog
               ))}
             </span>
           </a>
-          <a className="status-link" href="https://form.esauengineering.com/opencae-feedback" target="_blank" rel="noreferrer">
-            <MessageSquare size={13} aria-hidden="true" />
-            Feedback
-          </a>
           <a className="status-link" href="https://github.com/esaueng/OpenFEA" target="_blank" rel="noreferrer">
             <Github size={13} aria-hidden="true" />
             GitHub
+          </a>
+          <div className="status-tabs">
+            {(["help", "logs"] as const).map((item) => (
+              <button key={item} type="button" className={tab === item ? "active" : ""} aria-pressed={tab === item} aria-expanded={tab === item} onClick={(event) => selectTab(item, event)}>
+                {item === "help" ? "Help" : "Logs"}
+                {item === "logs" && <span className="count-pill">{logs.length}</span>}
+              </button>
+            ))}
+          </div>
+          <a className="status-link" href="https://form.esauengineering.com/opencae-feedback" target="_blank" rel="noreferrer">
+            <MessageSquare size={13} aria-hidden="true" />
+            Feedback
           </a>
         </div>
       </div>
@@ -391,6 +397,21 @@ export function statusForDisplay(status: string, solverStatus: string) {
   // leaves the working mesh and results untouched) and "Completed results were ignored".
   if (solverStatus === "Complete") return "Results ready";
   return "Ready";
+}
+
+/**
+ * The status bar's one-line study summary. Counts only what the user placed;
+ * modal studies take no loads, so their load count is left out.
+ */
+export function studySummaryLine(study: Pick<Study, "type" | "constraints" | "loads"> | null | undefined): string {
+  if (!study) return "";
+  const count = (n: number, singular: string, plural = `${singular}s`) => `${n} ${n === 1 ? singular : plural}`;
+  if (study.type === "steady_state_thermal") {
+    return `${count(study.constraints.length, "fixed temperature")}, ${count(study.loads.length, "heat load")}`;
+  }
+  const supports = count(study.constraints.length, "support");
+  if (study.type === "modal_analysis") return supports;
+  return `${supports}, ${count(study.loads.length, "load")}`;
 }
 
 export function resolveLogClearIntent(clickDetail: number, armed: boolean): "confirm" | "clear" {
