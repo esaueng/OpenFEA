@@ -47,7 +47,7 @@ export function readinessBlockersByStep(readiness: readonly RunReadinessItem[]):
 }
 
 /**
- * The workflow as a numbered stepper in the top bar. It replaced the 124px left rail
+ * The workflow as a row of step names in the top bar. It replaced the 124px left rail
  * (plan 035, increment 1) and keeps the rail's state rules exactly: done means
  * "present and valid", a step whose readiness row lists a blocker is blocked rather
  * than ticked, and Run/Results tick only for results the viewer can show.
@@ -68,7 +68,7 @@ export function StepNav({ activeStep, study, hasResults, readiness = [], notices
   return (
     <nav className="step-nav" aria-label="Simulation workflow">
       <ol className="step-nav-list">
-        {visibleSteps.map((step, index) => {
+        {visibleSteps.map((step) => {
           const isActive = activeStep === step.id;
           const isComplete = completed[step.id];
           const canSelect = canNavigateToStep(step.id, { meshStatus: study.meshSettings.status });
@@ -77,8 +77,14 @@ export function StepNav({ activeStep, study, hasResults, readiness = [], notices
           const notice = notices[step.id];
           const state = isComplete ? "done" : isBlocked ? "blocked" : "";
           const attention = notice ? `${step.label}: needs attention` : undefined;
+          // A blocked step and the step carrying the workspace notice both get a warning
+          // glyph after the label; an error notice takes the error tone.
+          const flag = notice ?? (isBlocked ? "warning" : null);
           return (
             <li key={step.id} className="step-nav-item">
+              {/* State is the bar under the label: present and filled for done, accent for
+                  the current step, absent for steps still to do. Presence carries the state,
+                  not colour alone. */}
               <button
                 type="button"
                 className={["step-nav-step", state, isActive && "active"].filter(Boolean).join(" ")}
@@ -90,15 +96,8 @@ export function StepNav({ activeStep, study, hasResults, readiness = [], notices
                 title={stepBlockers?.length ? stepBlockers.join(" ") : attention ?? step.label}
                 aria-label={stepBlockers?.length ? `${step.label}: ${stepBlockers.join(" ")}` : attention}
               >
-                {/* The leading glyph is the step's number on a disc that fills once the step
-                    is done; a blocked step swaps the number for a warning glyph. Fill and
-                    shape carry the state, never colour alone, and the number stays so a
-                    step whose label is clipped can still be told apart. */}
-                <span className={state ? `step-nav-glyph ${state}` : "step-nav-glyph"} aria-hidden="true">
-                  {isBlocked ? <AlertTriangle size={13} strokeWidth={2.25} /> : index + 1}
-                </span>
                 <span className="step-nav-label">{step.label}</span>
-                {notice && <AlertTriangle className={`step-nav-notice ${notice}`} size={13} strokeWidth={2.25} aria-hidden="true" />}
+                {flag && <AlertTriangle className={`step-nav-flag ${flag}`} size={13} strokeWidth={2.25} aria-hidden="true" />}
               </button>
             </li>
           );
