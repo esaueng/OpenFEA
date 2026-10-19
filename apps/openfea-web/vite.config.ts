@@ -192,7 +192,9 @@ export default defineConfig({
   plugins: [react(), wasmMeshingDisabled ? null : gmshPthreadAsset(), stubJsPdfHtmlDependencies(), stubMeshWorkerClientWhenDisabled(), compressGmshWasmForDeploy(), offlineAssetCaching()],
   worker: {
     format: "es",
-    plugins: () => wasmMeshingDisabled ? [] : [gmshPthreadAsset()]
+    // Worker sub-builds resolve their own imports, including nested worker
+    // clients and the mesher package. Keep opt-out stubs active there too.
+    plugins: () => [stubMeshWorkerClientWhenDisabled(), ...(wasmMeshingDisabled ? [] : [gmshPthreadAsset()])]
   },
   optimizeDeps: {
     // Keep the Emscripten glue out of dev pre-bundling: esbuild would inline
