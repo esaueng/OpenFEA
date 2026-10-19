@@ -8,12 +8,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # The audit is kept out of the required `checks / quality` path: a newly
+  # published advisory for an existing dependency should not skip every PR's
+  # checks. Dependency changes are still gated by `dependency-review`.
   checks:
-    needs: dependencies
     permissions:
       contents: read
-    uses: esaueng/OpenFEA/.github/workflows/fleet-ci.yml@ea91a0306d24ad0fefb8267172929de615e0cb4b # reviewed workflow (unreleased)
+    uses: esaueng/OpenFEA/.github/workflows/fleet-ci.yml@22150a7f76aff4875b74212504bae331ead2c0df # reviewed workflow (unreleased)
 
   dependencies:
     runs-on: ubuntu-latest
