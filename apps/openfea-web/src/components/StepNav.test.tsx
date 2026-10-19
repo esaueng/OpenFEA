@@ -44,11 +44,11 @@ describe("StepNav", () => {
     const labels = [...html.matchAll(/class="step-nav-label">([^<]+)</g)].map((match) => match[1]);
     expect(labels).toEqual(["Model", "Material", "Supports", "Loads", "Mesh", "Run", "Results"]);
     expect(html).toMatch(/class="step-nav-step active"[^>]*aria-current="step"[^>]*>[\s\S]*?Material/);
-    // Undone steps carry their number; done steps swap it for a tick (the model step
-    // is always present).
+    // Every step keeps its number; done steps put it on a filled disc instead of
+    // adding a tick (the model step is always present).
     expect(html).toContain('class="step-nav-glyph" aria-hidden="true">2<');
-    expect(html).toMatch(/class="step-nav-glyph done" aria-hidden="true"><svg[^>]*lucide-check/);
-    expect(html).not.toContain('class="step-nav-glyph done" aria-hidden="true">1<');
+    expect(html).toContain('class="step-nav-glyph done" aria-hidden="true">1<');
+    expect(html).not.toContain("lucide-check");
   });
 
   test("drops the loads step for modal studies", () => {
@@ -137,6 +137,8 @@ describe("stepper CSS", () => {
     expect(css).not.toMatch(/\.step-nav-item \+ \.step-nav-item::before/);
     // The current step is marked by more than colour: a heavier label and an underline.
     expect(css).toMatch(/^\.step-nav-step\.active,[^{]*\{[^}]*box-shadow:\s*inset 0 -2px 0 var\(--color-accent\);[^}]*font-weight:\s*var\(--fw-semibold\);/m);
+    // Done is a filled disc behind the number: a fill cue, not a colour change alone.
+    expect(css).toMatch(/^\.step-nav-glyph\.done \{[^}]*background:\s*var\(--color-success\);/m);
   });
 
   test("hides inactive step labels visually, never from assistive tech", () => {

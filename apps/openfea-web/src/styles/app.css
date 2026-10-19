@@ -1342,7 +1342,7 @@ img {
 .step-nav-step {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-15);
+  gap: var(--sp-1);
   min-height: var(--control-h-md);
   padding: 0 var(--sp-25);
   color: var(--color-text-subtle);
@@ -1391,15 +1391,21 @@ img {
   display: grid;
   place-items: center;
   flex: none;
-  min-width: 14px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-medium);
+  font-size: var(--fs-mini);
+  font-weight: var(--fw-semibold);
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
+/* Done: the number sits on a solid disc. --color-on-accent is the dark-on-bright /
+   light-on-deep pair that also clears AA on the success green in both themes. */
 .step-nav-glyph.done {
-  color: var(--color-success);
+  color: var(--color-on-accent);
+  background: var(--color-success);
 }
 
 .step-nav-glyph.blocked {
@@ -1408,6 +1414,13 @@ img {
 
 .step-nav-step.active .step-nav-glyph {
   color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.step-nav-step.active .step-nav-glyph.done {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  box-shadow: none;
 }
 
 /* The step carrying the workspace notice (failed mesh or run, outdated results). */

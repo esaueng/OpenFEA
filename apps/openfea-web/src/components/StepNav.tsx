@@ -1,5 +1,5 @@
 import type { Study } from "@openfea/schema";
-import { AlertTriangle, Check } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { canNavigateToStep } from "../appShellState";
 import type { RunReadinessItem } from "../runReadiness";
 
@@ -90,11 +90,12 @@ export function StepNav({ activeStep, study, hasResults, readiness = [], notices
                 title={stepBlockers?.length ? stepBlockers.join(" ") : attention ?? step.label}
                 aria-label={stepBlockers?.length ? `${step.label}: ${stepBlockers.join(" ")}` : attention}
               >
-                {/* The leading glyph is the step's state: a tick for done, a warning glyph
-                    for blocked, otherwise its number. Shape carries the state, never colour
-                    alone; order and the hover title name a step whose label is clipped. */}
+                {/* The leading glyph is the step's number on a disc that fills once the step
+                    is done; a blocked step swaps the number for a warning glyph. Fill and
+                    shape carry the state, never colour alone, and the number stays so a
+                    step whose label is clipped can still be told apart. */}
                 <span className={state ? `step-nav-glyph ${state}` : "step-nav-glyph"} aria-hidden="true">
-                  {isComplete ? <Check size={14} strokeWidth={2.5} /> : isBlocked ? <AlertTriangle size={13} strokeWidth={2.25} /> : index + 1}
+                  {isBlocked ? <AlertTriangle size={13} strokeWidth={2.25} /> : index + 1}
                 </span>
                 <span className="step-nav-label">{step.label}</span>
                 {notice && <AlertTriangle className={`step-nav-notice ${notice}`} size={13} strokeWidth={2.25} aria-hidden="true" />}
