@@ -38,15 +38,17 @@ const baseProps = { activeStep: "model" as const, hasResults: false, onSelect: (
 const css = readFileSync(resolve(__dirname, "../styles/app.css"), "utf8").replace(/\r\n/g, "\n");
 
 describe("StepNav", () => {
-  test("renders the workflow as a numbered, ordered list with the current step marked", () => {
+  test("renders the workflow as an ordered list of named steps with the current step marked", () => {
     const html = renderToStaticMarkup(<StepNav {...baseProps} activeStep="material" study={study} />);
     expect(html).toContain('<nav class="step-nav" aria-label="Simulation workflow"><ol class="step-nav-list">');
     const labels = [...html.matchAll(/class="step-nav-label">([^<]+)</g)].map((match) => match[1]);
     expect(labels).toEqual(["Model", "Material", "Supports", "Loads", "Mesh", "Run", "Results"]);
     expect(html).toMatch(/class="step-nav-step active"[^>]*aria-current="step"[^>]*>[\s\S]*?Material/);
-    // Undone steps carry their number; the model step is always present.
-    expect(html).toContain('class="step-nav-dot " aria-hidden="true">2<');
-    expect(html).toContain("lucide-check");
+    // Steps carry no number or tick: the label names the step and the bar under it
+    // (a CSS pseudo-element keyed on the state class) shows progress.
+    expect(html).toMatch(/<button type="button" class="step-nav-step done" title="Model"><svg[^>]*class="lucide lucide-box step-nav-icon"[^>]*>[\s\S]*?<\/svg><span class="step-nav-label">Model<\/span><\/button>/);
+    expect(html).not.toContain("step-nav-glyph");
+    expect(html).not.toContain("lucide-check");
   });
 
   test("drops the loads step for modal studies", () => {
@@ -58,7 +60,7 @@ describe("StepNav", () => {
   test("disables steps the study cannot reach yet", () => {
     const html = renderToStaticMarkup(<StepNav {...baseProps} study={study} />);
     // Run needs a completed mesh before it can be opened (canNavigateToStep).
-    expect(html).toMatch(/<button type="button" class="step-nav-step " disabled=""[^>]*title="Run"/);
+    expect(html).toMatch(/<button type="button" class="step-nav-step" disabled=""[^>]*title="Run"/);
     expect(html.match(/disabled=""/g) ?? []).toHaveLength(1);
     const meshed = renderToStaticMarkup(<StepNav {...baseProps} study={{ ...study, meshSettings: { preset: "medium", status: "complete" } }} />);
     expect(meshed).not.toContain('disabled=""');
@@ -68,6 +70,12 @@ describe("StepNav", () => {
     const html = renderToStaticMarkup(<StepNav {...baseProps} activeStep="results" study={study} />);
     expect(html).not.toContain("Report");
     expect(html).not.toContain("lucide-file-text");
+  });
+
+  test("gives every step an icon for the compact tiers, hidden from assistive tech", () => {
+    const html = renderToStaticMarkup(<StepNav {...baseProps} study={study} />);
+    const icons = [...html.matchAll(/class="lucide lucide-([a-z0-9-]+)[^"]* step-nav-icon" aria-hidden="true"/g)].map((match) => match[1]);
+    expect(icons).toEqual(["box", "layers", "anchor", "arrow-down-to-line", "grid-3x3", "play", "chart-column"]);
   });
 
   test("names every step on hover, since narrow tiers show only the current label", () => {
@@ -89,7 +97,7 @@ describe("stepper states from readiness (2026-09 review D14)", () => {
         { label: "Load added", done: false, blockers: ["Load case Case 2 is enabled but has no loads. Add a load to it or disable it."] }
       ]} />
     );
-    expect(html).toContain('class="step-nav-dot blocked"');
+    expect(html).toMatch(/class="step-nav-step blocked"[^>]*>[\s\S]*?<span class="step-nav-label">Loads<\/span><svg[^>]*class="[^"]*step-nav-flag warning"/);
     expect(html).toContain("lucide-triangle-alert");
     expect(html).toContain('aria-label="Loads: Load case Case 2 is enabled but has no loads. Add a load to it or disable it."');
   });
@@ -97,13 +105,14 @@ describe("stepper states from readiness (2026-09 review D14)", () => {
   test("ticks Run and Results only for results the viewer can show", () => {
     const seeded = { ...study, runs: [{ id: "run-seeded", studyId: study.id, status: "complete", createdAt: "2026-01-01T00:00:00.000Z" }] } as unknown as typeof study;
     const html = renderToStaticMarkup(<StepNav {...baseProps} study={seeded} />);
-    expect(html.match(/step-nav-dot done/g) ?? []).toHaveLength(1); // model only
+    expect(html.match(/step-nav-step done/g) ?? []).toHaveLength(1); // model only
   });
 
   test("badges the step that carries the workspace notice", () => {
     const html = renderToStaticMarkup(<StepNav {...baseProps} study={study} notices={{ run: "error" }} />);
-    expect(html).toContain('class="step-badge error"');
+    expect(html).toMatch(/<span class="step-nav-label">Run<\/span><svg[^>]*class="[^"]*step-nav-flag error"/);
     expect(html).toContain('aria-label="Run: needs attention"');
+    expect(html).toContain('title="Run: needs attention"');
   });
 });
 
@@ -125,6 +134,20 @@ describe("stepper CSS", () => {
     expect(css).not.toMatch(/\.stepbar\b/);
     expect(css).not.toContain("--stepbar-w");
     expect(css).toMatch(/^\.workspace \{[^}]*grid-template-columns:\s*minmax\(360px, 1fr\) var\(--context-w\);/m);
+  });
+
+  test("shows progress as a bar under each step name", () => {
+    // Thickness as well as colour: a 1px track for a step still to do, 2px once done or current.
+    expect(css).toMatch(/^\.step-nav-step::after \{[^}]*height:\s*1px;[^}]*background:\s*var\(--color-border-strong\);/m);
+    expect(css).toMatch(/^\.step-nav-step\.done::after \{\s*height:\s*2px;\s*background:\s*var\(--color-success\);/m);
+    expect(css).toMatch(/^\.step-nav-step\.active::after \{\s*height:\s*2px;\s*background:\s*var\(--color-accent\);/m);
+    expect(css).toMatch(/^\.step-nav-step\.active \{[^}]*font-weight:\s*var\(--fw-semibold\);/m);
+    // Every label fits the top bar down to 1181px. Below that the other steps swap
+    // their names for icons; the full-width strip shows names again from 480px.
+    expect(css).toMatch(/^\.step-nav-icon \{\s*display:\s*none;/m);
+    expect(css).toMatch(/@media \(max-width: 1180px\) \{\s*\.step-nav-step:not\(\.active\) \.step-nav-icon \{\s*display:\s*block;/);
+    expect(css).toMatch(/@media \(min-width: 480px\) and \(max-width: 980px\) \{[\s\S]*?\.step-nav-strip \.step-nav-icon \{\s*display:\s*none;/);
+    expect(css).not.toMatch(/\.step-nav-glyph|\.step-nav-dot|\.step-badge/);
   });
 
   test("hides inactive step labels visually, never from assistive tech", () => {
