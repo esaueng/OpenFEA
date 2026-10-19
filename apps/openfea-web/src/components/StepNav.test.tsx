@@ -44,9 +44,11 @@ describe("StepNav", () => {
     const labels = [...html.matchAll(/class="step-nav-label">([^<]+)</g)].map((match) => match[1]);
     expect(labels).toEqual(["Model", "Material", "Supports", "Loads", "Mesh", "Run", "Results"]);
     expect(html).toMatch(/class="step-nav-step active"[^>]*aria-current="step"[^>]*>[\s\S]*?Material/);
-    // Undone steps carry their number; the model step is always present.
-    expect(html).toContain('class="step-nav-dot " aria-hidden="true">2<');
-    expect(html).toContain("lucide-check");
+    // Undone steps carry their number; done steps swap it for a tick (the model step
+    // is always present).
+    expect(html).toContain('class="step-nav-glyph" aria-hidden="true">2<');
+    expect(html).toMatch(/class="step-nav-glyph done" aria-hidden="true"><svg[^>]*lucide-check/);
+    expect(html).not.toContain('class="step-nav-glyph done" aria-hidden="true">1<');
   });
 
   test("drops the loads step for modal studies", () => {
@@ -58,7 +60,7 @@ describe("StepNav", () => {
   test("disables steps the study cannot reach yet", () => {
     const html = renderToStaticMarkup(<StepNav {...baseProps} study={study} />);
     // Run needs a completed mesh before it can be opened (canNavigateToStep).
-    expect(html).toMatch(/<button type="button" class="step-nav-step " disabled=""[^>]*title="Run"/);
+    expect(html).toMatch(/<button type="button" class="step-nav-step" disabled=""[^>]*title="Run"/);
     expect(html.match(/disabled=""/g) ?? []).toHaveLength(1);
     const meshed = renderToStaticMarkup(<StepNav {...baseProps} study={{ ...study, meshSettings: { preset: "medium", status: "complete" } }} />);
     expect(meshed).not.toContain('disabled=""');
@@ -89,7 +91,7 @@ describe("stepper states from readiness (2026-09 review D14)", () => {
         { label: "Load added", done: false, blockers: ["Load case Case 2 is enabled but has no loads. Add a load to it or disable it."] }
       ]} />
     );
-    expect(html).toContain('class="step-nav-dot blocked"');
+    expect(html).toMatch(/class="step-nav-glyph blocked" aria-hidden="true"><svg[^>]*lucide-triangle-alert/);
     expect(html).toContain("lucide-triangle-alert");
     expect(html).toContain('aria-label="Loads: Load case Case 2 is enabled but has no loads. Add a load to it or disable it."');
   });
@@ -97,13 +99,14 @@ describe("stepper states from readiness (2026-09 review D14)", () => {
   test("ticks Run and Results only for results the viewer can show", () => {
     const seeded = { ...study, runs: [{ id: "run-seeded", studyId: study.id, status: "complete", createdAt: "2026-01-01T00:00:00.000Z" }] } as unknown as typeof study;
     const html = renderToStaticMarkup(<StepNav {...baseProps} study={seeded} />);
-    expect(html.match(/step-nav-dot done/g) ?? []).toHaveLength(1); // model only
+    expect(html.match(/step-nav-glyph done/g) ?? []).toHaveLength(1); // model only
   });
 
   test("badges the step that carries the workspace notice", () => {
     const html = renderToStaticMarkup(<StepNav {...baseProps} study={study} notices={{ run: "error" }} />);
-    expect(html).toContain('class="step-badge error"');
+    expect(html).toMatch(/<span class="step-nav-label">Run<\/span><svg[^>]*class="[^"]*step-nav-notice error"/);
     expect(html).toContain('aria-label="Run: needs attention"');
+    expect(html).toContain('title="Run: needs attention"');
   });
 });
 
@@ -125,6 +128,15 @@ describe("stepper CSS", () => {
     expect(css).not.toMatch(/\.stepbar\b/);
     expect(css).not.toContain("--stepbar-w");
     expect(css).toMatch(/^\.workspace \{[^}]*grid-template-columns:\s*minmax\(360px, 1fr\) var\(--context-w\);/m);
+  });
+
+  test("draws the steps as one joined segment bar", () => {
+    // One outline around the list, dividers between segments, no connector rules.
+    expect(css).toMatch(/^\.step-nav-list \{[^}]*width:\s*fit-content;[^}]*border:\s*var\(--border-thin\);/m);
+    expect(css).toMatch(/^\.step-nav-item \+ \.step-nav-item \{\s*border-left:\s*var\(--border-thin\);/m);
+    expect(css).not.toMatch(/\.step-nav-item \+ \.step-nav-item::before/);
+    // The current step is marked by more than colour: a heavier label and an underline.
+    expect(css).toMatch(/^\.step-nav-step\.active,[^{]*\{[^}]*box-shadow:\s*inset 0 -2px 0 var\(--color-accent\);[^}]*font-weight:\s*var\(--fw-semibold\);/m);
   });
 
   test("hides inactive step labels visually, never from assistive tech", () => {

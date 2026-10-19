@@ -76,28 +76,28 @@ export function StepNav({ activeStep, study, hasResults, readiness = [], notices
           const isBlocked = !isComplete && Boolean(stepBlockers?.length);
           const notice = notices[step.id];
           const state = isComplete ? "done" : isBlocked ? "blocked" : "";
+          const attention = notice ? `${step.label}: needs attention` : undefined;
           return (
             <li key={step.id} className="step-nav-item">
               <button
                 type="button"
-                className={`step-nav-step ${isActive ? "active" : ""}`}
+                className={["step-nav-step", state, isActive && "active"].filter(Boolean).join(" ")}
                 disabled={!canSelect}
                 onClick={() => onSelect(step.id)}
                 aria-current={isActive ? "step" : undefined}
                 // Below the wide tier only the current step shows its label, so the title
                 // carries the name (or the blocker) on hover for the others.
-                title={stepBlockers?.length ? stepBlockers.join(" ") : step.label}
-                aria-label={stepBlockers?.length ? `${step.label}: ${stepBlockers.join(" ")}` : notice ? `${step.label}: needs attention` : undefined}
+                title={stepBlockers?.length ? stepBlockers.join(" ") : attention ?? step.label}
+                aria-label={stepBlockers?.length ? `${step.label}: ${stepBlockers.join(" ")}` : attention}
               >
-                {/* The number stays in every state: where labels are clipped it is the only
-                    visible thing telling the steps apart. Status rides on a glyph badge. */}
-                <span className={`step-nav-dot ${state}`} aria-hidden="true">
-                  {index + 1}
-                  {isComplete ? <span className="step-nav-status"><Check size={9} strokeWidth={3} /></span> : null}
-                  {isBlocked ? <span className="step-nav-status"><AlertTriangle size={9} strokeWidth={2.6} /></span> : null}
-                  {notice && <i className={`step-badge ${notice}`} />}
+                {/* The leading glyph is the step's state: a tick for done, a warning glyph
+                    for blocked, otherwise its number. Shape carries the state, never colour
+                    alone; order and the hover title name a step whose label is clipped. */}
+                <span className={state ? `step-nav-glyph ${state}` : "step-nav-glyph"} aria-hidden="true">
+                  {isComplete ? <Check size={14} strokeWidth={2.5} /> : isBlocked ? <AlertTriangle size={13} strokeWidth={2.25} /> : index + 1}
                 </span>
                 <span className="step-nav-label">{step.label}</span>
+                {notice && <AlertTriangle className={`step-nav-notice ${notice}`} size={13} strokeWidth={2.25} aria-hidden="true" />}
               </button>
             </li>
           );

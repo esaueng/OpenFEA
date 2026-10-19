@@ -1308,9 +1308,10 @@ img {
   margin-left: auto;
 }
 
-/* The workflow stepper (plan 035, increment 1). It replaced the 124px left rail, so
-   the viewer gets that width back. The rail's state rules carry over: a tick means
-   present and valid, a warning glyph means blocked, never colour alone. */
+/* The workflow stepper (plan 035, increment 1), drawn as one joined segment bar.
+   It replaced the 124px left rail, so the viewer gets that width back. The rail's
+   state rules carry over: a tick means present and valid, a warning glyph means
+   blocked, never colour alone. */
 .step-nav {
   flex: 0 1 auto;
   min-width: 0;
@@ -1319,36 +1320,53 @@ img {
 
 .step-nav-list {
   display: flex;
-  align-items: center;
-  gap: var(--sp-1);
+  align-items: stretch;
+  /* Hug the segments: in the full-width narrow strip the bar's outline would
+     otherwise run on past the last step. */
+  width: fit-content;
   margin: 0;
   padding: 0;
   list-style: none;
+  border: var(--border-thin);
+  border-radius: var(--radius-md);
 }
 
 .step-nav-item {
   display: flex;
-  align-items: center;
-  gap: 2px;
 }
 
-.step-nav-item + .step-nav-item::before {
-  content: "";
-  width: var(--sp-2);
-  height: 1px;
-  background: var(--color-border-strong);
+.step-nav-item + .step-nav-item {
+  border-left: var(--border-thin);
 }
 
 .step-nav-step {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-15);
-  min-height: var(--control-h-lg);
-  padding: 0 var(--sp-2) 0 var(--sp-1);
-  color: var(--color-text-muted);
-  border-radius: 999px;
+  min-height: var(--control-h-md);
+  padding: 0 var(--sp-25);
+  color: var(--color-text-subtle);
+  border-radius: 0;
   font-size: var(--fs-base);
   white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.step-nav-item:first-child .step-nav-step {
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.step-nav-item:last-child .step-nav-step {
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+/* Inset, so a focused segment's ring is not hidden under its neighbours. */
+.step-nav-step:focus-visible {
+  outline-offset: -2px;
+}
+
+.step-nav-step.done {
+  color: var(--color-text-muted);
 }
 
 .step-nav-step:hover:not(:disabled) {
@@ -1361,41 +1379,45 @@ img {
   opacity: 0.45;
 }
 
-.step-nav-step.active {
+.step-nav-step.active,
+.step-nav-step.active:hover:not(:disabled) {
   color: var(--color-text);
-  background: var(--color-accent-dim);
-  font-weight: var(--fw-medium);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+  font-weight: var(--fw-semibold);
 }
 
-.step-nav-dot {
-  position: relative;
+.step-nav-glyph {
   display: grid;
   place-items: center;
   flex: none;
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 50%;
+  min-width: 14px;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
 }
 
-.step-nav-dot.done {
+.step-nav-glyph.done {
   color: var(--color-success);
-  background: var(--color-surface-2);
-  border-color: var(--color-border);
 }
 
-.step-nav-dot.blocked {
+.step-nav-glyph.blocked {
   color: var(--color-warning);
-  border-color: var(--color-warning);
 }
 
-.step-nav-step.active .step-nav-dot {
-  color: var(--color-on-accent);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
+.step-nav-step.active .step-nav-glyph {
+  color: var(--color-accent);
+}
+
+/* The step carrying the workspace notice (failed mesh or run, outdated results). */
+.step-nav-notice {
+  flex: none;
+  color: var(--color-warning);
+}
+
+.step-nav-notice.error {
+  color: var(--color-error);
 }
 
 /* At laptop widths the study name gives way to the stepper; the step labels need
@@ -1405,13 +1427,18 @@ img {
   .topbar .breadcrumb > span:last-child {
     display: none;
   }
+
+  /* Measured: at 1281px the bar had 541px for a 556px stepper. */
+  .topbar .step-nav-step {
+    padding: 0 var(--sp-2);
+  }
 }
 
 /* Below that only the current step keeps a visible label; the others are clipped,
    not removed, so each keeps its accessible name (and a title on hover). */
 @media (max-width: 1280px) {
   .step-nav-step:not(.active) {
-    padding-right: var(--sp-1);
+    padding: 0 var(--sp-2);
   }
 
   .step-nav-step:not(.active) .step-nav-label {
@@ -1421,32 +1448,6 @@ img {
     overflow: hidden;
     clip: rect(0 0 0 0);
     white-space: nowrap;
-  }
-}
-
-.step-nav-status {
-  position: absolute;
-  right: -7px;
-  bottom: -5px;
-  display: grid;
-  place-items: center;
-  width: 12px;
-  height: 12px;
-  color: var(--color-surface);
-  background: var(--color-success);
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--color-surface);
-}
-
-.step-nav-dot.blocked .step-nav-status {
-  background: var(--color-warning);
-}
-
-/* Between the narrow strip and the laptop tier the dots alone need every pixel:
-   the connector rules go first. */
-@media (min-width: 981px) and (max-width: 1180px) {
-  .topbar .step-nav-item + .step-nav-item::before {
-    display: none;
   }
 }
 
@@ -1481,7 +1482,7 @@ img {
 /* The strip is full width, so from 760px every label fits again. */
 @media (min-width: 760px) and (max-width: 980px) {
   .step-nav-strip .step-nav-step:not(.active) {
-    padding-right: var(--sp-2);
+    padding: 0 var(--sp-25);
   }
 
   .step-nav-strip .step-nav-step:not(.active) .step-nav-label {
@@ -6163,21 +6164,6 @@ input[aria-invalid="true"] {
   padding: 0;
   min-height: 0;
   text-decoration: underline;
-}
-
-.step-badge {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--color-warning);
-  border: 2px solid var(--color-surface);
-}
-
-.step-badge.error {
-  background: var(--color-error);
 }
 
 .check-copy {
