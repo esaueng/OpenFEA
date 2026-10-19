@@ -7,10 +7,22 @@
 import { describe, expect, it } from "vitest";
 import { bracketGeoScript } from "./bracketGeo";
 import { parseGmshMeshToCoreVolumeMesh } from "./gmshMeshParser";
-import { meshGeoScriptToMshV2, meshStepToMshV2 } from "./wasmMesher";
+import { loadGmshWasm, meshGeoScriptToMshV2, meshStepToMshV2 } from "./wasmMesher";
 import { readFileSync } from "node:fs";
 
 describe("gmsh-wasm sequential sessions", () => {
+  it("releases the threaded runtime pool when a fresh module is finalized", { timeout: 180_000 }, async () => {
+    const gmsh = await loadGmshWasm();
+    const pool = (gmsh as typeof gmsh & {
+      module: { PThread: { runningWorkers: unknown[]; unusedWorkers: unknown[] } };
+    }).module.PThread;
+    expect(pool.runningWorkers.length + pool.unusedWorkers.length).toBeGreaterThan(0);
+    gmsh.initialize();
+    gmsh.finalize();
+    expect(pool.runningWorkers).toHaveLength(0);
+    expect(pool.unusedWorkers).toHaveLength(0);
+  });
+
   it("meshes twice in one process without crashing the wasm module", { timeout: 180_000 }, async () => {
     const geo = bracketGeoScript();
     const first = await meshGeoScriptToMshV2(geo, { elementOrder: 1 });

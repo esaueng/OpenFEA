@@ -8,7 +8,7 @@
 //
 // Usage (manual; needs Node >= 22 for global WebSocket, plus Chrome).
 // Wasm meshing is the production default (A-M4), so a plain build carries it:
-//   pnpm --filter @openfea/web build
+//   VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build
 //   pnpm --filter @openfea/web preview --port 5199 &
 //   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
 //     --headless=new --disable-gpu --no-first-run \

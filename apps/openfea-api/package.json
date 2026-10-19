@@ -22,11 +22,11 @@
     "@openfea/storage": "workspace:*",
     "@openfea/study-core": "workspace:*",
     "@openfea/units": "workspace:*",
-    "fastify": "^5.12.5"
+    "fastify": "^5.12.7"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
-    "tsx": "^4.23.1"
+    "tsx": "^4.23.15"
   },
   "license": "Apache-2.0"
 }

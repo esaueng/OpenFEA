@@ -16,7 +16,7 @@ const distAssetsDir = new URL("../apps/openfea-web/dist/assets/", import.meta.ur
 
 function jsFiles(directoryUrl) {
   return readdirSync(directoryUrl)
-    .filter((name) => name.endsWith(".js"))
+    .filter((name) => /\.m?js$/.test(name))
     .map((name) => join(fileURLToPath(directoryUrl), name));
 }
 
@@ -87,7 +87,7 @@ function basename(file) {
 function staticAssets(directoryUrl) {
   const directory = fileURLToPath(directoryUrl);
   return readdirSync(directory)
-    .filter((name) => !name.endsWith(".js") && !name.endsWith(".map"))
+    .filter((name) => !/\.m?js$/.test(name) && !name.endsWith(".map"))
     .map((name) => ({ file: join(directory, name), size: statSync(join(directory, name)).size }));
 }
 

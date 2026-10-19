@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
+import { gmshPthreadAsset } from "./gmshPthreadAsset";
 import { VitePWA } from "vite-plugin-pwa";
 import { DONT_CACHE_BUST_URLS, MAX_PRECACHE_FILE_BYTES, PRECACHE_GLOB_IGNORES, PRECACHE_GLOB_PATTERNS, SW_FORCE_REFRESH_SCRIPT } from "./src/lib/offlinePrecache";
 
@@ -188,9 +189,10 @@ function offlineAssetCaching(): PluginOption {
 }
 
 export default defineConfig({
-  plugins: [react(), stubJsPdfHtmlDependencies(), stubMeshWorkerClientWhenDisabled(), compressGmshWasmForDeploy(), offlineAssetCaching()],
+  plugins: [react(), wasmMeshingDisabled ? null : gmshPthreadAsset(), stubJsPdfHtmlDependencies(), stubMeshWorkerClientWhenDisabled(), compressGmshWasmForDeploy(), offlineAssetCaching()],
   worker: {
-    format: "es"
+    format: "es",
+    plugins: () => wasmMeshingDisabled ? [] : [gmshPthreadAsset()]
   },
   optimizeDeps: {
     // Keep the Emscripten glue out of dev pre-bundling: esbuild would inline
@@ -231,7 +233,9 @@ export default defineConfig({
       }
     }
   },
+  preview: { headers: { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" } },
   server: {
+    headers: { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" },
     port: 5173,
     proxy: {
       "/api": "http://localhost:4317",

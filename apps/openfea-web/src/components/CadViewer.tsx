@@ -4303,6 +4303,8 @@ export function createUndeformedResultOutlineObject(object: THREE.Object3D) {
   outline.name = "undeformed-result-outline";
   outline.matrix.copy(object.matrix);
   outline.matrixAutoUpdate = false;
+  // Three requires explicit invalidation after assigning a manual matrix.
+  outline.matrixWorldNeedsUpdate = true;
   const rootWorldInverse = object.matrixWorld.clone().invert();
 
   object.traverse((child) => {
@@ -4322,6 +4324,7 @@ export function createUndeformedResultOutlineObject(object: THREE.Object3D) {
     edges.renderOrder = 8;
     edges.matrix.copy(rootWorldInverse.clone().multiply(child.matrixWorld));
     edges.matrixAutoUpdate = false;
+    edges.matrixWorldNeedsUpdate = true;
     outline.add(edges);
   });
 
