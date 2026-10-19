@@ -106,7 +106,7 @@ export const ConstraintSchema = z.object({
   /** One or more face selection ids the constraint applies to (multi-face BCs, Decision 2). */
   selectionRef: z.string(),
   selectionRefs: z.array(z.string()).optional(),
-  parameters: z.record(z.unknown()),
+  parameters: z.record(z.string(), z.unknown()),
   status: z.enum(["not_started", "ready", "warning", "complete"])
 });
 
@@ -116,7 +116,7 @@ export const LoadSchema = z.object({
   selectionRef: z.string(),
   /** Additional face selection ids the load applies to (multi-face BCs, Decision 2). */
   selectionRefs: z.array(z.string()).optional(),
-  parameters: z.record(z.unknown()),
+  parameters: z.record(z.string(), z.unknown()),
   status: z.enum(["not_started", "ready", "warning", "complete"])
 });
 
@@ -291,7 +291,7 @@ export const GeometryFileSchema = z.object({
   localPath: z.string(),
   artifactKey: z.string(),
   status: z.enum(["pending", "ready", "error"]),
-  metadata: z.record(z.unknown())
+  metadata: z.record(z.string(), z.unknown())
 });
 
 export const MeshSettingsSchema = z.object({
@@ -307,7 +307,7 @@ export const MeshSettingsSchema = z.object({
       quality: MeshQualitySchema.optional(),
       source: z.string().optional(),
       units: z.string().optional(),
-      density: z.record(z.unknown()).optional(),
+      density: z.record(z.string(), z.unknown()).optional(),
       solverCoordinateSpace: z.string().optional(),
       resultSampleCoordinateSpace: z.string().optional(),
       artifacts: z
@@ -349,7 +349,7 @@ const MaterialAssignmentSchema = z.object({
   id: z.string(),
   materialId: z.string(),
   selectionRef: z.string(),
-  parameters: z.record(z.unknown()).optional(),
+  parameters: z.record(z.string(), z.unknown()).optional(),
   status: z.enum(["not_started", "ready", "warning", "complete"])
 });
 
@@ -675,7 +675,7 @@ export const MeshSummarySchema = z.object({
   quality: MeshQualitySchema.optional(),
   source: z.string().optional(),
   units: z.string().optional(),
-  density: z.record(z.unknown()).optional(),
+  density: z.record(z.string(), z.unknown()).optional(),
   solverCoordinateSpace: z.string().optional(),
   resultSampleCoordinateSpace: z.string().optional()
 });
@@ -1118,8 +1118,8 @@ export const DisplayModelSchema: z.ZodType<DisplayModel> = z.object({
     filename: z.string().min(1).max(256).optional(),
     contentBase64: Base64PayloadSchema.optional(),
     units: z.enum(["mm", "m"]).optional(),
-    descriptor: z.record(z.unknown()).optional(),
-    geometryDescriptor: z.record(z.unknown()).optional()
+    descriptor: z.record(z.string(), z.unknown()).optional(),
+    geometryDescriptor: z.record(z.string(), z.unknown()).optional()
   }).optional()
 }).superRefine((model, context) => {
   if (model.faces.length > model.bodyCount * MAX_DISPLAY_MODEL_FACES && model.bodyCount > 0) {

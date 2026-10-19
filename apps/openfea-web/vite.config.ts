@@ -194,7 +194,16 @@ export default defineConfig({
     format: "es",
     // Worker sub-builds resolve their own imports, including nested worker
     // clients and the mesher package. Keep opt-out stubs active there too.
-    plugins: () => [stubMeshWorkerClientWhenDisabled(), ...(wasmMeshingDisabled ? [] : [gmshPthreadAsset()])]
+    plugins: () => [stubMeshWorkerClientWhenDisabled(), ...(wasmMeshingDisabled ? [] : [gmshPthreadAsset()])],
+    // Keep schema parsing in a shared module chunk so each worker entry stays
+    // within the existing parse/compile budget as the schema library grows.
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [{ name: "worker-schema", test: (id) => id.includes("/node_modules/.pnpm/zod@"), priority: 20 }]
+        }
+      }
+    }
   },
   optimizeDeps: {
     // Keep the Emscripten glue out of dev pre-bundling: esbuild would inline
