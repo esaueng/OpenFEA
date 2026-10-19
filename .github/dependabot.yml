@@ -6,6 +6,16 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # React, its DOM renderer, and the Three renderer must share a compatible
+      # release graph. Match this group before the general minor/patch group.
+      react-renderers:
+        patterns:
+          - react
+          - react-dom
+          - "@types/react"
+          - "@types/react-dom"
+          - "@react-three/fiber"
+          - "@react-three/drei"
       patch-and-minor:
         update-types: [minor, patch]
   - package-ecosystem: github-actions
