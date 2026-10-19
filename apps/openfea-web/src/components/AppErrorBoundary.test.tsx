@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
 import { AppErrorBoundary } from "./AppErrorBoundary";
