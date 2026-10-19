@@ -1389,6 +1389,12 @@ img {
   opacity: 0.45;
 }
 
+/* Shown only in the compact tiers, where the names give way. */
+.step-nav-icon {
+  display: none;
+  flex: none;
+}
+
 .step-nav-flag {
   flex: none;
   color: var(--color-warning);
@@ -1424,10 +1430,15 @@ img {
 }
 
 /* Measured: every label needs ~400px, which the bar has down to 1181px. Below that
-   only the current step keeps a visible label and the rest shrink to their bars.
+   the other steps show an icon over their bar and only the current step keeps its
+   name (measured: 247px against 241px at 981px with an icon as well).
    The labels are clipped, not removed, so each keeps its accessible name (and a
    title on hover). */
 @media (max-width: 1180px) {
+  .step-nav-step:not(.active) .step-nav-icon {
+    display: block;
+  }
+
   .step-nav-step:not(.active) {
     padding: 0 var(--sp-1);
   }
@@ -1484,6 +1495,10 @@ img {
   .step-nav-strip .step-nav-step:not(.active)::after {
     right: var(--sp-25);
     left: var(--sp-25);
+  }
+
+  .step-nav-strip .step-nav-icon {
+    display: none;
   }
 
   .step-nav-strip .step-nav-step:not(.active) .step-nav-label {

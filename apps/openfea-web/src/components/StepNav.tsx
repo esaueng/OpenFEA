@@ -1,5 +1,5 @@
 import type { Study } from "@openfea/schema";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Anchor, ArrowDownToLine, Box, ChartColumn, Grid3x3, Layers3, Play, type LucideIcon } from "lucide-react";
 import { canNavigateToStep } from "../appShellState";
 import type { RunReadinessItem } from "../runReadiness";
 
@@ -16,14 +16,16 @@ interface StepNavProps {
   notices?: Partial<Record<StepId, "error" | "warning">>;
 }
 
-const steps: ReadonlyArray<{ id: StepId; label: string }> = [
-  { id: "model", label: "Model" },
-  { id: "material", label: "Material" },
-  { id: "supports", label: "Supports" },
-  { id: "loads", label: "Loads" },
-  { id: "mesh", label: "Mesh" },
-  { id: "run", label: "Run" },
-  { id: "results", label: "Results" }
+/** Icons stand in for the names where the bar is too narrow for them; Anchor, Grid3x3
+ *  and Play match the support marker, the viewer's Mesh toggle and the Run button. */
+const steps: ReadonlyArray<{ id: StepId; label: string; icon: LucideIcon }> = [
+  { id: "model", label: "Model", icon: Box },
+  { id: "material", label: "Material", icon: Layers3 },
+  { id: "supports", label: "Supports", icon: Anchor },
+  { id: "loads", label: "Loads", icon: ArrowDownToLine },
+  { id: "mesh", label: "Mesh", icon: Grid3x3 },
+  { id: "run", label: "Run", icon: Play },
+  { id: "results", label: "Results", icon: ChartColumn }
 ] as const;
 
 /** Which step owns each readiness row, so the stepper can show a blocked state where the fix lives. */
@@ -96,6 +98,7 @@ export function StepNav({ activeStep, study, hasResults, readiness = [], notices
                 title={stepBlockers?.length ? stepBlockers.join(" ") : attention ?? step.label}
                 aria-label={stepBlockers?.length ? `${step.label}: ${stepBlockers.join(" ")}` : attention}
               >
+                <step.icon className="step-nav-icon" size={16} strokeWidth={1.9} aria-hidden="true" />
                 <span className="step-nav-label">{step.label}</span>
                 {flag && <AlertTriangle className={`step-nav-flag ${flag}`} size={13} strokeWidth={2.25} aria-hidden="true" />}
               </button>

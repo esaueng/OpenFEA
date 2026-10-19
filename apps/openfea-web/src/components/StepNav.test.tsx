@@ -46,7 +46,7 @@ describe("StepNav", () => {
     expect(html).toMatch(/class="step-nav-step active"[^>]*aria-current="step"[^>]*>[\s\S]*?Material/);
     // Steps carry no number or tick: the label names the step and the bar under it
     // (a CSS pseudo-element keyed on the state class) shows progress.
-    expect(html).toContain('<button type="button" class="step-nav-step done" title="Model"><span class="step-nav-label">Model</span></button>');
+    expect(html).toMatch(/<button type="button" class="step-nav-step done" title="Model"><svg[^>]*class="lucide lucide-box step-nav-icon"[^>]*>[\s\S]*?<\/svg><span class="step-nav-label">Model<\/span><\/button>/);
     expect(html).not.toContain("step-nav-glyph");
     expect(html).not.toContain("lucide-check");
   });
@@ -72,6 +72,12 @@ describe("StepNav", () => {
     expect(html).not.toContain("lucide-file-text");
   });
 
+  test("gives every step an icon for the compact tiers, hidden from assistive tech", () => {
+    const html = renderToStaticMarkup(<StepNav {...baseProps} study={study} />);
+    const icons = [...html.matchAll(/class="lucide lucide-([a-z0-9-]+)[^"]* step-nav-icon" aria-hidden="true"/g)].map((match) => match[1]);
+    expect(icons).toEqual(["box", "layers", "anchor", "arrow-down-to-line", "grid-3x3", "play", "chart-column"]);
+  });
+
   test("names every step on hover, since narrow tiers show only the current label", () => {
     const html = renderToStaticMarkup(<StepNav {...baseProps} study={study} />);
     for (const label of ["Model", "Material", "Supports", "Loads", "Mesh", "Run", "Results"]) {
@@ -91,7 +97,7 @@ describe("stepper states from readiness (2026-09 review D14)", () => {
         { label: "Load added", done: false, blockers: ["Load case Case 2 is enabled but has no loads. Add a load to it or disable it."] }
       ]} />
     );
-    expect(html).toMatch(/class="step-nav-step blocked"[^>]*><span class="step-nav-label">Loads<\/span><svg[^>]*class="[^"]*step-nav-flag warning"/);
+    expect(html).toMatch(/class="step-nav-step blocked"[^>]*>[\s\S]*?<span class="step-nav-label">Loads<\/span><svg[^>]*class="[^"]*step-nav-flag warning"/);
     expect(html).toContain("lucide-triangle-alert");
     expect(html).toContain('aria-label="Loads: Load case Case 2 is enabled but has no loads. Add a load to it or disable it."');
   });
@@ -136,8 +142,11 @@ describe("stepper CSS", () => {
     expect(css).toMatch(/^\.step-nav-step\.done::after \{\s*height:\s*2px;\s*background:\s*var\(--color-success\);/m);
     expect(css).toMatch(/^\.step-nav-step\.active::after \{\s*height:\s*2px;\s*background:\s*var\(--color-accent\);/m);
     expect(css).toMatch(/^\.step-nav-step\.active \{[^}]*font-weight:\s*var\(--fw-semibold\);/m);
-    // Every label fits the top bar down to 1181px; only below that do labels clip.
-    expect(css).toMatch(/@media \(max-width: 1180px\) \{\s*\.step-nav-step:not\(\.active\) \{/);
+    // Every label fits the top bar down to 1181px. Below that the other steps swap
+    // their names for icons; the full-width strip shows names again from 480px.
+    expect(css).toMatch(/^\.step-nav-icon \{\s*display:\s*none;/m);
+    expect(css).toMatch(/@media \(max-width: 1180px\) \{\s*\.step-nav-step:not\(\.active\) \.step-nav-icon \{\s*display:\s*block;/);
+    expect(css).toMatch(/@media \(min-width: 480px\) and \(max-width: 980px\) \{[\s\S]*?\.step-nav-strip \.step-nav-icon \{\s*display:\s*none;/);
     expect(css).not.toMatch(/\.step-nav-glyph|\.step-nav-dot|\.step-badge/);
   });
 
