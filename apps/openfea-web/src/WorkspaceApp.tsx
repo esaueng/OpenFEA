@@ -10,6 +10,7 @@ import { BottomPanel, studySummaryLine, KeyboardShortcutGuide, type WorkspaceLog
 import { OpenFeaLogoMark } from "./components/OpenFeaLogoMark";
 import { ProjectStorageNotice } from "./components/ProjectStorageNotice";
 import { RightPanel } from "./components/RightPanel";
+import { WorkspaceNoticeBanner } from "./components/panels/PanelChrome";
 import { StartScreen } from "./components/StartScreen";
 import { StepNav, type StepId } from "./components/StepNav";
 import { ProjectMenu } from "./components/ProjectMenu";
@@ -2751,76 +2752,78 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             onSelect={handleStepSelect}
           />
         </div>
-        <Suspense fallback={(
-          <section className="viewer-shell viewer-loading" aria-label="3D CAD viewer loading">
-            <div className="viewer-import-card" role="status" aria-live="polite">
-              <span className="viewer-import-spinner" aria-hidden="true" />
-              <strong>Preparing the 3D view…</strong>
-              <small>Loading the viewer. The model appears as soon as it is ready.</small>
-            </div>
-          </section>
-        )}>
-          <CadViewer
-            displayModel={displayModelForUi}
-            importingModelFilename={modelImport?.filename}
-            activeStep={activeStep}
-            selectedFaceId={selectedFaceId}
-            payloadObjectSelectionMode={Boolean(study && activeStep === "loads" && draftLoadType === "gravity")}
-            selectedPayloadObject={selectedPayloadObject}
-            onViewerMiss={handleViewerMiss}
-            onSelectFace={handleViewportFaceSelect}
-            viewMode={captureViewMode ?? viewMode}
-            resultsEligible={resultDisplayEligible}
-            resultMode={resultMode}
-            stressComponent={stressComponent}
-            showDeformed={showDeformed}
-            resultPlaybackPlaying={resultPlaybackPlaying}
-            // The boundary-figure capture hides the dimension overlay: its
-            // lines/labels sit outside the model and force the report camera
-            // to zoom far out; the dimensions are already tabled in section 1.
-            showDimensions={captureViewMode ? false : showDimensions}
-            stressExaggeration={stressExaggeration}
-            resultFields={visibleResultFieldsForUi}
-            resultColorScale={activeResultColorScale}
-            sectionPlane={sectionPlane}
-            resultProbes={resultProbes}
-            onAddResultProbe={handleAddResultProbe}
-            surfaceMesh={resultSurfaceMesh}
-            meshPreviewSurface={meshPreviewSurface}
-            captureBusy={reportCaptureBusy}
-            resultsStale={Boolean(resultsOutdatedBy)}
-            resultPeaks={resultPeaks}
-            resultPeakLocations={resultPeakLocations}
-            assignedFaceTints={assignedFaceTints}
-            resultPlaybackBufferCache={resultPlaybackBufferCacheForViewer}
-            resultPlaybackFrameController={resultPlaybackPlaying && resultPlaybackCacheState.status === "ready" && resultPlaybackCacheState.cache.packed ? resultPlaybackFrameControllerRef.current : undefined}
-            meshSummary={solverMeshSummary ?? study.meshSettings.summary}
-            unitSystem={displayUnitSystem}
-            themeMode={themeMode}
-            projectionMode={projectionMode}
-            onFitView={handleFitDefaultView}
-            onToggleDimensions={() => setShowDimensions((value) => !value)}
-            onViewModeChange={setViewMode}
-            onSectionPlaneChange={setSectionPlane}
-            onProjectionModeChange={setProjectionMode}
-            fitSignal={fitSignal}
-            viewAxis={viewAxis}
-            viewAxisSignal={viewAxisSignal}
-            loadMarkers={loadMarkers}
-            supportMarkers={supportMarkers}
-            printLayerOrientation={printLayerOrientation}
-            onMeasureDisplayModelDimensions={handleMeasureDisplayModelDimensions}
-            onResultRenderBoundsChange={setResultRenderBounds}
-            onViewerInteractionChange={handleViewerInteractionChange}
-            onRegisterCapture={handleRegisterViewerCapture}
-          />
-        </Suspense>
+        {/* The notice floats over the viewer's top-right corner rather than heading the
+            side panel, so showing or dismissing it never shifts the panel's controls. */}
+        <div className="viewer-column">
+          {workspaceNotice && <WorkspaceNoticeBanner notice={workspaceNotice} activeStep={activeStep} onDismiss={() => setDismissedNoticeKey(workspaceNotice.key)} onGoToStep={(step) => navigateToStep(step)} />}
+          <Suspense fallback={(
+            <section className="viewer-shell viewer-loading" aria-label="3D CAD viewer loading">
+              <div className="viewer-import-card" role="status" aria-live="polite">
+                <span className="viewer-import-spinner" aria-hidden="true" />
+                <strong>Preparing the 3D view…</strong>
+                <small>Loading the viewer. The model appears as soon as it is ready.</small>
+              </div>
+            </section>
+          )}>
+            <CadViewer
+              displayModel={displayModelForUi}
+              importingModelFilename={modelImport?.filename}
+              activeStep={activeStep}
+              selectedFaceId={selectedFaceId}
+              payloadObjectSelectionMode={Boolean(study && activeStep === "loads" && draftLoadType === "gravity")}
+              selectedPayloadObject={selectedPayloadObject}
+              onViewerMiss={handleViewerMiss}
+              onSelectFace={handleViewportFaceSelect}
+              viewMode={captureViewMode ?? viewMode}
+              resultsEligible={resultDisplayEligible}
+              resultMode={resultMode}
+              stressComponent={stressComponent}
+              showDeformed={showDeformed}
+              resultPlaybackPlaying={resultPlaybackPlaying}
+              // The boundary-figure capture hides the dimension overlay: its
+              // lines/labels sit outside the model and force the report camera
+              // to zoom far out; the dimensions are already tabled in section 1.
+              showDimensions={captureViewMode ? false : showDimensions}
+              stressExaggeration={stressExaggeration}
+              resultFields={visibleResultFieldsForUi}
+              resultColorScale={activeResultColorScale}
+              sectionPlane={sectionPlane}
+              resultProbes={resultProbes}
+              onAddResultProbe={handleAddResultProbe}
+              surfaceMesh={resultSurfaceMesh}
+              meshPreviewSurface={meshPreviewSurface}
+              captureBusy={reportCaptureBusy}
+              resultsStale={Boolean(resultsOutdatedBy)}
+              resultPeaks={resultPeaks}
+              resultPeakLocations={resultPeakLocations}
+              assignedFaceTints={assignedFaceTints}
+              resultPlaybackBufferCache={resultPlaybackBufferCacheForViewer}
+              resultPlaybackFrameController={resultPlaybackPlaying && resultPlaybackCacheState.status === "ready" && resultPlaybackCacheState.cache.packed ? resultPlaybackFrameControllerRef.current : undefined}
+              meshSummary={solverMeshSummary ?? study.meshSettings.summary}
+              unitSystem={displayUnitSystem}
+              themeMode={themeMode}
+              projectionMode={projectionMode}
+              onFitView={handleFitDefaultView}
+              onToggleDimensions={() => setShowDimensions((value) => !value)}
+              onViewModeChange={setViewMode}
+              onSectionPlaneChange={setSectionPlane}
+              onProjectionModeChange={setProjectionMode}
+              fitSignal={fitSignal}
+              viewAxis={viewAxis}
+              viewAxisSignal={viewAxisSignal}
+              loadMarkers={loadMarkers}
+              supportMarkers={supportMarkers}
+              printLayerOrientation={printLayerOrientation}
+              onMeasureDisplayModelDimensions={handleMeasureDisplayModelDimensions}
+              onResultRenderBoundsChange={setResultRenderBounds}
+              onViewerInteractionChange={handleViewerInteractionChange}
+              onRegisterCapture={handleRegisterViewerCapture}
+            />
+          </Suspense>
+        </div>
         <RightPanel
           activeStep={activeStep}
-          notice={workspaceNotice}
           resultControlsBusy={reportCaptureBusy}
-          onDismissNotice={() => workspaceNotice && setDismissedNoticeKey(workspaceNotice.key)}
-          onNoticeStep={(step) => navigateToStep(step)}
           project={project}
           displayModel={displayModelForUi}
           study={study}

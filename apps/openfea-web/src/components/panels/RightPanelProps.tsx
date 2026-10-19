@@ -5,7 +5,6 @@ import { useEffect, useLayoutEffect } from "react";
 import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, LoadCase, LoadCombination, MeshConnection, MeshQuality, ModalSolverSettings, Project, ResultField, ResultSummary, RunTimingEstimate, RunVariantRef, SimulationFidelity, Study } from "@openfea/schema";
 
 import type { RunReadinessItem } from "../../runReadiness";
-import type { WorkspaceNotice } from "../../workspaceNotice";
 
 import type { StepId } from "../StepNav";
 import { type LoadApplicationPoint, type LoadDirectionLabel, type LoadType, type PayloadLoadMetadata } from "../../loadPreview";
@@ -147,10 +146,6 @@ export interface RightPanelProps {
   canRunSimulation: boolean;
   missingRunItems: string[];
   runReadiness: RunReadinessItem[];
-  /** Workspace-wide notice rendered at the top of every step's panel. */
-  notice?: WorkspaceNotice | null;
-  onDismissNotice?: () => void;
-  onNoticeStep?: (step: StepId) => void;
   /** True while report figures are captured through the viewer; result-mode controls hold (2026-09 review D15). */
   resultControlsBusy?: boolean;
   /** Lets a panel commit pending work when the user presses Next (Material applies the previewed selection, 2026-09 review F3). */

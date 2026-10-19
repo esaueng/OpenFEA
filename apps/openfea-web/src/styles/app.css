@@ -2142,8 +2142,21 @@ img {
   background: var(--color-bg);
 }
 
+/* Holds the viewer and the floating workspace notice. The notice is absolutely
+   positioned, so it never takes a grid cell or pushes the viewer or side panel. */
+.viewer-column {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+}
+
+/* isolation keeps in-scene labels (drei <Html> layers carry their own z-index)
+   stacked inside the viewer, so the floating notice beside it stays on top. */
 .viewer-shell {
   position: relative;
+  isolation: isolate;
   min-width: 0;
   min-height: 0;
   background: var(--color-viewport-bg);
@@ -6119,18 +6132,24 @@ input[aria-invalid="true"] {
 
 /* 2026-09 review: workspace-wide notice (D7) and rail step states (D14). */
 .workspace-notice {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  z-index: var(--z-viewer-overlay);
+  width: min(380px, calc(100% - 2 * var(--sp-3)));
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: var(--sp-2);
   align-items: start;
-  margin: 0 0 var(--sp-3);
   padding: var(--sp-2) var(--sp-25);
   border-radius: var(--radius-sm);
   font-size: var(--fs-sm);
   line-height: var(--lh-snug);
   color: var(--color-text);
-  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  /* Opaque: it sits over the model, which must not show through the text. */
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-surface));
   border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
+  box-shadow: var(--shadow-panel);
 }
 
 .workspace-notice > svg {
@@ -6139,7 +6158,7 @@ input[aria-invalid="true"] {
 }
 
 .workspace-notice.error {
-  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  background: color-mix(in srgb, var(--color-error) 12%, var(--color-surface));
   border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
 }
 

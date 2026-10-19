@@ -7,11 +7,14 @@ import type { DisplayModel, Project, ResultField, ResultSummary, Study } from "@
 import { dynamicSettingConstraintMessage, editableNumberCommitValue, playbackPeakMarkerPercent, resultModeExplanation, RightPanel, rangeProgressPercent } from "./RightPanel";
 import type { StepId } from "./StepNav";
 import { resultExportMenuItems } from "./panels/ResultsPanels";
+import { WorkspaceNoticeBanner } from "./panels/PanelChrome";
+import type { WorkspaceNotice } from "../workspaceNotice";
 import { readinessForStudy } from "../runReadiness";
 import { StudySchema } from "@openfea/schema";
 import { SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../geometryFormats";
 import type { StepGeometryMetadata } from "../lib/api";
 
+const workspaceAppSource = readFileSync(resolve(__dirname, "../WorkspaceApp.tsx"), "utf8").replace(/\r\n/g, "\n");
 const rightPanelSource = [
   "RightPanel.tsx",
   "panels/ModelPanel.tsx",
@@ -2394,17 +2397,26 @@ describe("2026-09 interaction review stage 0 guards", () => {
 });
 
 describe("workspace notice and readiness text (2026-09 review D7, F7)", () => {
-  test("renders the workspace notice on any step with a link to the step that can fix it", () => {
+  test("renders the workspace notice with a link to the step that can fix it", () => {
     const notice = { key: "outdated:Load updated.", tone: "warning" as const, title: "Results outdated", message: "Load updated. Re-run to update them.", step: "run" as const, stepLabel: "Run" };
-    const html = renderPanel("material", { notice, onDismissNotice: vi.fn(), onNoticeStep: vi.fn() });
+    const banner = (activeStep: StepId, overrides: Partial<WorkspaceNotice> = {}) => renderToStaticMarkup(
+      <WorkspaceNoticeBanner notice={{ ...notice, ...overrides }} activeStep={activeStep} onDismiss={vi.fn()} onGoToStep={vi.fn()} />
+    );
+    const html = banner("material");
 
     expect(html).toContain('class="workspace-notice warning"');
     expect(html).toContain("Results outdated");
     expect(html).toContain("Go to Run");
     expect(html).toContain('aria-label="Dismiss notice"');
     // On the step itself the link is redundant.
-    expect(renderPanel("run", { notice })).not.toContain("Go to Run");
-    expect(renderPanel("run", { notice: { ...notice, tone: "error" } })).toContain('role="alert"');
+    expect(banner("run")).not.toContain("Go to Run");
+    expect(banner("run", { tone: "error" })).toContain('role="alert"');
+  });
+
+  test("the notice floats over the viewer instead of heading the side panel", () => {
+    // In the panel it pushed every control down when it appeared and back up on dismiss.
+    expect(rightPanelSource).not.toContain("<WorkspaceNoticeBanner");
+    expect(workspaceAppSource).toMatch(/<div className="viewer-column">\n\s*\{workspaceNotice && <WorkspaceNoticeBanner/);
   });
 
   test("prints readiness blockers as text instead of a tooltip", () => {
