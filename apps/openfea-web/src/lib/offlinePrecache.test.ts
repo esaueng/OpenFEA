@@ -25,6 +25,7 @@ const DEFAULT_DIST = [
   "assets/index-BE098Mki.js",
   "assets/index-DPJAkoKU.css",
   "assets/meshWorker-CFH3q_LL.js",
+  "assets/gmsh-core-pthread.mjs",
   "assets/solveWorker-CYDTlGYD.js",
   "assets/occt-import-js-BhHfLpto.wasm",
   "assets/gmsh-core-HGUso1mk.wasm.gz",
@@ -86,11 +87,11 @@ describe("auditPrecacheManifest", () => {
     expect(audit.ok).toBe(true);
   });
 
-  test("fails when the gmsh wasm.gz or its manifest are missing (the closeBundle ordering trap)", () => {
+  test("fails when the gmsh runtime, wasm.gz or its manifest are missing (the closeBundle ordering trap)", () => {
     const withoutGmsh = fullManifest.filter((url) => !url.includes("gmsh"));
     const audit = auditPrecacheManifest(withoutGmsh, DEFAULT_DIST);
     expect(audit.ok).toBe(false);
-    expect(audit.missing).toEqual(["assets/gmsh-core-HGUso1mk.wasm.gz", GMSH_WASM_MANIFEST_URL]);
+    expect(audit.missing).toEqual(["assets/gmsh-core-HGUso1mk.wasm.gz", "assets/gmsh-core-pthread.mjs", GMSH_WASM_MANIFEST_URL]);
   });
 
   test("fails when a lazy worker chunk is missing from the manifest", () => {
