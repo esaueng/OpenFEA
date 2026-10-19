@@ -1702,6 +1702,26 @@ describe("CadViewer result coloring", () => {
     expect(outlineBounds.max.x).toBeCloseTo(modelBounds.max.x);
   });
 
+  test("keeps nested rotated CAD outlines aligned before rendering updates their world matrices", () => {
+    const group = new THREE.Group();
+    group.scale.set(0.01, 0.02, 0.03);
+    group.position.set(0.5, -1, 2);
+    group.rotation.set(0.2, 0.4, -0.3);
+    const nested = new THREE.Group();
+    nested.position.set(4, 5, 6);
+    nested.rotation.set(0.1, -0.2, 0.3);
+    nested.add(new THREE.Mesh(new THREE.BoxGeometry(100, 40, 20), new THREE.MeshStandardMaterial()));
+    group.add(nested);
+
+    const outline = createUndeformedResultOutlineObject(group);
+    const modelBounds = new THREE.Box3().setFromObject(group);
+    const outlineBounds = new THREE.Box3().setFromObject(outline);
+    for (const axis of ["x", "y", "z"] as const) {
+      expect(outlineBounds.min[axis]).toBeCloseTo(modelBounds.min[axis]);
+      expect(outlineBounds.max[axis]).toBeCloseTo(modelBounds.max[axis]);
+    }
+  });
+
   test("clips solid and feature-edge materials while leaving annotations excluded", () => {
     const root = new THREE.Group();
     const geometryRoot = new THREE.Group();

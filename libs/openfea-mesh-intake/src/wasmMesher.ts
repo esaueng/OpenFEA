@@ -191,7 +191,22 @@ export function configureGmshWasmModuleOptions(provider: (() => Promise<Record<s
 export async function loadGmshWasm(): Promise<GmshApi> {
   const mod = await import("@loumalouomega/gmsh-wasm");
   const moduleOptions = gmshWasmModuleOptionsProvider ? await gmshWasmModuleOptionsProvider() : {};
-  return mod.default(moduleOptions);
+  const gmsh = await mod.default(moduleOptions);
+  // Gmsh finalization releases model state, but the threaded 0.3 runtime
+  // retains its pthread pool. A fresh module per mesh must also release those
+  // workers, including when finalization throws after a meshing failure.
+  const runtime = (gmsh as GmshApi & {
+    module?: { PThread?: { terminateAllThreads(): void } };
+  }).module;
+  const finalize = gmsh.finalize.bind(gmsh);
+  gmsh.finalize = () => {
+    try {
+      finalize();
+    } finally {
+      runtime?.PThread?.terminateAllThreads();
+    }
+  };
+  return gmsh;
 }
 
 /**

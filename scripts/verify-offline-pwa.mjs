@@ -18,7 +18,7 @@
 //    matching the applied 500 N.
 //
 // Usage (Node >= 22 for global WebSocket + fetch; Chrome installed):
-//   pnpm --filter @openfea/web build
+//   VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build
 //   node scripts/verify-offline-pwa.mjs
 // Env: PORT (5199), CDP_PORT (9334), CHROME_BIN, PROOF_TIMEOUT_MS (240000).
 // Exit codes: 0 proof ok, 1 gate failed, 2 timeout.
