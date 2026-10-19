@@ -8,7 +8,7 @@ import { SupportsPanel, LoadsPanel } from "./panels/SupportsLoadsPanels";
 import { MeshPanel } from "./panels/MeshPanel";
 import { RunPanel } from "./panels/RunPanel";
 import { ResultsPanel } from "./panels/ResultsPanels";
-import { WorkflowNav, WorkspaceNoticeBanner } from "./panels/PanelChrome";
+import { WorkflowNav } from "./panels/PanelChrome";
 
 export type { RightPanelProps, SolverSettingsPatch } from "./panels/RightPanelProps";
 export { dynamicSettingConstraintMessage, editableNumberCommitValue } from "./panels/RunPanel";
@@ -28,7 +28,6 @@ export function RightPanel(props: RightPanelProps) {
   const [footerSlot, setFooterSlot] = useState<HTMLDivElement | null>(null);
   return (
     <aside className="side-panel">
-      {props.notice && <WorkspaceNoticeBanner notice={props.notice} activeStep={props.activeStep} onDismiss={props.onDismissNotice} onGoToStep={props.onNoticeStep} />}
       {props.activeStep === "model" && <ModelPanel {...props} />}
       {props.activeStep === "material" && <MaterialPanel {...props} registerBeforeNext={registerBeforeNext} />}
       {props.activeStep === "supports" && <SupportsPanel {...props} />}

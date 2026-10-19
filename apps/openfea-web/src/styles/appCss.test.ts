@@ -57,6 +57,19 @@ function resolvedControlPx(rule: string, property: "min-height" | "height" | "wi
 }
 
 describe("app CSS", () => {
+  test("floats the workspace notice over the viewer without taking layout space", () => {
+    const notice = baseRule(".workspace-notice");
+    expect(notice).toMatch(/position:\s*absolute;/);
+    expect(notice).toMatch(/top:\s*var\(--sp-3\);/);
+    expect(notice).toMatch(/right:\s*var\(--sp-3\);/);
+    expect(notice).not.toMatch(/margin:/);
+    // It sits over the model, so its fill must be opaque.
+    expect(notice).not.toMatch(/background:[^;]*transparent\)/);
+    expect(baseRule(".viewer-column")).toMatch(/position:\s*relative;/);
+    // In-scene <Html> labels set their own z-index; the viewer contains them.
+    expect(baseRule(".viewer-shell")).toMatch(/isolation:\s*isolate;/);
+  });
+
   test("centers model import progress over the viewer", () => {
     const importOverlay = cssRule(".viewer-import-overlay");
 
