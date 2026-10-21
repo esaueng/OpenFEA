@@ -63,9 +63,9 @@ pnpm build:cloudflare
 pnpm --filter @openfea/web check:bundle
 ```
 
-For the optional built-worker and offline mesh proofs, first build with `VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build`. This opt-in verification artifact includes the URL-driven mesh harness; normal release builds remove it. Threaded Gmsh requires the checked-in COOP/COEP headers on both the app shell and workers; Vite development and preview serve the same isolation headers. Rebuild normally before deploying.
+The in-browser mesh and offline PWA proofs (`pnpm verify:wasm-mesh-browser`, `pnpm verify:offline-pwa`) need a separate build made with `VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build`. This opt-in verification artifact includes the URL-driven mesh harness; normal release builds remove it. CI runs both proofs on their own proof build; `verify-100k-solve` and `pnpm verify:perf` stay manual. Threaded Gmsh requires the checked-in COOP/COEP headers on both the app shell and workers; Vite development and preview serve the same isolation headers. Rebuild normally before deploying.
 
-The browser checks require Chrome or Chromium; set `CHROME_BIN` if auto-detection cannot find it. STEP selection uses ports 5198/9336 and project/results checks use 5199/9337. The bundle check must follow the production build. [CI](.github/workflows/ci.yml) delegates to the pinned [fleet workflow](.github/workflows/fleet-ci.yml); it also enforces runner isolation and routing policy.
+The browser checks require Chrome or Chromium; set `CHROME_BIN` if auto-detection cannot find it. STEP selection uses ports 5198/9336, project/results checks use 5199/9337, the mesh proofs use 5196/9333 and the offline proof uses 5199/9334. The bundle check must follow the production build. [CI](.github/workflows/ci.yml) delegates to the pinned [fleet workflow](.github/workflows/fleet-ci.yml); it also enforces runner isolation and routing policy.
 
 `pnpm build` and `pnpm build:cloudflare` both build Core and the production web app. `pnpm verify:perf` builds and checks web performance.
 
