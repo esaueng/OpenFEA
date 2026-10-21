@@ -45,7 +45,8 @@ export const TET10_HRZ_EDGE_MASS_FRACTION = 4 / 27;
 const TET10_EDGE_VERTICES = [[0, 1], [1, 2], [0, 2], [0, 3], [1, 3], [2, 3]] as const;
 const TET10_GAUSS_A = 0.5854101966249685;
 const TET10_GAUSS_B = 0.13819660112501053;
-const TET10_GAUSS_POINTS = [
+/** The solver's 4-point Tet10 Gauss rule (barycentric; weight 1/24 each). solver-cpu tests pin it to its own copy. */
+export const TET10_GAUSS_POINTS: ReadonlyArray<readonly [number, number, number, number]> = [
   [TET10_GAUSS_A, TET10_GAUSS_B, TET10_GAUSS_B, TET10_GAUSS_B],
   [TET10_GAUSS_B, TET10_GAUSS_A, TET10_GAUSS_B, TET10_GAUSS_B],
   [TET10_GAUSS_B, TET10_GAUSS_B, TET10_GAUSS_A, TET10_GAUSS_B],
@@ -78,39 +79,49 @@ export function tet10Volume(coordinates: ArrayLike<number>, nodeIds: ArrayLike<n
   if (nodeIds.length < 10) return Number.NaN;
   let volume = 0;
   for (const barycentric of TET10_GAUSS_POINTS) {
-    const derivatives = new Float64Array(30);
-    for (let vertex = 0; vertex < 4; vertex += 1) {
-      const scale = 4 * barycentric[vertex] - 1;
-      const gradient = BARYCENTRIC_GRADIENTS[vertex];
-      derivatives[vertex * 3] = scale * gradient[0];
-      derivatives[vertex * 3 + 1] = scale * gradient[1];
-      derivatives[vertex * 3 + 2] = scale * gradient[2];
-    }
-    for (let edge = 0; edge < TET10_EDGE_VERTICES.length; edge += 1) {
-      const [left, right] = TET10_EDGE_VERTICES[edge];
-      const leftGradient = BARYCENTRIC_GRADIENTS[left];
-      const rightGradient = BARYCENTRIC_GRADIENTS[right];
-      const node = 4 + edge;
-      for (let component = 0; component < 3; component += 1) {
-        derivatives[node * 3 + component] = 4 * (
-          barycentric[left] * rightGradient[component] + barycentric[right] * leftGradient[component]
-        );
-      }
-    }
-    const jacobian = new Float64Array(9);
-    for (let localNode = 0; localNode < 10; localNode += 1) {
-      const node = nodeIds[localNode];
-      if (node === undefined) return Number.NaN;
-      for (let component = 0; component < 3; component += 1) {
-        const derivative = derivatives[localNode * 3 + component];
-        jacobian[component] += coordinateAt(coordinates, node, 0) * derivative;
-        jacobian[3 + component] += coordinateAt(coordinates, node, 1) * derivative;
-        jacobian[6 + component] += coordinateAt(coordinates, node, 2) * derivative;
-      }
-    }
-    volume += determinant3(jacobian) / 24;
+    volume += tet10JacobianDeterminant(coordinates, nodeIds, barycentric) / 24;
   }
   return volume;
+}
+
+/** det(∂x/∂ξ) of the Tet10 isoparametric map at a barycentric point; NaN when a node id is missing. */
+export function tet10JacobianDeterminant(
+  coordinates: ArrayLike<number>,
+  nodeIds: ArrayLike<number>,
+  barycentric: readonly [number, number, number, number]
+): number {
+  if (nodeIds.length < 10) return Number.NaN;
+  const derivatives = new Float64Array(30);
+  for (let vertex = 0; vertex < 4; vertex += 1) {
+    const scale = 4 * barycentric[vertex] - 1;
+    const gradient = BARYCENTRIC_GRADIENTS[vertex];
+    derivatives[vertex * 3] = scale * gradient[0];
+    derivatives[vertex * 3 + 1] = scale * gradient[1];
+    derivatives[vertex * 3 + 2] = scale * gradient[2];
+  }
+  for (let edge = 0; edge < TET10_EDGE_VERTICES.length; edge += 1) {
+    const [left, right] = TET10_EDGE_VERTICES[edge];
+    const leftGradient = BARYCENTRIC_GRADIENTS[left];
+    const rightGradient = BARYCENTRIC_GRADIENTS[right];
+    const node = 4 + edge;
+    for (let component = 0; component < 3; component += 1) {
+      derivatives[node * 3 + component] = 4 * (
+        barycentric[left] * rightGradient[component] + barycentric[right] * leftGradient[component]
+      );
+    }
+  }
+  const jacobian = new Float64Array(9);
+  for (let localNode = 0; localNode < 10; localNode += 1) {
+    const node = nodeIds[localNode];
+    if (node === undefined) return Number.NaN;
+    for (let component = 0; component < 3; component += 1) {
+      const derivative = derivatives[localNode * 3 + component];
+      jacobian[component] += coordinateAt(coordinates, node, 0) * derivative;
+      jacobian[3 + component] += coordinateAt(coordinates, node, 1) * derivative;
+      jacobian[6 + component] += coordinateAt(coordinates, node, 2) * derivative;
+    }
+  }
+  return determinant3(jacobian);
 }
 
 export function elementFaces(type: ElementType, connectivity: ArrayLike<number>): ElementFace[] {
