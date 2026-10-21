@@ -9,8 +9,8 @@ const WEB_SRC = resolve(rootDir, "apps/openfea-web/src");
 // Local-first architecture guard.
 //
 // The production web app solves in the browser: it must not call the
-// reference-backend HTTP surface, and it must not import the reference
-// heuristic engines (they exist for the loopback dev API only). The deploy
+// retired reference-backend HTTP surface, and it must not import the deleted
+// reference heuristic engines or backend libraries. The deploy
 // verifier covers wrangler config; this covers source imports and fetch
 // calls, in the same allowlist style as cloud-retirement-guard.
 // ---------------------------------------------------------------------------
@@ -20,12 +20,16 @@ const FETCH_API_ALLOWLIST = new Set([
   "cloudBackup.ts", // the only production server flow: consent-gated encrypted recovery backup
 ]);
 
-/** Module specifiers the web source must never import (reference engines). */
+/** Module specifiers the web source must never import (deleted reference backend). */
 const FORBIDDEN_IMPORTS = [
+  "@openfea/api",
   "@openfea/solver-service",
   "@openfea/mesh-service",
   "@openfea/post-service",
-  "@openfea/cad-service"
+  "@openfea/cad-service",
+  "@openfea/db",
+  "@openfea/jobs",
+  "@openfea/storage"
 ];
 
 function webSourceFiles() {
@@ -67,7 +71,7 @@ describe("local-first architecture guard", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("web source never imports the reference heuristic engines", () => {
+  test("web source never imports the deleted reference backend", () => {
     const offenders = [];
     for (const absolute of webSourceFiles()) {
       const relative = absolute.slice(WEB_SRC.length + 1);

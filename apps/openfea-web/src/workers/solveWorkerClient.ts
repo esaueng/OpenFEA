@@ -56,6 +56,7 @@ export type LocalSolveHandle = {
 
 type PendingSolve = {
   id: string;
+  worker: Worker;
   resolve: (completion: LocalSolveCompletion) => void;
   reject: (error: Error) => void;
   onProgress?: (event: SolveProgressEvent) => void;
@@ -64,6 +65,7 @@ type PendingSolve = {
 };
 
 let workerInstance: Worker | null = null;
+const retiringWorkers = new Set<Worker>();
 const pendingSolves = new Map<string, PendingSolve>();
 
 export function startLocalSolve(
@@ -81,7 +83,7 @@ export function startLocalSolve(
     return rejectedSolveHandle(workerClientError(error, "Could not start the solve worker."));
   }
   const completion = new Promise<LocalSolveCompletion>((resolve, reject) => {
-    pendingSolves.set(id, { id, resolve, reject, onProgress, onVariantComplete });
+    pendingSolves.set(id, { id, worker, resolve, reject, onProgress, onVariantComplete });
   });
   const request: SolveWorkerRequest = { kind: "solve", id, payload };
   try {
@@ -94,25 +96,25 @@ export function startLocalSolve(
     completion,
     cancel: () => {
       const pending = pendingSolves.get(id);
-      if (!pending) return;
+      if (!pending || pending.cancelTimer !== undefined) return;
+      // A blocked worker cannot process another solve before cancellation.
+      // Detach it now so a replacement solve gets its own worker; the old
+      // worker remains owned by its pending requests until it settles or times out.
+      if (workerInstance === worker) workerInstance = null;
+      retiringWorkers.add(worker);
       // Cooperative first: the solver hooks check shouldCancel between CG
       // iterations / time steps if the worker event loop ever yields.
       try {
-        workerInstance?.postMessage({ kind: "cancel", id } satisfies SolveWorkerRequest);
+        worker.postMessage({ kind: "cancel", id } satisfies SolveWorkerRequest);
       } catch {
-        workerInstance?.terminate();
-        workerInstance = null;
-        rejectPending(id, new LocalSolveError("OpenFEA Core solve cancelled.", "cancelled"));
+        terminateSolveWorker(worker, new LocalSolveError("OpenFEA Core solve cancelled.", "cancelled"));
         return;
       }
-      if (pending.cancelTimer) return;
       pending.cancelTimer = setTimeout(() => {
         if (!pendingSolves.has(id)) return;
-        // The worker is still blocked in the solve: terminate it. It respawns
-        // lazily on the next solve; no other work runs on this worker.
-        workerInstance?.terminate();
-        workerInstance = null;
-        rejectPending(id, new LocalSolveError("OpenFEA Core solve cancelled.", "cancelled"));
+        // Settle every request owned by this worker, without touching a
+        // replacement worker that may already be serving a new solve.
+        terminateSolveWorker(worker, new LocalSolveError("OpenFEA Core solve cancelled.", "cancelled"));
       }, CANCEL_TERMINATE_TIMEOUT_MS);
     }
   };
@@ -134,7 +136,7 @@ function startInlineSolve(
   const completion = new Promise<LocalSolveCompletion>((resolve, reject) => {
     // Deferred one tick so callers can subscribe/cancel before the synchronous
     // solve blocks this thread.
-    setTimeout(async () => {
+    const solve = async () => {
       if (cancelled) {
         reject(new LocalSolveError("OpenFEA Core solve cancelled.", "cancelled"));
         return;
@@ -159,7 +161,9 @@ function startInlineSolve(
       } catch (error) {
         reject(error instanceof Error ? error : new LocalSolveError(String(error)));
       }
-    }, 0);
+    };
+    // solve() settles the completion promise itself and never rejects.
+    setTimeout(() => void solve(), 0);
   });
   return {
     completion,
@@ -171,25 +175,28 @@ function startInlineSolve(
 
 function getSolveWorker(): Worker {
   if (workerInstance) return workerInstance;
-  workerInstance = new Worker(new URL("./solveWorker.ts", import.meta.url), { type: "module", name: "openfea-solve-worker" });
-  workerInstance.addEventListener("message", handleSolveWorkerMessage);
-  workerInstance.addEventListener("error", handleSolveWorkerError);
-  return workerInstance;
+  const worker = new Worker(new URL("./solveWorker.ts", import.meta.url), { type: "module", name: "openfea-solve-worker" });
+  worker.addEventListener("message", (event) => handleSolveWorkerMessage(worker, event));
+  worker.addEventListener("error", (event) => handleSolveWorkerError(worker, event));
+  workerInstance = worker;
+  return worker;
 }
 
-function handleSolveWorkerMessage(event: MessageEvent<SolveWorkerResponse>): void {
+function handleSolveWorkerMessage(worker: Worker, event: MessageEvent<SolveWorkerResponse>): void {
   const response = event.data;
   if (isSolveWorkerProgress(response)) {
-    pendingSolves.get(response.id)?.onProgress?.(response.event);
+    const pending = pendingSolves.get(response.id);
+    if (pending?.worker === worker) pending.onProgress?.(response.event);
     return;
   }
   if (isSolveWorkerVariant(response)) {
-    pendingSolves.get(response.id)?.onVariantComplete?.(response.variant, response.surfaceMesh);
+    const pending = pendingSolves.get(response.id);
+    if (pending?.worker === worker) pending.onVariantComplete?.(response.variant, response.surfaceMesh);
     return;
   }
   if (!isSolveWorkerResult(response)) return;
   const pending = pendingSolves.get(response.id);
-  if (!pending) return;
+  if (!pending || pending.worker !== worker) return;
   clearPending(pending);
   if (response.ok) {
     pending.resolve({
@@ -202,14 +209,20 @@ function handleSolveWorkerMessage(event: MessageEvent<SolveWorkerResponse>): voi
   pending.reject(new LocalSolveError(response.error.message, response.error.code));
 }
 
-function handleSolveWorkerError(event: ErrorEvent): void {
-  const error = new LocalSolveError(event.message || "Solve worker failed.");
+function handleSolveWorkerError(worker: Worker, event: ErrorEvent): void {
+  if (worker !== workerInstance && !retiringWorkers.has(worker)) return;
+  terminateSolveWorker(worker, new LocalSolveError(event.message || "Solve worker failed."));
+}
+
+function terminateSolveWorker(worker: Worker, error: Error): void {
+  retiringWorkers.delete(worker);
+  if (workerInstance === worker) workerInstance = null;
+  worker.terminate();
   for (const pending of [...pendingSolves.values()]) {
+    if (pending.worker !== worker) continue;
     clearPending(pending);
     pending.reject(error);
   }
-  workerInstance?.terminate();
-  workerInstance = null;
 }
 
 function rejectPending(id: string, error: Error): void {
@@ -220,6 +233,10 @@ function rejectPending(id: string, error: Error): void {
 }
 
 function clearPending(pending: PendingSolve): void {
-  if (pending.cancelTimer) clearTimeout(pending.cancelTimer);
+  if (pending.cancelTimer !== undefined) clearTimeout(pending.cancelTimer);
   pendingSolves.delete(pending.id);
+  if (retiringWorkers.has(pending.worker) && ![...pendingSolves.values()].some((item) => item.worker === pending.worker)) {
+    retiringWorkers.delete(pending.worker);
+    pending.worker.terminate();
+  }
 }

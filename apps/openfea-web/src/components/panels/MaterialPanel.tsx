@@ -32,7 +32,8 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
   const inheritsModelMaterial = Boolean(activeBody && currentAssignment && !currentAssignment.bodyId);
   // The first material on a multi-body model covers every body; later
   // choices override one body at a time.
-  const assignTarget = activeBody && study.materialAssignments.length > 0 ? { bodyId: activeBody.id } : undefined;
+  const assignTargetBodyId = activeBody && study.materialAssignments.length > 0 ? activeBody.id : undefined;
+  const assignTarget = useMemo(() => (assignTargetBodyId ? { bodyId: assignTargetBodyId } : undefined), [assignTargetBodyId]);
   useEffect(() => {
     if (!multiBody) return undefined;
     onHighlightBody?.(hoveredBodyId ?? activeBody?.id ?? null);
@@ -101,7 +102,7 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
   useEffect(() => {
     registerBeforeNext?.(selectionMatchesAssignment ? null : () => onAssignMaterial(selectedMaterialId, pendingParameters, assignTarget));
     return () => registerBeforeNext?.(null);
-  }, [assignTarget?.bodyId, onAssignMaterial, pendingParameters, registerBeforeNext, selectedMaterialId, selectionMatchesAssignment]);
+  }, [assignTarget, onAssignMaterial, pendingParameters, registerBeforeNext, selectedMaterialId, selectionMatchesAssignment]);
 
   useEffect(() => {
     onPreviewPrintLayerOrientation?.(processUsesBuildDirection ? manufacturingParameters.layerOrientation ?? "z" : null);
