@@ -97,6 +97,7 @@ export { solveDynamicLinearTetLoadCases, solveDynamicLinearTetMDOF, solveDynamic
 export type { DynamicLoadCaseBatchSolveResult, DynamicLoadCaseInput, DynamicLoadCaseSolve } from "./dynamic-mdof";
 export { linearizeTet10ModelForModal, solveModalLinearTet, solveModalSubspace } from "./modal";
 export type { ModalMeshProjection } from "./modal";
+export { modalMassParticipation, solverMassUnits } from "./modal-participation";
 export {
   assembleNodalForcesWithDiagnostics,
   collectConstraints,

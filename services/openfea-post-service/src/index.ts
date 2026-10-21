@@ -219,6 +219,7 @@ function buildModalHtmlReport(runId: string, summary: ModalResultSummary): strin
   const provenanceLabel = resultTierLabel(provenanceTier);
   const modeRows = summary.modes.map((mode) => `
             <tr><td>${escapeHtml(String(mode.modeIndex))}</td><td>${format(mode.frequencyHz)} Hz</td><td>${format(mode.eigenvalue)}</td><td>${mode.scaledResidual.toExponential(3)}</td></tr>`).join("");
+  const participationSection = modalParticipationHtml(summary);
   return `<!doctype html>
 <html>
   <head>
@@ -239,10 +240,24 @@ function buildModalHtmlReport(runId: string, summary: ModalResultSummary): strin
   <body><main>
     <header><div>OpenFEA modal simulation</div><h1>Modal Analysis Report</h1><div>Run ${escapeHtml(runId)}</div></header>
     <section><h2>Convergence</h2><p>${escapeHtml(String(summary.convergedModeCount))} of ${escapeHtml(String(summary.requestedModeCount))} requested modes converged.</p>${summary.warning ? `<p class="warning">${escapeHtml(summary.warning)}</p>` : ""}</section>
-    <section><h2>Natural frequencies</h2><table><thead><tr><th>Mode</th><th>Frequency</th><th>Eigenvalue</th><th>Scaled residual</th></tr></thead><tbody>${modeRows}</tbody></table></section>
+    <section><h2>Natural frequencies</h2><table><thead><tr><th>Mode</th><th>Frequency</th><th>Eigenvalue</th><th>Scaled residual</th></tr></thead><tbody>${modeRows}</tbody></table></section>${participationSection}
     <section><h2>Result basis</h2><p>Result source: ${escapeHtml(provenanceLabel)}. Solver: ${escapeHtml(summary.provenance?.solver ?? "unknown")}.</p><p class="note">Mode shapes are normalized so the largest nodal vector magnitude is 1. Their sign is deterministic but arbitrary. Display amplitude and phase animation are visualization-only and are not physical displacements.</p></section>
   </main></body>
 </html>`;
+}
+
+function modalParticipationHtml(summary: ModalResultSummary): string {
+  const participation = summary.massParticipation;
+  if (!participation?.modes.length) return "";
+  // Solver mass is kg for m-N-s-Pa and tonnes for mm-N-s-MPa.
+  const kilograms = (value: number) => `${format(Number(value) * (participation.massUnits === "t" ? 1_000 : 1))} kg`;
+  const percent = (ratio: number) => `${(Number(ratio) * 100).toFixed(1)}%`;
+  const rows = participation.modes.map((mode) => `
+            <tr><td>${escapeHtml(String(mode.modeIndex))}</td>${mode.effectiveMassRatio.map((ratio) => `<td>${percent(ratio)}</td>`).join("")}</tr>`).join("");
+  const cumulative = participation.modes[participation.modes.length - 1]!.cumulativeEffectiveMassRatio;
+  return `
+    <section><h2>Effective mass participation</h2><table><thead><tr><th>Mode</th><th>X</th><th>Y</th><th>Z</th></tr></thead><tbody>${rows}
+            <tr><th>Cumulative</th>${cumulative.map((ratio) => `<th>${percent(ratio)}</th>`).join("")}</tr></tbody></table><p class="note">Percent of total model mass ${kilograms(participation.totalMass)}. Mass at supported DOFs does not participate.${participation.computedOnProjectedModel ? " Mass participation is computed on the projected linear Tet4 model used for the frequency solve." : ""}</p></section>`;
 }
 
 function buildModalPdfReport(runId: string, summary: ModalResultSummary): Buffer {

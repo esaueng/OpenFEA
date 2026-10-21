@@ -13,6 +13,18 @@ export function formatEngineeringValue(value: number, units: string): string {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${units}`.trim();
 }
 
+/**
+ * Solver mass unit: kg for m-N-s-Pa, and the tonne (N·s²/mm = 1000 kg) for
+ * mm-N-s-MPa, where density is stored in t/mm³.
+ */
+export type SolverMassUnits = "kg" | "t";
+
+const KILOGRAMS_PER_SOLVER_MASS_UNIT: Record<SolverMassUnits, number> = { kg: 1, t: 1_000 };
+
+export function solverMassToKilograms(value: number, units: SolverMassUnits): number {
+  return value * KILOGRAMS_PER_SOLVER_MASS_UNIT[units];
+}
+
 export function stlDimensionsFromBase64(contentBase64?: string): ModelDimensions | undefined {
   if (!contentBase64) return undefined;
   return stlDimensionsFromBytes(base64ToBytes(contentBase64));

@@ -126,6 +126,8 @@ export type {
   CoreResultField,
   CoreResultValidationIssue,
   CoreResultValidationReport,
+  CoreModalMassParticipation,
+  CoreModalMassParticipationMode,
   CoreModalModeSummary,
   CoreModalSolveResult,
   CoreModalSolveSummary,

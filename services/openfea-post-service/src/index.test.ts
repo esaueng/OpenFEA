@@ -134,6 +134,37 @@ describe("LocalReportProvider", () => {
     expect(buildPdfReport("run-a", summary(500)).toString("latin1")).toContain("OpenFEA STATIC STRESS SIMULATION");
   });
 
+  test("tabulates modal effective mass with a cumulative row when the summary carries it", () => {
+    const modalSummary = {
+      analysisType: "modal_analysis",
+      requestedModeCount: 2,
+      convergedModeCount: 2,
+      modes: [
+        { modeIndex: 1, frequencyHz: 59.66, eigenvalue: 140520, scaledResidual: 3e-7, fieldId: "mode-1" },
+        { modeIndex: 2, frequencyHz: 96.76, eigenvalue: 369610, scaledResidual: 4e-7, fieldId: "mode-2" }
+      ],
+      massParticipation: {
+        massUnits: "t",
+        massMatrix: "lumped",
+        totalMass: 0.0108,
+        unconstrainedMass: [0.01058, 0.01058, 0.01058],
+        computedOnProjectedModel: true,
+        modes: [
+          { modeIndex: 1, participationFactor: [0, 0, 0.0812], effectiveMass: [0, 0, 0.006588], effectiveMassRatio: [0, 0, 0.61], cumulativeEffectiveMassRatio: [0, 0, 0.61] },
+          { modeIndex: 2, participationFactor: [0, 0.0811, 0], effectiveMass: [0, 0.006577, 0], effectiveMassRatio: [0, 0.609, 0], cumulativeEffectiveMassRatio: [0, 0.609, 0.61] }
+        ]
+      },
+      diagnostics: []
+    } as ResultSummary;
+
+    const html = buildHtmlReport("run-modal", modalSummary);
+    expect(html).toContain("Effective mass participation");
+    expect(html).toContain("<th>Cumulative</th><th>0.0%</th><th>60.9%</th><th>61.0%</th>");
+    expect(html).toContain("total model mass 10.8 kg");
+    expect(html).toContain("projected linear Tet4 model");
+    expect(buildHtmlReport("run-modal", { ...modalSummary, massParticipation: undefined } as ResultSummary)).not.toContain("Effective mass participation");
+  });
+
   test("escapes modal report counters even when the summary carries markup", () => {
     // The solver emits real numbers, but the report HTML is a trust boundary:
     // a malformed summary must not become markup in a served text/html page.

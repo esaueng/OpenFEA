@@ -434,7 +434,7 @@ function principalStressSurfaceFields(
 
 export function modalCoreResultFromSolve(
   model: NormalizedOpenFEAModel,
-  result: Pick<ModalCpuResult, "modes">,
+  result: Pick<ModalCpuResult, "modes" | "massParticipation">,
   diagnostics: ModalCpuDiagnostics
 ): CoreModalSolveResult {
   const surfaceMesh = solverSurfaceMeshFromModel(model);
@@ -469,6 +469,7 @@ export function modalCoreResultFromSolve(
         scaledResidual: mode.scaledResidual,
         fieldId: `mode-${mode.modeIndex}-shape`
       })),
+      ...(result.massParticipation ? { massParticipation: result.massParticipation } : {}),
       ...(warning ? { warning } : {}),
       provenance
     },

@@ -1,4 +1,4 @@
-import type { CoreModalSolveResult as CoreModalFeaResult, CoreSolveResult, CoreStructuralSolveResult, LoadAssemblyDiagnostics, NormalizedOpenFEAModel, OpenFEAModelJson, ValidationReport } from "@openfea/core";
+import type { CoreModalMassParticipation, CoreModalSolveResult as CoreModalFeaResult, CoreSolveResult, CoreStructuralSolveResult, LoadAssemblyDiagnostics, NormalizedOpenFEAModel, OpenFEAModelJson, ValidationReport } from "@openfea/core";
 
 export type CpuSolverInput = OpenFEAModelJson | NormalizedOpenFEAModel;
 
@@ -94,6 +94,7 @@ export type ModalCpuDiagnostics = {
 
 export type ModalCpuResult = {
   modes: ModalMode[];
+  massParticipation?: CoreModalMassParticipation;
   coreResult?: CoreModalFeaResult;
 };
 
