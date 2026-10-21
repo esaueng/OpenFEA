@@ -16,7 +16,7 @@
 // Usage:
 //   VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build
 //   pnpm verify:solve-ladder [--rungs=30k,75k] [--cases=block-tet4-30k-static,...] [--engines=chromium,webkit]
-// Env: CHROME_BIN, PORT (5201), CDP_PORT (9338), LADDER_CASE_TIMEOUT_MS (2700000), LADDER_HEAP_POLL_MS (250; 0 = off),
+// Env: CHROME_BIN, PORT (5201), CDP_PORT (9338), LADDER_CASE_TIMEOUT_MS (7200000), LADDER_HEAP_POLL_MS (250; 0 = off),
 //      LADDER_OUT (results JSON path; default docs/validation/solve-ladder/<date>-<engine>.json),
 //      PLAYWRIGHT_WEBKIT_DIR (scratch dir holding playwright-webkit; never a repo dependency).
 // Exit codes: 0 every executed case passed its gates, 1 a case failed or a gate tripped.
@@ -29,7 +29,8 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT ?? 5201);
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9338);
-const CASE_TIMEOUT_MS = Number(process.env.LADDER_CASE_TIMEOUT_MS ?? 45 * 60_000);
+// Slender Tet10 30k modal (Jacobi inner CG) measured ~68 min in Node on a 2.1 GHz Xeon.
+const CASE_TIMEOUT_MS = Number(process.env.LADDER_CASE_TIMEOUT_MS ?? 120 * 60_000);
 /** Worker heap poll interval; 0 disables polling (timing-only runs). */
 const HEAP_POLL_MS = Number(process.env.LADDER_HEAP_POLL_MS ?? 250);
 /** Same-code parity: browser vs Node V8 reference on displacement, reaction, frequencies. */
