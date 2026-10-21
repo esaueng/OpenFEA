@@ -2,8 +2,8 @@
 
 ## Status
 
-Proposed on 2026-10-21 against `main` at `9d36aa2`. Nothing in this plan is
-implemented. It supersedes the ordering in plan 024 and reopens the deferred
+Proposed on 2026-10-21 against `main` at `9d36aa2`. Decisions D1–D5 were
+accepted the same day and R0 started. It supersedes the ordering in plan 024 and reopens the deferred
 decisions 032 and 033 with a recommendation. Plans 024 (Releases 6–8) and
 029–035 stay valid as specifications; this document decides what comes next
 and in what order.
@@ -61,7 +61,7 @@ Each numbered item is one PR unless it says otherwise.
 | 0.4 | Remove the Run panel **Fidelity** select, or make the solver read it. No solve path consumes it, yet the report prints it. | A setting with no effect, printed on a report, is a truthfulness defect. |
 | 0.5 | Route thermal through a bounded DOF helper like `boundedStructuralMaxDofs`. Callers can currently raise `DEFAULT_THERMAL_MAX_DOFS`. Remove the stale "dynamic solver does not enforce maxDofs" comment (`solve-pipeline/src/index.ts:616`). | Close the last uncapped public entry point. |
 | 0.6 | Finish plan 010 (drop the `as Study` cast) and plan 012 (off-axis load gate, analytical ~604 Hz first-bending gate). | Close the remaining open accuracy gates. |
-| 0.7 | Fix the status-bar Feedback URL, which still points at `opencae-feedback`, if the form has moved. | Rename leftover; maintainer to confirm the target. |
+| 0.7 | ~~Fix the status-bar Feedback URL.~~ Closed: the maintainer kept the current `opencae-feedback` form. | No change. |
 | 0.8 | Add `verify-wasm-mesh-browser` and `verify-offline-pwa` to the CI browser job, or record why they stay manual. Delete or wire the orphaned `trusted-ci.yml`. **CI change; review.** | Offline meshing is a headline feature with no CI gate. |
 | 0.9 (M) | Plan 024 Release 3B: delete `apps/openfea-api`, the API-only services, `libs/openfea-db`, `-jobs`, `-storage` and `runners/openfea-runner-local`. Split browser-safe samples out of `db` first. **Deletes ~4.5k lines; review.** | Removes a second code path before new schemas multiply it. |
 | 0.10 | Adopt `packages/viewer` during the R1 viewer extraction, or delete it. | It is built and tested in CI but nothing imports it. |
@@ -152,9 +152,12 @@ seams from 1.1–1.2.
   The portable project file and HTML viewer remain the sharing story.
 - **i18n.** No demand recorded.
 
-## Decisions needed
+## Decisions
 
-| # | Decision | Recommendation |
+The maintainer accepted D1–D5 as recommended on 2026-10-21 and kept the
+current Feedback URL, which closes R0.7 with no change.
+
+| # | Decision | Recommendation (accepted) |
 | - | - | - |
 | D1 | Reopen decision 033 for convection only (4.1)? | Yes. It is the most common thermal BC, small, and keeps K SPD. Transient thermal (4.4) stays behind it. |
 | D2 | Reopen decision 032 for buckling before harmonic? | Yes, buckling first. Thin brackets under compression are a real failure mode for the parts users import. Harmonic waits for mass participation (3.1). |

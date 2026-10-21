@@ -169,10 +169,10 @@ Dependency notes:
 | 029 Decision: prescribed displacement | DONE | Option A implemented end to end. |
 | 030 Decision: multi-face BCs + per-body materials | PARTIAL | Multi-face BCs done; per-body materials → 036 R1.3. |
 | 031 Decision: STL/OBJ scope | DONE (option B) | STL/OBJ declared preview-only. |
-| 032 Decision: harmonic + buckling | DEFERRED → reopened by 036 D2 | 036 recommends buckling (R4.2) before harmonic (R6.1). |
-| 033 Decision: thermal breadth | DEFERRED → reopened by 036 D1/D3 | 036 recommends convection (R4.1); one-way thermal stress needs a decision. |
+| 032 Decision: harmonic + buckling | REOPENED by 036 D2 (accepted 2026-10-21) | Buckling (R4.2) before harmonic (R6.1). |
+| 033 Decision: thermal breadth | REOPENED by 036 D1/D3 (accepted 2026-10-21) | Convection (R4.1) and one-way thermal stress (R4.3) in scope; transient thermal behind them. |
 | 034 Decision: export archive | DEFERRED (option B stands) | Selected-state export remains the scope. |
-| 036 Product Roadmap, 2026-Q4 revision | PROPOSED | Verified baseline at `9d36aa2`; release train R0 (hygiene) → R1 modeling → R2 mesh → R3 results → R4–R7 physics, scale and elements. Five decisions needed. |
+| 036 Product Roadmap, 2026-Q4 revision | IN PROGRESS (R0 started 2026-10-21) | Verified baseline at `9d36aa2`; release train R0 (hygiene) → R1 modeling → R2 mesh → R3 results → R4–R7 physics, scale and elements. Decisions D1–D5 accepted 2026-10-21. |
 
 Run 2 was non-interactive: plans 006–010 are the top findings by leverage (impact ÷ effort, confidence-weighted), selected by default per the advisor skill's non-interactive rule rather than by maintainer choice. Re-cut as desired.
 
