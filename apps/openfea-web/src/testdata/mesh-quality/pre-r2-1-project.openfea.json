@@ -1,0 +1,316 @@
+{
+  "format": "openfea-local-project",
+  "version": 2,
+  "savedAt": "2026-10-01T12:00:00.000Z",
+  "project": {
+    "id": "project-bracket-demo",
+    "name": "Cantilever Demo",
+    "schemaVersion": "0.1.0",
+    "unitSystem": "SI",
+    "geometryFiles": [
+      {
+        "id": "geom-cantilever-project-bracket-demo",
+        "projectId": "project-bracket-demo",
+        "filename": "cantilever-beam.step",
+        "localPath": "examples/bracket-demo/bracket-demo.step",
+        "artifactKey": "project-bracket-demo/geometry/cantilever-display.json",
+        "status": "ready",
+        "metadata": {
+          "displayModelRef": "project-bracket-demo/geometry/cantilever-display.json",
+          "bodyCount": 1,
+          "faceCount": 4,
+          "source": "sample",
+          "sampleModel": "cantilever",
+          "sampleAnalysisType": "static_stress",
+          "coreCloudGeometry": {
+            "kind": "structured_block",
+            "sampleId": "cantilever",
+            "units": "mm",
+            "descriptor": {
+              "length": 180,
+              "width": 24,
+              "height": 24,
+              "surfaces": {
+                "fixedSupport": {
+                  "selectionRef": "selection-fixed-face",
+                  "sourceFaceId": "face-base-left",
+                  "name": "fixed_support"
+                },
+                "loadSurface": {
+                  "selectionRef": "selection-load-face",
+                  "sourceFaceId": "face-load-top",
+                  "name": "load_surface"
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "studies": [
+      {
+        "id": "study-bracket-static",
+        "projectId": "project-bracket-demo",
+        "name": "Static Stress",
+        "type": "static_stress",
+        "geometryScope": [
+          {
+            "bodyId": "body-bracket",
+            "entityType": "body",
+            "entityId": "body-bracket",
+            "label": "Cantilever"
+          }
+        ],
+        "materialAssignments": [
+          {
+            "id": "assign-aluminum",
+            "materialId": "mat-aluminum-6061",
+            "selectionRef": "selection-body-bracket",
+            "status": "complete"
+          }
+        ],
+        "namedSelections": [
+          {
+            "id": "selection-body-bracket",
+            "name": "Cantilever body",
+            "entityType": "body",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "body",
+                "entityId": "body-bracket",
+                "label": "Cantilever"
+              }
+            ],
+            "fingerprint": "body-bracket-v1"
+          },
+          {
+            "id": "selection-fixed-face",
+            "name": "Fixed end face",
+            "entityType": "face",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "face",
+                "entityId": "face-base-left",
+                "label": "Fixed end face"
+              }
+            ],
+            "fingerprint": "face-base-left-cantilever-v1"
+          },
+          {
+            "id": "selection-load-face",
+            "name": "Free end load face",
+            "entityType": "face",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "face",
+                "entityId": "face-load-top",
+                "label": "Free end load face"
+              }
+            ],
+            "fingerprint": "face-load-top-cantilever-v1"
+          },
+          {
+            "id": "selection-web-face",
+            "name": "Top beam face",
+            "entityType": "face",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "face",
+                "entityId": "face-web-front",
+                "label": "Top beam face"
+              }
+            ],
+            "fingerprint": "face-web-front-cantilever-v1"
+          },
+          {
+            "id": "selection-base-face",
+            "name": "Beam bottom face",
+            "entityType": "face",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "face",
+                "entityId": "face-base-bottom",
+                "label": "Beam bottom face"
+              }
+            ],
+            "fingerprint": "face-base-bottom-cantilever-v1"
+          }
+        ],
+        "contacts": [],
+        "constraints": [
+          {
+            "id": "constraint-fixed-mount",
+            "type": "fixed",
+            "selectionRef": "selection-fixed-face",
+            "parameters": {},
+            "status": "complete"
+          }
+        ],
+        "loads": [
+          {
+            "id": "load-downward-force",
+            "type": "force",
+            "selectionRef": "selection-load-face",
+            "parameters": {
+              "value": 500,
+              "units": "N",
+              "direction": [
+                0,
+                -1,
+                0
+              ],
+              "applicationPoint": [
+                1.9,
+                0.18,
+                0
+              ]
+            },
+            "status": "complete"
+          }
+        ],
+        "meshSettings": {
+          "preset": "medium",
+          "status": "complete",
+          "meshRef": "project-bracket-demo/mesh/wasm-gmsh-mesh.json",
+          "summary": {
+            "nodes": 1234,
+            "elements": 5678,
+            "warnings": [],
+            "quality": "medium",
+            "source": "wasm_gmsh",
+            "units": "m",
+            "density": {
+              "requestedMeshSizeMm": 5,
+              "actualMeshSizeMm": 5,
+              "elementOrder": 2
+            },
+            "solverCoordinateSpace": "solver"
+          }
+        },
+        "solverSettings": {
+          "analysisType": "linear_static",
+          "smallDisplacement": true
+        },
+        "validation": [],
+        "runs": [],
+        "loadCases": [
+          {
+            "id": "case-default",
+            "name": "Default",
+            "enabled": true,
+            "loadIds": [
+              "load-downward-force"
+            ]
+          }
+        ],
+        "loadCombinations": []
+      }
+    ],
+    "createdAt": "2026-10-01T12:00:00.000Z",
+    "updatedAt": "2026-10-01T12:00:00.000Z"
+  },
+  "displayModel": {
+    "id": "display-cantilever",
+    "name": "cantilever demo body",
+    "bodyCount": 1,
+    "dimensions": {
+      "x": 180,
+      "y": 24,
+      "z": 24,
+      "units": "mm"
+    },
+    "faces": [
+      {
+        "id": "face-base-left",
+        "label": "Fixed end face",
+        "color": "#4da3ff",
+        "center": [
+          -1.9,
+          0.18,
+          0
+        ],
+        "normal": [
+          -1,
+          0,
+          0
+        ],
+        "stressValue": 132
+      },
+      {
+        "id": "face-load-top",
+        "label": "Free end load face",
+        "color": "#f59e0b",
+        "center": [
+          1.9,
+          0.18,
+          0
+        ],
+        "normal": [
+          1,
+          0,
+          0
+        ],
+        "stressValue": 96
+      },
+      {
+        "id": "face-web-front",
+        "label": "Top beam face",
+        "color": "#22c55e",
+        "center": [
+          0,
+          0.42,
+          0
+        ],
+        "normal": [
+          0,
+          1,
+          0
+        ],
+        "stressValue": 74
+      },
+      {
+        "id": "face-base-bottom",
+        "label": "Beam bottom face",
+        "color": "#8b949e",
+        "center": [
+          0,
+          -0.08,
+          0
+        ],
+        "normal": [
+          0,
+          -1,
+          0
+        ],
+        "stressValue": 46
+      }
+    ],
+    "coreCloudGeometry": {
+      "kind": "structured_block",
+      "sampleId": "cantilever",
+      "units": "mm",
+      "descriptor": {
+        "length": 180,
+        "width": 24,
+        "height": 24,
+        "surfaces": {
+          "fixedSupport": {
+            "selectionRef": "selection-fixed-face",
+            "sourceFaceId": "face-base-left",
+            "name": "fixed_support"
+          },
+          "loadSurface": {
+            "selectionRef": "selection-load-face",
+            "sourceFaceId": "face-load-top",
+            "name": "load_surface"
+          }
+        }
+      }
+    }
+  }
+}

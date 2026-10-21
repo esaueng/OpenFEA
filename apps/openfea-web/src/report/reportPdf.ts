@@ -110,6 +110,11 @@ class PdfReport {
       }
     }
 
+    if (this.data.meshQuality) {
+      this.subheading("Mesh quality");
+      this.keyValueRows(this.data.meshQuality);
+    }
+
     this.sectionHeading(5, "Solver");
     this.keyValueRows(this.data.solver);
   }

@@ -11,6 +11,7 @@ import {
 import { inferGlobalCriticalPrintAxis } from "@openfea/study-core";
 import { supportDisplayLabel } from "../supportLabels";
 import type { SolverMeshSummary } from "../resultFields";
+import { meshQualityElementLabel, meshQualityReportRows } from "../meshQualityDisplay";
 import { formatDeformationFactor, type ResolvedDeformation } from "../resultDeformation";
 import { fieldWithOwnValueRange, formatResultValue } from "../resultFields";
 import { unitsForLoadType } from "../loadPreview";
@@ -96,6 +97,8 @@ export interface ReportData {
   boundaryFigure: ReportBoundaryFigure;
   mesh: ReportRow[];
   meshConvergence: ReportTable | null;
+  /** Element-quality block (plan 036 R2.1); null when the mesh carries no quality summary. */
+  meshQuality: ReportRow[] | null;
   solver: ReportRow[];
   figures: {
     stress: ReportFigure;
@@ -210,6 +213,7 @@ export function buildReportData(input: BuildReportDataInput): ReportData {
       { label: "Warnings", value: input.study.meshSettings.summary?.warnings.length ? input.study.meshSettings.summary.warnings.map(userFacingMeshWarning).join("; ") : "None" }
     ],
     meshConvergence: meshConvergenceTable(input.convergenceRecords),
+    meshQuality: meshQualityRowsForReport(input.study),
     solver: solverRows(input, summary),
     figures: {
       stress: figureData("Von Mises stress", stressField, input.captures.stress, fields, input),
@@ -286,6 +290,7 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
       { label: "Source", value: input.solverMeshSummary ? "Core solver" : formatMeshSourceLabel(provenance?.meshSource, input.displayModel ?? undefined) }
     ],
     meshConvergence: meshConvergenceTable(input.convergenceRecords),
+    meshQuality: meshQualityRowsForReport(input.study),
     solver: solverRows(input, summary),
     figures: {
       stress: { title: "Natural frequencies", unavailableLabel: "See modal results table", legendMin: MISSING, legendMax: MISSING, caption: "Natural frequencies are listed in the results table." },
@@ -361,6 +366,7 @@ function buildThermalReportData(input: BuildReportDataInput, summary: ThermalRes
       { label: "Source", value: input.solverMeshSummary ? "Core solver" : formatMeshSourceLabel(provenance?.meshSource, input.displayModel ?? undefined) }
     ],
     meshConvergence: meshConvergenceTable(input.convergenceRecords),
+    meshQuality: meshQualityRowsForReport(input.study),
     solver: solverRows(input, summary),
     figures: {
       stress: figureData("Temperature", temperatureField, input.captures.stress, fields, input),
@@ -916,4 +922,10 @@ function formatDuration(elapsedMs: number): string {
 
 function humanize(value: string): string {
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function meshQualityRowsForReport(study: Study): ReportRow[] | null {
+  const quality = study.meshSettings.summary?.qualityMetrics;
+  if (!quality) return null;
+  return [{ label: "Elements checked", value: meshQualityElementLabel(quality) }, ...meshQualityReportRows(quality)];
 }
