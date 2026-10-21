@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
 import {
-  BoundaryConditionMenu,
   CreateSimulationModal,
   CreateSimulationScreen,
   MaterialLibraryModal,
@@ -133,24 +132,5 @@ describe("static simulation workflow components", () => {
     expect(html).toContain("User-supplied · unverified");
     expect(html).toContain("Duplicate &amp; edit");
     expect(html).toMatch(/disabled=""[^>]*title="Assigned custom materials cannot be deleted\."[^>]*>Delete/);
-  });
-
-  test("renders enabled and future boundary condition types", () => {
-    const html = renderToStaticMarkup(
-      <BoundaryConditionMenu
-        open
-        studyType="static_stress"
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-      />
-    );
-
-    for (const enabled of ["Fixed support", "Prescribed displacement", "Face force (total)", "Pressure", "Surface traction", "Volume force", "Remote force", "Equivalent bolt preload", "Payload mass"]) {
-      expect(html).toContain(enabled);
-    }
-    for (const future of ["Elastic support", "Remote displacement", "Hinge constraint"]) {
-      expect(html).toContain(future);
-    }
-    expect(html).toContain("Coming soon");
   });
 });

@@ -2,7 +2,9 @@ import { describe, expect, test } from "vitest";
 import { singleTetStaticFixture } from "@openfea/examples";
 import {
   boundedStructuralMaxDofs,
+  boundedThermalMaxDofs,
   DEFAULT_STRUCTURAL_MAX_DOFS,
+  DEFAULT_THERMAL_MAX_DOFS,
   structuralDofCount,
   structuralDofLimitError
 } from "../src";
@@ -13,6 +15,13 @@ describe("structural DOF limits", () => {
     expect(boundedStructuralMaxDofs(undefined)).toBe(150_000);
     expect(boundedStructuralMaxDofs(250_000)).toBe(150_000);
     expect(boundedStructuralMaxDofs(12_345.9)).toBe(12_345);
+  });
+
+  test("clamps thermal temperature-DOF requests to the solver-owned ceiling", () => {
+    expect(DEFAULT_THERMAL_MAX_DOFS).toBe(150_000);
+    expect(boundedThermalMaxDofs(undefined)).toBe(150_000);
+    expect(boundedThermalMaxDofs(250_000)).toBe(150_000);
+    expect(boundedThermalMaxDofs(12_345.9)).toBe(12_345);
   });
 
   test("counts three translation DOFs per structural node", () => {
