@@ -166,6 +166,7 @@ function solveDynamicPreparedSystem(
 
   const frames: DynamicTet4CpuFrame[] = [];
   const convergence: DynamicTet4CpuDiagnostics["convergence"] = [];
+  const reactionBalance: DynamicTet4CpuDiagnostics["reactionBalance"] = [];
   const u = new Float64Array(free.length);
   const v = new Float64Array(free.length);
   let a = initialAcceleration(system, settings, rayleighAlpha, rayleighBeta);
@@ -173,9 +174,10 @@ function solveDynamicPreparedSystem(
   let frameIndex = 0;
   let nextOutputTime = settings.startTime + settings.outputInterval;
   const pushFrame = (loadScale: number): CpuSolverError | undefined => {
-    const created = createFrame(model, system, free, u, v, a, frameIndex, round(time, 9), loadScale);
+    const created = createFrame(model, system, free, u, v, a, frameIndex, round(time, 9), loadScale, rayleighAlpha, rayleighBeta);
     if (!created.ok) return created.error;
     frames.push(created.frame);
+    reactionBalance.push({ frameIndex, timeSeconds: round(time, 9), loadScale, relativeImbalance: created.relativeImbalance });
     if (convergence.length < frameIndex + 1) {
       convergence.push({ frameIndex, timeSeconds: round(time, 9), iterations: 0, residualNorm: 0, relativeResidual: 0 });
     }
@@ -264,12 +266,7 @@ function solveDynamicPreparedSystem(
     minSafetyFactor,
     convergence,
     totalMass: system.totalMass,
-    reactionBalance: convergence.map((entry) => ({
-      frameIndex: entry.frameIndex,
-      timeSeconds: entry.timeSeconds,
-      loadScale: loadScaleAt(entry.timeSeconds, settings),
-      relativeImbalance: entry.relativeResidual
-    })),
+    reactionBalance,
     solver: "opencae-core-mdof-newmark"
   };
 
@@ -555,8 +552,10 @@ function createFrame(
   reducedA: Float64Array,
   frameIndex: number,
   timeSeconds: number,
-  loadScale: number
-): { ok: true; frame: DynamicTet4CpuFrame } | { ok: false; error: CpuSolverError } {
+  loadScale: number,
+  rayleighAlpha: number,
+  rayleighBeta: number
+): { ok: true; frame: DynamicTet4CpuFrame; relativeImbalance: number } | { ok: false; error: CpuSolverError } {
   const displacement = expandFreeVector(model.counts.nodes * 3, free, reducedU, system.constraints);
   const velocity = expandFreeVector(model.counts.nodes * 3, free, reducedV);
   const acceleration = expandFreeVector(model.counts.nodes * 3, free, reducedA);
@@ -574,9 +573,10 @@ function createFrame(
     };
   }
   const safetyFactor = computeSafetyFactor(model, recovery.vonMisesPeak);
-  const reactionForce = computeReactionForce(system, displacement, loadScale);
+  const equilibrium = recoverDynamicEquilibrium(system, displacement, velocity, acceleration, loadScale, rayleighAlpha, rayleighBeta);
   return {
     ok: true,
+    relativeImbalance: equilibrium.relativeImbalance,
     frame: {
       frameIndex,
       timeSeconds,
@@ -591,7 +591,7 @@ function createFrame(
       nodalStress: field(recovery.nodalStress, frameIndex, timeSeconds),
       vonMisesPeak: field(recovery.vonMisesPeak, frameIndex, timeSeconds),
       safety_factor: field(safetyFactor, frameIndex, timeSeconds),
-      reactionForce
+      reactionForce: equilibrium.reactionForce
     }
   };
 }
@@ -610,13 +610,40 @@ function computeSafetyFactor(model: NormalizedOpenFEAModel, vonMises: Float64Arr
   return values;
 }
 
-function computeReactionForce(system: ReducedSystem, displacement: Float64Array, loadScale: number): Float64Array {
+/** Recover M*a + C*v + K*u - F, keeping support forces separate from free-DOF residuals. */
+function recoverDynamicEquilibrium(
+  system: ReducedSystem,
+  displacement: Float64Array,
+  velocity: Float64Array,
+  acceleration: Float64Array,
+  loadScale: number,
+  rayleighAlpha: number,
+  rayleighBeta: number
+): { reactionForce: Float64Array; relativeImbalance: number } {
   const internalForce = csrMatVec(system.fullStiffness, displacement);
+  const stiffnessDamping = rayleighBeta === 0 ? undefined : csrMatVec(system.fullStiffness, velocity);
   const reactionForce = new Float64Array(internalForce.length);
+  let freeIndex = 0;
+  let residualSquared = 0;
+  let referenceSquared = 0;
   for (let i = 0; i < reactionForce.length; i += 1) {
-    reactionForce[i] = internalForce[i] - loadScale * system.fullLoad[i];
+    const constrained = system.constraints.has(i);
+    // The reduced integrator may apply a positive mass floor. Use the same
+    // effective mass when checking free-DOF equilibrium.
+    const mass = constrained ? system.fullMass[i] : system.mass[freeIndex++];
+    const inertia = mass * acceleration[i];
+    const damping = rayleighAlpha * mass * velocity[i] + rayleighBeta * (stiffnessDamping?.[i] ?? 0);
+    const applied = loadScale * system.fullLoad[i];
+    const residual = internalForce[i] + inertia + damping - applied;
+    if (constrained) {
+      reactionForce[i] = residual;
+    } else {
+      residualSquared += residual * residual;
+      const reference = Math.max(Math.abs(internalForce[i]), Math.abs(inertia), Math.abs(damping), Math.abs(applied));
+      referenceSquared += reference * reference;
+    }
   }
-  return reactionForce;
+  return { reactionForce, relativeImbalance: referenceSquared > 0 ? Math.sqrt(residualSquared / referenceSquared) : 0 };
 }
 
 function field(values: Float64Array, frameIndex: number, timeSeconds: number): DynamicResultField {

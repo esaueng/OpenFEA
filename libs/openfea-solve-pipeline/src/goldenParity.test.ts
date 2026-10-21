@@ -1,9 +1,19 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
-import { volumeMeshToModelJson, type OpenFEAModelJson, type VolumeMeshToModelInput } from "@openfea/core";
-import { SPARSE_ALGEBRA_POLICY } from "@openfea/solver-cpu";
-import { CLOUD_SOLVER_LIMITS, solveStudyModelWithCorePipeline } from "./index";
+import {
+  assembleNodalLoadVectorWithDiagnostics,
+  normalizeModelJson,
+  tet4Volume,
+  tet10Volume,
+  TET10_HRZ_EDGE_MASS_FRACTION,
+  TET10_HRZ_VERTEX_MASS_FRACTION,
+  volumeMeshToModelJson,
+  type OpenFEAModelJson,
+  type VolumeMeshToModelInput
+} from "@openfea/core";
+import { solveDynamicLinearTetMDOF, SPARSE_ALGEBRA_POLICY } from "@openfea/solver-cpu";
+import { boundedSolverSettings, CLOUD_SOLVER_LIMITS, solveStudyModelWithCorePipeline } from "./index";
 
 /**
  * Numeric parity gate against historical OpenCAE Core Cloud fixtures.
@@ -152,6 +162,64 @@ function modelForFixture(fixture: GoldenFixture): { model: OpenFEAModelJson; sou
     return { model: structuredClone(generated), source: "geometry" };
   }
   throw new Error(`${fixture.meta.case}: request carries no solvable model.`);
+}
+
+/**
+ * Runner 0.1.6 summed K*u-F over all nodes as a dynamic "reaction", including
+ * free inertial forces. Keep those historical fixtures intact, but replace
+ * only their reaction expectations using independent global force balance:
+ * R = sum(M*a + alpha*M*v - F). Internal stiffness and beta*K*v cancel when
+ * summed over the whole mesh. No recovered reaction array enters this oracle.
+ * All recorded displacement/stress/velocity/acceleration values remain gated
+ * by the unchanged historical comparison and tolerance below.
+ */
+function responseWithPhysicalDynamicReactions(fixture: GoldenFixture, model: OpenFEAModelJson): GoldenFixture["response"] {
+  if (fixture.request.analysisType !== "dynamic_structural") return fixture.response;
+  const settings = boundedSolverSettings("dynamic_structural", fixture.request.solverSettings, model, CLOUD_SOLVER_LIMITS);
+  const solved = solveDynamicLinearTetMDOF(model, settings);
+  expect(solved.ok).toBe(true);
+  if (!solved.ok) throw new Error(solved.error.message);
+  const normalized = normalizeModelJson(model);
+  expect(normalized.ok).toBe(true);
+  if (!normalized.ok) throw new Error("Golden model normalization failed.");
+  const nodalMass = new Float64Array(normalized.model.counts.nodes);
+  for (const block of normalized.model.elementBlocks) {
+    const nodeCount = block.type === "Tet10" ? 10 : 4;
+    const density = normalized.model.materials[block.materialIndex]!.density!;
+    for (let offset = 0; offset < block.connectivity.length; offset += nodeCount) {
+      const nodes = block.connectivity.subarray(offset, offset + nodeCount);
+      const volume = block.type === "Tet10"
+        ? tet10Volume(normalized.model.nodes.coordinates, nodes)
+        : tet4Volume(normalized.model.nodes.coordinates, nodes);
+      for (let local = 0; local < nodeCount; local += 1) {
+        const fraction = nodeCount === 4 ? 0.25 : local < 4 ? TET10_HRZ_VERTEX_MASS_FRACTION : TET10_HRZ_EDGE_MASS_FRACTION;
+        nodalMass[nodes[local]!]! += density * volume * fraction;
+      }
+    }
+  }
+  const frame = solved.result.frames.at(-1)!;
+  const step = normalized.model.steps[settings.stepIndex ?? 0]!;
+  const applied = assembleNodalLoadVectorWithDiagnostics(normalized.model, "loads" in step ? step.loads : []).diagnostics.totalAppliedForce;
+  const reaction: [number, number, number] = applied.map((value) => -frame.loadScale * value) as [number, number, number];
+  for (let node = 0; node < nodalMass.length; node += 1) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      const dof = node * 3 + axis;
+      reaction[axis] += nodalMass[node]! * (frame.acceleration.values[dof]! + solved.diagnostics.rayleighAlpha * frame.velocity.values[dof]!);
+    }
+  }
+  const magnitude = Math.hypot(...reaction);
+  const expected = structuredClone(fixture.response);
+  expected.summary.reactionForce = magnitude;
+  for (const entry of expected.diagnostics) {
+    if (!entry || typeof entry !== "object") continue;
+    const diagnostic = entry as Record<string, unknown>;
+    if (diagnostic.id === "stress-visualization") diagnostic.reactionVector = [...reaction];
+    if (diagnostic.id === "core-solve-diagnostics") {
+      diagnostic.reactionVectorN = [...reaction];
+      diagnostic.reactionMagnitudeN = magnitude;
+    }
+  }
+  return expected;
 }
 
 /**
@@ -443,7 +511,7 @@ describe("golden parity: local browser pipeline vs historical fixtures", () => {
       // new tensor-derived fields independently below.
       fields: wireResult.fields.filter((field) => !isPrincipalMeasureField(field)).map(legacyResultField)
     };
-    compareStructures(legacyWireResult, fixture.response, "response", stats, mismatches);
+    compareStructures(legacyWireResult, responseWithPhysicalDynamicReactions(fixture, model), "response", stats, mismatches);
     const tensorFields = outcome.result.fields.filter((field) => field.type === "stress" && field.location === "node" && field.component === "von_mises");
     expect(tensorFields.every((field) => field.tensorValues?.length === field.values.length * 6)).toBe(true);
     expect(tensorFields.every((field) => field.tensorValues?.every(Number.isFinite))).toBe(true);

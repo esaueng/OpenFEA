@@ -26,9 +26,11 @@ class MessagingWorker {
   readonly terminate = vi.fn();
   readonly postMessage = vi.fn();
   private messageListener?: (event: MessageEvent) => void;
+  private errorListener?: (event: ErrorEvent) => void;
 
   readonly addEventListener = vi.fn((type: string, listener: EventListener) => {
     if (type === "message") this.messageListener = listener as (event: MessageEvent) => void;
+    if (type === "error") this.errorListener = listener as (event: ErrorEvent) => void;
   });
 
   constructor() {
@@ -38,9 +40,14 @@ class MessagingWorker {
   emitMessage(data: unknown) {
     this.messageListener?.({ data } as MessageEvent);
   }
+
+  emitError(message: string) {
+    this.errorListener?.({ message } as ErrorEvent);
+  }
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.resetModules();
   ThrowingWorker.instances = [];
@@ -120,5 +127,79 @@ describe("worker clients", () => {
       result: { summary, fields: [] }
     });
     await expect(handle.completion).resolves.toMatchObject({ solverBackend: "opencae-core-sparse-tet-dynamic" });
+  });
+
+  test("a cancelled solve's fallback cannot terminate a replacement solve", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("Worker", MessagingWorker);
+    const { CANCEL_TERMINATE_TIMEOUT_MS, isCancelledSolveError, startLocalSolve } = await import("./solveWorkerClient");
+    const first = startLocalSolve({} as SolveWorkerSolvePayload);
+    const firstError = first.completion.catch((error: unknown) => error);
+    first.cancel();
+    const replacement = startLocalSolve({} as SolveWorkerSolvePayload);
+    const oldWorker = MessagingWorker.instances[0]!;
+    const replacementWorker = MessagingWorker.instances[1];
+    expect(replacementWorker).toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(CANCEL_TERMINATE_TIMEOUT_MS);
+    expect(isCancelledSolveError(await firstError)).toBe(true);
+    expect(oldWorker.terminate).toHaveBeenCalledOnce();
+    expect(replacementWorker!.terminate).not.toHaveBeenCalled();
+    const request = replacementWorker!.postMessage.mock.calls[0]![0] as { id: string };
+    replacementWorker!.emitMessage({ kind: "result", id: request.id, ok: true, result: {}, solverBackend: "cpu" });
+    await expect(replacement.completion).resolves.toMatchObject({ solverBackend: "cpu" });
+  });
+
+  test("late errors and messages from a retiring worker do not settle replacement work", async () => {
+    vi.stubGlobal("Worker", MessagingWorker);
+    const { startLocalSolve } = await import("./solveWorkerClient");
+    const first = startLocalSolve({} as SolveWorkerSolvePayload);
+    const firstError = first.completion.catch((error: unknown) => error);
+    first.cancel();
+    const onProgress = vi.fn();
+    const replacement = startLocalSolve({} as SolveWorkerSolvePayload, onProgress);
+    const oldWorker = MessagingWorker.instances[0]!;
+    const replacementWorker = MessagingWorker.instances[1];
+    expect(replacementWorker).toBeDefined();
+    const request = replacementWorker!.postMessage.mock.calls[0]![0] as { id: string };
+
+    oldWorker.emitMessage({ kind: "progress", id: request.id, event: { progress: 0.5 } });
+    oldWorker.emitMessage({ kind: "result", id: request.id, ok: true, result: {}, solverBackend: "stale" });
+    expect(onProgress).not.toHaveBeenCalled();
+    oldWorker.emitError("Old worker failed");
+    expect(await firstError).toBeInstanceOf(Error);
+    expect(replacementWorker!.terminate).not.toHaveBeenCalled();
+    replacementWorker!.emitMessage({ kind: "result", id: request.id, ok: true, result: {}, solverBackend: "cpu" });
+    await expect(replacement.completion).resolves.toMatchObject({ solverBackend: "cpu" });
+  });
+
+  test("hard termination settles every request belonging to the retiring worker", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("Worker", MessagingWorker);
+    const { CANCEL_TERMINATE_TIMEOUT_MS, startLocalSolve } = await import("./solveWorkerClient");
+    const first = startLocalSolve({} as SolveWorkerSolvePayload);
+    const shared = startLocalSolve({} as SolveWorkerSolvePayload);
+    const errors = Promise.all([first.completion.catch((error: unknown) => error), shared.completion.catch((error: unknown) => error)]);
+    expect(MessagingWorker.instances).toHaveLength(1);
+    first.cancel();
+    await vi.advanceTimersByTimeAsync(CANCEL_TERMINATE_TIMEOUT_MS);
+    for (const error of await errors) expect(error).toBeInstanceOf(Error);
+    expect(MessagingWorker.instances[0]!.terminate).toHaveBeenCalledOnce();
+  });
+
+  test("cooperative cancellation releases a retired worker and clears its fallback", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("Worker", MessagingWorker);
+    const { CANCEL_TERMINATE_TIMEOUT_MS, isCancelledSolveError, startLocalSolve } = await import("./solveWorkerClient");
+    const first = startLocalSolve({} as SolveWorkerSolvePayload);
+    const firstError = first.completion.catch((error: unknown) => error);
+    const oldWorker = MessagingWorker.instances[0]!;
+    const request = oldWorker.postMessage.mock.calls[0]![0] as { id: string };
+    first.cancel();
+    oldWorker.emitMessage({ kind: "result", id: request.id, ok: false, error: { message: "Cancelled", code: "cancelled" } });
+    expect(isCancelledSolveError(await firstError)).toBe(true);
+    expect(oldWorker.terminate).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(CANCEL_TERMINATE_TIMEOUT_MS);
+    expect(oldWorker.terminate).toHaveBeenCalledOnce();
   });
 });
