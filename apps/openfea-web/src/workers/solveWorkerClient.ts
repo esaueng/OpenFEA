@@ -134,7 +134,7 @@ function startInlineSolve(
   const completion = new Promise<LocalSolveCompletion>((resolve, reject) => {
     // Deferred one tick so callers can subscribe/cancel before the synchronous
     // solve blocks this thread.
-    setTimeout(async () => {
+    const solve = async () => {
       if (cancelled) {
         reject(new LocalSolveError("OpenFEA Core solve cancelled.", "cancelled"));
         return;
@@ -159,7 +159,9 @@ function startInlineSolve(
       } catch (error) {
         reject(error instanceof Error ? error : new LocalSolveError(String(error)));
       }
-    }, 0);
+    };
+    // solve() settles the completion promise itself and never rejects.
+    setTimeout(() => void solve(), 0);
   });
   return {
     completion,
