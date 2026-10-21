@@ -7,14 +7,7 @@ export default tseslint.config(
       "**/dist/**",
       "**/node_modules/**",
       "**/fixtures/**",
-      "apps/openfea-web/worker/worker-configuration.d.ts",
-      // Reference backend, being retired separately; not linted.
-      "apps/openfea-api/**",
-      "services/**",
-      "runners/**",
-      "libs/openfea-db/**",
-      "libs/openfea-jobs/**",
-      "libs/openfea-storage/**"
+      "apps/openfea-web/worker/worker-configuration.d.ts"
     ]
   },
   {
