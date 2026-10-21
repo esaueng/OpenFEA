@@ -115,6 +115,9 @@ importers:
       '@openfea/solve-pipeline':
         specifier: workspace:*
         version: link:../../libs/openfea-solve-pipeline
+      '@openfea/solver-cpu':
+        specifier: workspace:*
+        version: link:../../packages/solver-cpu
       '@openfea/step':
         specifier: workspace:*
         version: link:../../libs/openfea-step
