@@ -7,8 +7,6 @@ import { KG_PER_M3_PER_LB_PER_IN3, displayUnitText, formatDensity, formatMateria
 import dynamicAnalysisImage from "../assets/simulation-showcase/dynamic-analysis.webp";
 import staticAnalysisImage from "../assets/simulation-showcase/static-analysis.webp";
 
-type BoundaryConditionType = "fixed" | "prescribed_displacement" | "prescribed_temperature" | "force" | "pressure" | "gravity" | "surface_traction" | "volume_force" | "remote_force" | "bolt_preload" | "heat_flux" | "heat_generation";
-
 interface CreateSimulationModalProps {
   open: boolean;
   onCreateStatic: () => void;
@@ -497,56 +495,6 @@ function PreviewRow({ label, value }: { label: string; value: string }) {
     <div className="material-preview-row">
       <span>{label}</span>
       <strong>{displayUnitText(value)}</strong>
-    </div>
-  );
-}
-
-export function BoundaryConditionMenu({ open, studyType, onSelect, onClose }: { open: boolean; studyType?: "static_stress" | "dynamic_structural" | "modal_analysis" | "steady_state_thermal"; onSelect: (type: BoundaryConditionType) => void; onClose: () => void }) {
-  const firstButtonRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    if (open) firstButtonRef.current?.focus();
-  }, [open]);
-  if (!open) return null;
-  const enabled: Array<{ type: BoundaryConditionType; label: string }> = studyType === "steady_state_thermal" ? [
-    { type: "prescribed_temperature", label: "Prescribed temperature" },
-    { type: "heat_flux", label: "Surface heat flux" },
-    { type: "heat_generation", label: "Volumetric heat generation" }
-  ] : [
-    { type: "fixed", label: "Fixed support" },
-    { type: "prescribed_displacement", label: "Prescribed displacement" },
-    { type: "force", label: "Face force (total)" },
-    { type: "pressure", label: "Pressure" },
-    { type: "surface_traction", label: "Surface traction" },
-    { type: "volume_force", label: "Volume force" },
-    { type: "remote_force", label: "Remote force" },
-    ...(studyType === "static_stress" ? [{ type: "bolt_preload" as const, label: "Equivalent bolt preload" }] : []),
-    { type: "gravity", label: "Payload mass" }
-  ];
-  const future = ["Elastic support", "Remote displacement", "Hinge constraint"];
-  return (
-    <div
-      className="condition-menu"
-      role="group"
-      aria-label="Add boundary condition"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
-      }}
-    >
-      <div className="condition-menu-header">
-        <strong>Add boundary condition</strong>
-        <button className="icon-button" type="button" onClick={onClose} aria-label="Close boundary condition menu"><X size={16} /></button>
-      </div>
-      {enabled.map((item, index) => (
-        <button key={item.type} ref={index === 0 ? firstButtonRef : undefined} type="button" onClick={() => onSelect(item.type)}>
-          {item.label}
-        </button>
-      ))}
-      {future.map((label) => (
-        <button key={label} className="disabled" type="button" disabled>
-          {label}
-          <small>Coming soon</small>
-        </button>
-      ))}
     </div>
   );
 }
