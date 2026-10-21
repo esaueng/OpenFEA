@@ -74,7 +74,12 @@ pnpm verify:step-selection-browser
 pnpm verify:project-results-browser
 pnpm build:cloudflare
 pnpm --filter @openfea/web check:bundle
+VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build
+pnpm verify:wasm-mesh-browser
+pnpm verify:offline-pwa
 ```
+
+The last three run in CI's separate `browser-proof` job. The proof build includes the URL mesh harness, so rebuild normally (`pnpm build:cloudflare`) before any deploy or bundle check.
 
 `verify:step-selection-browser` requires Chrome or Chromium and free local ports 5198 and 9336; set `CHROME_BIN` when auto-detection cannot find the browser. The bundle check reads `apps/openfea-web/dist`, so it must follow `build:cloudflare`.
 
