@@ -1,44 +1,33 @@
 # Roadmap
 
-## Phase 0 - Repository Foundation
-Create the monorepo, documentation, TypeScript configuration, Vite web app, scoped packages, WebGPU capability detection, worker skeleton, fixture placeholder, and tests.
+Current priorities live in [plan 036](../../plans/036-product-roadmap-2026-q4.md).
+This page records the OpenFEA Core phases and where each one stands as of
+2026-10-21 (`main` at `9d36aa2`).
 
-## Phase 1 - Core FEA Model
-Define the minimal model structures needed for Tet4 linear static elasticity.
+The original plan made WebGPU the production solver. What shipped is a CPU
+sparse solver (CSR, SSOR/Jacobi-preconditioned CG) running in a browser worker,
+with WebGPU kept as a development benchmark path.
 
-Phase 1 adds solver-neutral OpenFEA native JSON model types, validation, normalization into typed arrays, and fixtures. It does not add solver math or visualization.
+## Completed phases
 
-## Phase 2 - CPU Reference Tet4 Solver
-Build a CPU reference path for validation and baseline correctness.
+| Phase | Scope | Outcome |
+| - | - | - |
+| 0 | Repository foundation | Done. Now part of the OpenFEA monorepo under `packages/*`. |
+| 1 | Core FEA model | Done. Solver-neutral JSON model, validation, typed-array normalization, `m-N-s-Pa` and `mm-N-s-MPa` unit systems. |
+| 2 | CPU reference Tet4 solver | Done, then superseded. The dense reference grew into the production CSR solver for Tet4 and Tet10. |
+| 3–5 | WebGPU infrastructure, matrix-free Tet4 operator, CG | Partial. The matrix-free Tet4 operator runs on the GPU, but CG reductions and convergence checks run on the CPU each iteration. Automatic routing is disabled (`WEBGPU_TET4_AUTOMATIC_ENABLED = false`). |
+| 6 | Post-processing and visualization | Done. Stress measures, displacement, safety factor, smoothing that is display-only. |
+| 7 | Product MVP workflow | Done. The OpenFEA web app. |
+| 8 | Performance pass | Partial. A ~100k-DOF browser checkpoint exists; the 150k guarded ceiling has not been benchmarked (plan 036 R5.1). |
+| 9 | Solver expansion | Done on `main`. CSR/SSOR solving to a guarded 150k DOF, transient Newmark dynamics, modal subspace iteration, steady-state Tet4/Tet10 conduction, tie/fuse connections and initially closed linear frictionless contact. |
+| 10 | Trust and sharing | Done. In-app validation gallery with live worker reruns, offline HTML result viewer, PDF reports, selected-state CSV/VTU. |
 
-Phase 2 adds `@openfea/solver-cpu` as a dense direct Tet4 linear static reference solver for small fixtures. It is not the production WebGPU solver.
+## Open phase
 
-## Phase 3 - WebGPU Infrastructure
-Add WebGPU device setup, buffers, compute pipeline utilities, and diagnostics.
+### Phase 11 — Nonlinear contact and GPU residency
 
-## Phase 4 - Matrix-Free Tet4 WebGPU Operator
-Implement the Tet4 matrix-free operator for small-strain linear elasticity.
-
-## Phase 5 - WebGPU CG Solver
-Implement the conjugate gradient solve path on WebGPU.
-
-## Phase 6 - Post-Processing and Visualization
-Compute result fields and add browser visualization for displacement and von Mises stress.
-
-## Phase 7 - Product MVP Workflow
-Connect loading, setup, solve, viewing, and export into a usable browser workflow.
-
-## Phase 8 - Performance Pass
-Benchmark, profile, and optimize the MVP workflow.
-
-## Phase 9 - Beta Solver Expansion
-
-Implemented on `beta`: CSR/SSOR CPU solving to a guarded 150k DOF, steady-state Tet4/Tet10 conduction, assembly-aware pairwise fuse/tie/linearized frictionless contact, and an experimental matrix-free Tet4 WebGPU operator. Automatic WebGPU routing remains gated until the CG loop is GPU-resident and benchmarked end to end.
-
-## Phase 10 - Trust And Sharing
-
-Implemented on `beta`: an in-app validation gallery with live worker reruns and a single-file offline HTML result viewer.
-
-## Phase 11 - Nonlinear Contact And GPU Residency
-
-Replace the beta bilateral contact penalty with unilateral active-set separation/re-closure and keep CG vectors, reductions, and convergence checks resident on WebGPU. Add benchmark-derived release ceilings per browser/device rather than treating the guarded limits as guaranteed capacity.
+Not started. Contact is still a bilateral penalty that cannot separate, and the
+CG loop is not GPU-resident. Plan 036 schedules these as R6.2 (active-set
+contact) and R5.3 (GPU-resident CG, after the benchmark ladder in R5.1).
+Release ceilings are to come from per-browser and per-device benchmarks, not
+from the guarded limits.

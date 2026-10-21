@@ -22,20 +22,30 @@
 //   node scripts/verify-offline-pwa.mjs
 // Env: PORT (5199), CDP_PORT (9334), CHROME_BIN, PROOF_TIMEOUT_MS (240000).
 // Exit codes: 0 proof ok, 1 gate failed, 2 timeout.
-import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT ?? 5199);
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9334);
-const CHROME_BIN = process.env.CHROME_BIN ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const TIMEOUT_MS = Number(process.env.PROOF_TIMEOUT_MS ?? 240_000);
 const APPLIED_NEWTONS = 500;
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const distDir = join(repoRoot, "apps/openfea-web/dist");
+
+function chromeBinary() {
+  if (process.env.CHROME_BIN) return process.env.CHROME_BIN;
+  const macChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+  if (existsSync(macChrome)) return macChrome;
+  for (const candidate of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
+    const resolved = spawnSync("which", [candidate], { encoding: "utf8" });
+    if (resolved.status === 0 && resolved.stdout.trim()) return resolved.stdout.trim();
+  }
+  throw new Error("Chrome was not found. Set CHROME_BIN to a Chrome or Chromium executable.");
+}
 
 function fail(message) {
   console.error(`OFFLINEPROOF FAIL: ${message}`);
@@ -176,7 +186,7 @@ async function browserProof() {
   console.log(`[serve] vite preview on :${PORT}`);
 
   const profileDir = mkdtempSync(join(tmpdir(), "openfea-offline-proof-"));
-  spawnChild(CHROME_BIN, [
+  const chrome = spawnChild(chromeBinary(), [
     "--headless=new",
     "--disable-gpu",
     "--no-first-run",
@@ -299,7 +309,9 @@ async function browserProof() {
   if (typeof reaction !== "number" || Math.abs(reaction - APPLIED_NEWTONS) / APPLIED_NEWTONS > 0.01) {
     gates.push(`reaction ${reaction ?? "n/a"} N does not match applied ${APPLIED_NEWTONS} N`);
   }
-  rmSync(profileDir, { recursive: true, force: true });
+  // Chrome keeps writing its profile until it exits.
+  killChild(chrome);
+  rmSync(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   if (gates.length) throw new Error(gates.join(" | "));
 
   console.log(`OFFLINEPROOF OK: shell + meshWorker + gmsh-wasm + solve all served by the service worker with the server dead;` +

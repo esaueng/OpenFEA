@@ -19,7 +19,7 @@ jobs:
   checks:
     permissions:
       contents: read
-    uses: esaueng/OpenFEA/.github/workflows/fleet-ci.yml@22150a7f76aff4875b74212504bae331ead2c0df # reviewed workflow (unreleased)
+    uses: esaueng/OpenFEA/.github/workflows/fleet-ci.yml@a9a61ee565b5de4802b031a77c6119fb75b83435 # reviewed workflow (unreleased)
 
   dependencies:
     runs-on: ubuntu-latest

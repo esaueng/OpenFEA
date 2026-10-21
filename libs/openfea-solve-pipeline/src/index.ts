@@ -613,8 +613,6 @@ function dynamicBudgetGuard(
   settings: CorePipelineSolverSettings,
   limits: SolveLimits
 ): CorePipelineError | undefined {
-  // The dynamic MDOF solver does not enforce maxDofs itself; fail fast in the browser instead of
-  // blocking the solve worker on an oversized model.
   const modelDofs = model.nodes?.coordinates?.length ?? 0;
   const maxDofs = positiveInteger(settings.maxDofs) ?? limits.maxDofs;
   if (modelDofs > maxDofs) {
