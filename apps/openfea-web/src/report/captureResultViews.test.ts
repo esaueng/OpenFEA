@@ -292,6 +292,38 @@ describe("captureResultViews", () => {
     expect({ mode, frameIndex }).toEqual({ mode: "displacement", frameIndex: 12 });
   });
 
+  test.each(["frame", "screenshot"] as const)("rejects playback started from paused while a peak %s is pending", async (pendingStage) => {
+    let mode: ResultMode = "displacement";
+    let frameIndex = 0;
+    let playing = false;
+    const barrier = pendingFrame();
+    const capture = vi.fn(async () => {
+      if (pendingStage === "screenshot") await barrier.wait();
+      return "data:image/png;base64,animating-view";
+    });
+    const setPlaybackPlaying = vi.fn((next: boolean) => { playing = next; });
+    const pending = captureResultViews({
+      getViewMode: () => "results",
+      getResultMode: () => mode, setResultMode: (next) => { mode = next; },
+      getResultFrameIndex: () => frameIndex, setResultFrameIndex: (next) => { frameIndex = next; },
+      getPlaybackPlaying: () => playing, setPlaybackPlaying,
+      resultFields: dynamicFields, surfaceMeshRef: "surface", isCurrent: () => true, capture,
+      waitForAnimationFrame: pendingStage === "frame" ? barrier.wait : async () => undefined
+    });
+    await barrier.arrived;
+    expect({ mode, frameIndex, playing }).toEqual({ mode: "stress", frameIndex: 1, playing: false });
+    // The renderer can animate fractional positions without changing this
+    // discrete frame index; a matching frame alone cannot prove the PNG's phase.
+    playing = true;
+    const rejection = expect(pending).rejects.toThrow("Results changed while the report figures were being captured");
+    barrier.release();
+    await rejection;
+    expect({ mode, frameIndex, playing }).toEqual({ mode: "displacement", frameIndex: 0, playing: true });
+    expect(setPlaybackPlaying).not.toHaveBeenCalled();
+    if (pendingStage === "frame") expect(capture).not.toHaveBeenCalled();
+    else expect(capture).toHaveBeenCalledOnce();
+  });
+
   test("does not restore old selections into a replacement run even when their values match", async () => {
     let current = true;
     let mode: ResultMode = "displacement";

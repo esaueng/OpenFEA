@@ -111,7 +111,7 @@ export async function captureResultViews(options: CaptureResultViewsOptions): Pr
     if ((capturedMode !== undefined && options.getResultMode() !== capturedMode)
       || (capturedStressComponent !== undefined && options.getStressComponent?.() !== capturedStressComponent)
       || (capturedFrameIndex !== undefined && options.getResultFrameIndex() !== capturedFrameIndex)
-      || (pausedPlayback && options.getPlaybackPlaying())) {
+      || (capturedMode !== undefined && options.getPlaybackPlaying())) {
       throw staleResultsError();
     }
   };
@@ -128,9 +128,9 @@ export async function captureResultViews(options: CaptureResultViewsOptions): Pr
       if (!peakField) continue;
       options.setResultMode(mode);
       capturedMode = mode;
-      if (mode === "stress" && options.setStressComponent && options.getStressComponent) {
+      if (mode === "stress" && options.setStressComponent) {
         options.setStressComponent("von_mises");
-        capturedStressComponent = "von_mises";
+        if (options.getStressComponent) capturedStressComponent = "von_mises";
       }
       if (peakField.frameIndex !== undefined) {
         options.setResultFrameIndex(peakField.frameIndex);
