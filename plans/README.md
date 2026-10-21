@@ -15,6 +15,8 @@ Four advisory runs are indexed here:
 - **2026-07-19**, codebase health and solver capability roadmap (plan 024). Reconciled a broad code review against current `main`, kept the confirmed numeric/architecture/maintenance findings, rejected stale claims about the active DOF cap, SSOR, and WebGPU, and sequenced raw export, cleanup, modernization, harmonic response, buckling, shells, and beams behind explicit numerical gates.
 - **2026-07-25**, end-to-end QA remediation (plan 026). An E2E testing report taken against `a15bf97` (twelve commits behind `main`) reported 13 findings; two were already closed by plan 025 and the other eleven were re-verified live on `66ec912`. Re-verification sharpened three causes the report attributed elsewhere: `validateStudy` is never called at runtime, the footer status is classified by regex over log prose, and `updateStudy`'s `currentStudy` is optional in the type but required at runtime.
 
+- **2026-10-21**, product roadmap revision (plan 036). Re-verified every plan's status against `main` at `9d36aa2` (the status table below was months stale) and replaced the plan 024 ordering with a release train led by modeling expressiveness. The Recon Summary, Prioritized Findings and Execution Order sections below are the July record and describe retired infrastructure; use plan 036 for current priorities.
+
 These plans are written for a fresh executor with no context from the surveys. Each is self-contained.
 
 ## Recon Summary
@@ -135,22 +137,22 @@ Dependency notes:
 
 | Plan | Status | Owner Notes |
 | - | - | - |
-| 001 Tighten result provenance taxonomy | TODO (re-verified 2026-07-01) | Highest-leverage correctness fix; classifier unchanged at `d1556f2`. |
-| 002 Make project import collision-safe | TODO (re-verified 2026-07-01) | `upsertProject(importedProject)` still id-preserving. |
-| 003 Make Core builds reproducible | TODO (re-verified 2026-07-01) | `build:core` still unfrozen. |
-| 004 Harden Cloud Worker run orchestration | TODO (re-verified 2026-07-01) | `head`→`put` claim unchanged; fold in backlog micro-hardening. |
-| 005 Replace source-text guard tests | TODO (re-verified 2026-07-01) | After 001/004. |
-| 006 Reconcile local main with origin/main | TODO | Do first. Conflict surface = two adapter files; preserves `4373faf`. |
-| 007 Bound result-field extent computation | TODO | S-effort; latent crash class already seen once in this repo. |
-| 008 CI: build web + enforce bundle budget | TODO | Wires existing scripts into CI; no new infrastructure. |
-| 009 Guard stale run-completion continuations | TODO | Truthfulness: superseded results must not display as current. |
-| 010 Schema-valid cantilever accuracy fixture | TODO | Removes the `as Study` cast that silenced the old tsc errors. |
-| 011 Run solver accuracy gates in CI | TODO | Two PRs (sibling CI + open-cae step). Beware the `@opencae/core-cloud` filter trap. |
-| 012 Broaden analytical solver benchmarks | TODO | Off-axis, ~604 Hz frequency gate, viz≤summary invariant, stress stabilization, dt diagnostic. |
-| 013 Gmsh plate-with-hole Kt benchmark | TODO | First real-geometry gate (Kt_net ≈ 2.42 at d/W=0.25); pins gmsh in both Dockerfiles. |
-| 014 Unit round-trip gate + strict units | TODO | Accuracy-plan Phase 2.3/2.4; reject unknown units instead of defaulting. |
-| 015 Local-first browser solver parity | IN PROGRESS | Dynamic step-count preflight slice landed; fixtures, upstream hooks, persistence, and cloud-solve wind-down remain. |
-| 016 WASM meshing and offline asset caching | TODO | Gmsh WASM smoke/licensing gate first; blocks full cloud infrastructure retirement. |
+| 001 Tighten result provenance taxonomy | OBSOLETE (2026-10-21) | Premise inverted: in-browser Core is now the production solver and the cloud backends are retired. The broad schema fallback (`libs/openfea-schema/src/index.ts:868`) remains; revisit only with backend deletion (036 R0.9). |
+| 002 Make project import collision-safe | OBSOLETE for production (2026-10-21) | Browser import goes through `localProjectFactory.ts`; the id-preserving upsert survives only in the reference API slated for deletion (036 R0.9). |
+| 003 Make Core builds reproducible | DONE (2026-10-21) | Sibling bootstrap removed; `build:core` filters workspace packages; CI installs frozen. |
+| 004 Harden Cloud Worker run orchestration | OBSOLETE (2026-10-21) | Cloud run routes answer 410 since the July retirement. |
+| 005 Replace source-text guard tests | TODO (re-verified 2026-10-21) | `performanceRewrite.test.ts` still asserts source strings. |
+| 006 Reconcile local main with origin/main | OBSOLETE | Single `main` line since the monorepo consolidation. |
+| 007 Bound result-field extent computation | DONE (2026-10-21) | `finiteExtrema` in `packages/core/src/numeric.ts`; remaining spreads are over small arrays. |
+| 008 CI: build web + enforce bundle budget | DONE (2026-10-21) | `fleet-ci.yml` runs `build:cloudflare` and `check:bundle`. |
+| 009 Guard stale run-completion continuations | DONE (2026-10-21) | `processingRunIdRef` re-check in `WorkspaceApp.tsx`. |
+| 010 Schema-valid cantilever accuracy fixture | TODO (re-verified 2026-10-21) | `as Study` cast still in `localCantileverAccuracy.test.ts`; scheduled as 036 R0.6. |
+| 011 Run solver accuracy gates in CI | DONE (2026-10-21) | Core package tests (incl. `core-validation.test.ts`) and the cantilever gate run in `fleet-ci.yml`. |
+| 012 Broaden analytical solver benchmarks | PARTIAL (2026-10-21) | Unit/load-scale invariance, axial bar, smoothing ≤ peak, load balance landed. Off-axis load and the analytical ~604 Hz gate remain → 036 R0.6. |
+| 013 Gmsh plate-with-hole Kt benchmark | DONE (2026-10-21) | `plateWithHoleKt.test.ts` and the validation gallery; gmsh-wasm pinned exactly. |
+| 014 Unit round-trip gate + strict units | DONE (2026-10-21) | Core validation rejects unknown `solverUnits`; mm/m equivalence tests exist. |
+| 015 Local-first browser solver parity | DONE (2026-10-21) | Browser solve is production; cloud solve retired (`docs/cloud-retirement.md`). |
+| 016 WASM meshing and offline asset caching | DONE (2026-10-21) | Gmsh WASM is the default mesher with offline precache. |
 | 017 Sunset Core repo (monorepo consolidation) | DONE | Executed 2026-07-09 (Run 5): Core packages imported, sibling checkout/pin bootstrap removed, Core tests wired into CI. |
 | 018 Mesh-failure repair probe + honest geometry errors | DONE | Executed 2026-07-10 (`fa2ae84`, with the Top-face heal cleanup in `f1aba34`). Re-test surfaced the true root error (Delaunay PLC segment/facet intersection) and two follow-up defects → plan 019. |
 | 019 Frontal fallback before repair bail + model-keyed probe guard | DONE | Executed: thrown Delaunay quality-repair candidates continue to Frontal; project actions use generation/client identity rather than fragile object identity. |
@@ -158,12 +160,19 @@ Dependency notes:
 | 021 OpenCAE Quick-Wins Rollout | COMPLETE | All five staged releases landed: result probes, unified palettes, principal stresses, projection/PNG export, and recent project handles. |
 | 022 OpenCAE Medium-Feature Roadmap | COMPLETE | All five flagship-first increments released: modal analysis; open sections and custom materials; structural cases/combinations/envelopes; static convergence studies; and advanced loads with equivalent bolt preload. |
 | 023 Production E2E QA Fixes | COMPLETE | Five implementation commits fix all six findings. Focused tests, typecheck, build, desktop browser QA, 390 px mobile QA, static solve, and three-rung bracket convergence pass; production deployment smoke remains. |
-| 024 Codebase Health and Solver Capability Roadmap | PROPOSED | Release train for correctness/limits/CI, raw result export, backend retirement, solver benchmarking, dependency/UI modernization, harmonic response, buckling, shells, and beams. |
-| 025 Cleanup and Refinement Pass | PARTIALLY LANDED | Stage 1 landed: `main` CI is green again (golden-parity re-toleranced off the CG stopping criterion; the stale playback source-text assertion replaced). Remaining stages — local API structural cleanup, dead-code removal, one stacking scale, dependency/documentation — not confirmed here. |
+| 024 Codebase Health and Solver Capability Roadmap | PARTIAL (2026-10-21) | Landed: 1A relative CG, 1B unified DOF cap, 1C CI build/budget, 1D policy modules, R2 selected-state export, R3A browser fallbacks removed, R5A dependency cohorts, `RightPanel` split. Open: R3B backend deletion, R4 benchmark ladder, R5B `CadViewer`/`WorkspaceApp` decomposition, R6–R8. Ordering superseded by 036. |
+| 025 Cleanup and Refinement Pass | DONE (2026-10-21) | All five stages verified in code. |
 | 026 End-to-End QA Remediation | COMPLETE | Eleven live-verified defects from the E2E testing report: imperial display rounding to zero, an unwired domain validator behind the Run gate, undo/redo persistence, invalid dynamic drafts, four accessibility repairs, the start-screen flash, upload copy, and lazy/precache budgets. |
 | 027 UI/UX Overhaul | COMPLETE | Increments A (Plex on screen), B (panel information architecture), D (copy sweep) and E (analysis-type switch warning) merged 2026-09-05 as PRs #102–#105; C (viewer chrome) withdrawn after measurement. |
-| 028 Interaction Review Remediation | IN PROGRESS | Twenty-six live-verified defects from the 2026-09-12 design and interaction review, staged: Stage 0 setup guards and number/word fixes (this branch), Stage 1 feedback layer, Stage 2 selection and mesh visibility, Stage 3 product decisions. |
-| 035 Guided Design Overhaul | PROPOSED | Chosen direction from three mockups: a horizontal stepper in the top bar replaces the rail, one question per panel, a floating viewer toolbar, verdict-first results, a single-page start screen, a quieter status bar and a verdict-first report cover. Seven increments; 14px panel type needs a decision. |
+| 028 Interaction Review Remediation | MOSTLY DONE (2026-10-21) | Stages 0, 1b–1c, 2a–2d and 3a landed (1a not confirmed). Open: undo across geometry replacement, offscreen report capture (D15), report preview (S7), study summary drawer (S1), analysis-type selector placement (F6). Per-body materials and named-selection manager moved to 036 R1. |
+| 035 Guided Design Overhaul | DONE (2026-10-21) | Increments 0–6 merged (#166–#174); 14px panel tier accepted and built. Leftovers: bottom-left horizontal legend, narrow-viewport "Step N of 7" dropdown, face chip with "Add faces" link, Esau README amendment (outside this repo). |
+| 029 Decision: prescribed displacement | DONE | Option A implemented end to end. |
+| 030 Decision: multi-face BCs + per-body materials | PARTIAL | Multi-face BCs done; per-body materials → 036 R1.3. |
+| 031 Decision: STL/OBJ scope | DONE (option B) | STL/OBJ declared preview-only. |
+| 032 Decision: harmonic + buckling | REOPENED by 036 D2 (accepted 2026-10-21) | Buckling (R4.2) before harmonic (R6.1). |
+| 033 Decision: thermal breadth | REOPENED by 036 D1/D3 (accepted 2026-10-21) | Convection (R4.1) and one-way thermal stress (R4.3) in scope; transient thermal behind them. |
+| 034 Decision: export archive | DEFERRED (option B stands) | Selected-state export remains the scope. |
+| 036 Product Roadmap, 2026-Q4 revision | IN PROGRESS (R0 started 2026-10-21) | Verified baseline at `9d36aa2`; release train R0 (hygiene) → R1 modeling → R2 mesh → R3 results → R4–R7 physics, scale and elements. Decisions D1–D5 accepted 2026-10-21. |
 
 Run 2 was non-interactive: plans 006–010 are the top findings by leverage (impact ÷ effort, confidence-weighted), selected by default per the advisor skill's non-interactive rule rather than by maintainer choice. Re-cut as desired.
 

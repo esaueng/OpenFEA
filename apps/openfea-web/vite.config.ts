@@ -247,10 +247,6 @@ export default defineConfig({
   preview: { headers: { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" } },
   server: {
     headers: { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" },
-    port: 5173,
-    proxy: {
-      "/api": "http://localhost:4317",
-      "/health": "http://localhost:4317"
-    }
+    port: 5173
   }
 });
