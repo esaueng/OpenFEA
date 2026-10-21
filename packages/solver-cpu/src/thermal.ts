@@ -5,15 +5,13 @@ import {
   computeTet10Volume,
   TET10_GAUSS_POINTS,
   TET10_GAUSS_WEIGHT,
+  TET10_NODE_BARYCENTRIC,
   TET10_NODE_COUNT
 } from "./element-tet10";
+import { boundedThermalMaxDofs } from "./limits";
 import { collectElementCoordinates, elementNodeCountForBlock } from "./solver";
 import { addSparseEntry, createSparseMatrixBuilder, csrMatVec, estimateCsrMemoryBytes, reduceCsrSystem, solveConjugateGradient, toCsrMatrix } from "./sparse";
 import type { CpuSolverError, CpuSolverInput, CpuSolverOptions } from "./types";
-
-// Thermal has one scalar temperature DOF per node; this is intentionally
-// separate from the structural translation-DOF product contract.
-const DEFAULT_THERMAL_MAX_DOFS = 150_000;
 
 export type SteadyStateThermalResult = {
   temperature: Float64Array;
@@ -55,7 +53,7 @@ export function solveSteadyStateThermal(
   if (!normalized.ok) return { ok: false, error: { code: "validation-failed", message: "Thermal model failed OpenFEA Core validation.", report: normalized.report } };
   const model = normalized.model;
   const nodeCount = model.counts.nodes;
-  const maxDofs = options.maxDofs ?? DEFAULT_THERMAL_MAX_DOFS;
+  const maxDofs = boundedThermalMaxDofs(options.maxDofs);
   if (nodeCount > maxDofs) return fail("max-dofs-exceeded", `Thermal model has ${nodeCount} DOFs, which exceeds maxDofs ${maxDofs}.`);
   const step = model.steps[options.stepIndex ?? 0];
   if (!step || step.type !== "steadyStateThermal") return fail("invalid-step", "Selected step must have type steadyStateThermal.");
@@ -269,27 +267,35 @@ function recoverNodalHeatFlux(model: NormalizedOpenFEAModel, temperature: Float6
     const conductivity = model.materials[block.materialIndex].thermalConductivity!;
     for (let offset = 0; offset < block.connectivity.length; offset += nodeCount) {
       const coordinates = collectElementCoordinates(model.nodes.coordinates, block.connectivity, offset, nodeCount);
-      let gradients: Float64Array;
+      const fluxFromGradients = (gradients: Float64Array): [number, number, number] => {
+        const q: [number, number, number] = [0, 0, 0];
+        for (let source = 0; source < nodeCount; source += 1) {
+          const value = temperature[block.connectivity[offset + source]];
+          for (let axis = 0; axis < 3; axis += 1) q[axis] -= conductivity * gradients[source * 3 + axis] * value;
+        }
+        return q;
+      };
+      let constantFlux: [number, number, number] | null = null;
       let volume: number;
       if (block.type === "Tet4") {
         const geometry = computeTet4Geometry(coordinates);
         if (!geometry.ok) return geometry;
-        gradients = geometry.gradients;
+        constantFlux = fluxFromGradients(geometry.gradients);
         volume = geometry.volume;
       } else {
-        const geometry = computeTet10PhysicalGradients(coordinates, [0.25, 0.25, 0.25, 0.25]);
-        if (!geometry.ok) return geometry;
         const volumeResult = computeTet10Volume(coordinates);
         if (!volumeResult.ok) return volumeResult;
-        gradients = geometry.gradients;
         volume = volumeResult.volume;
       }
-      const q = [0, 0, 0];
       for (let local = 0; local < nodeCount; local += 1) {
-        const value = temperature[block.connectivity[offset + local]];
-        for (let axis = 0; axis < 3; axis += 1) q[axis] -= conductivity * gradients[local * 3 + axis] * value;
-      }
-      for (let local = 0; local < nodeCount; local += 1) {
+        let q = constantFlux;
+        if (!q) {
+          // Quadratic temperature fields have varying gradients. On curved
+          // elements the physical Jacobian also varies with the node location.
+          const geometry = computeTet10PhysicalGradients(coordinates, TET10_NODE_BARYCENTRIC[local]);
+          if (!geometry.ok) return geometry;
+          q = fluxFromGradients(geometry.gradients);
+        }
         const node = block.connectivity[offset + local];
         weights[node] += volume;
         for (let axis = 0; axis < 3; axis += 1) accumulated[node * 3 + axis] += q[axis] * volume;

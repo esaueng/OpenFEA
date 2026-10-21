@@ -38,7 +38,7 @@ pnpm --filter @openfea/web dev
 
 Open [localhost:5173](http://localhost:5173), choose **Load sample project** to try a prepared study, or create a project and import your own geometry. OpenFEA Core packages live in this monorepo under `packages/*`; no sibling checkout is needed.
 
-The full product runs in the web app. For the optional reference backend, `pnpm dev` starts both the web app and the Fastify API at [localhost:4317](http://localhost:4317). The API creates and seeds a local SQLite database; the web app's simulation workflow does not use it. The reference API has no authentication or tenant isolation and must remain bound to loopback. See [local development](docs/local-development/README.md).
+The full product runs in the web app; `pnpm dev` is shorthand for the last command above. See [local development](docs/local-development/README.md).
 
 ## Local storage and privacy
 
@@ -63,11 +63,11 @@ pnpm build:cloudflare
 pnpm --filter @openfea/web check:bundle
 ```
 
-For the optional built-worker and offline mesh proofs, first build with `VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build`. This opt-in verification artifact includes the URL-driven mesh harness; normal release builds remove it. Threaded Gmsh requires the checked-in COOP/COEP headers on both the app shell and workers; Vite development and preview serve the same isolation headers. Rebuild normally before deploying.
+The in-browser mesh and offline PWA proofs (`pnpm verify:wasm-mesh-browser`, `pnpm verify:offline-pwa`) need a separate build made with `VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build`. This opt-in verification artifact includes the URL-driven mesh harness; normal release builds remove it. CI runs both proofs on their own proof build; `verify-100k-solve` and `pnpm verify:perf` stay manual. Threaded Gmsh requires the checked-in COOP/COEP headers on both the app shell and workers; Vite development and preview serve the same isolation headers. Rebuild normally before deploying.
 
-The browser checks require Chrome or Chromium; set `CHROME_BIN` if auto-detection cannot find it. STEP selection uses ports 5198/9336 and project/results checks use 5199/9337. The bundle check must follow the production build. [CI](.github/workflows/ci.yml) delegates to the pinned [fleet workflow](.github/workflows/fleet-ci.yml); it also enforces runner isolation and routing policy.
+The browser checks require Chrome or Chromium; set `CHROME_BIN` if auto-detection cannot find it. STEP selection uses ports 5198/9336, project/results checks use 5199/9337, the mesh proofs use 5196/9333 and the offline proof uses 5199/9334. The bundle check must follow the production build. [CI](.github/workflows/ci.yml) delegates to the pinned [fleet workflow](.github/workflows/fleet-ci.yml); it also enforces runner isolation and routing policy.
 
-`pnpm build` includes the reference API. `pnpm build:cloudflare` builds Core and the production web app only. `pnpm verify:perf` builds and checks web performance. Database migration, seeding, and reset commands are for reference-backend data maintenance; see [local development](docs/local-development/README.md) before using them.
+`pnpm build` and `pnpm build:cloudflare` both build Core and the production web app. `pnpm verify:perf` builds and checks web performance.
 
 ## Production hosting
 
@@ -105,10 +105,8 @@ Neither endpoint verifies browser geometry or solver execution. Retired cloud so
 | --- | --- |
 | `apps/openfea-web` | Production React/Vite workspace and Cloudflare Worker. |
 | `packages/*` | OpenFEA Core model, examples, CPU solver, WebGPU solver, and viewer. |
-| `libs/*` | Schema, units, materials, CAD/mesh intake, study validation, solve pipeline, Core adapter, and reference-backend storage/jobs/database utilities. |
-| `apps/openfea-api`, `services/*`, `runners/openfea-runner-local` | Separately runnable reference backend; excluded from the production solve path. |
+| `libs/*` | Schema, units, materials, samples, CAD/STEP and mesh intake, study validation, solve pipeline, and Core adapter. |
 | `examples/*`, `docs/*` | Sample fixtures, user documentation, architecture, and validation evidence. |
-| `infra/local/*`, `data/*` | Reference-backend setup notes and local runtime data. |
 
 CAD topology references remain the source of truth for supports, loads, connections, and named selections. Meshes are generated artifacts; results and reports belong to their study run. Computed FEA, preview estimates, benchmarks, and historical cloud results retain distinct provenance. See [architecture](docs/architecture/README.md).
 
@@ -116,7 +114,7 @@ CAD topology references remain the source of truth for supports, loads, connecti
 
 New project downloads use `.openfea.json` and the `openfea-local-project` envelope. Existing `.opencae` / `.opencae.json` projects and browser autosaves remain readable. Packages and workspace paths use `@openfea/*` and `openfea-*`.
 
-Some storage keys, Core schema/provenance identifiers, backup headers, the `opencae-project-backups` bucket, and archived fixtures retain their original identifiers for compatibility. Renaming infrastructure requires a separate migration. If an older reference-backend checkout has ignored `data/` directories under `opencae-*` workspace paths, move that data to the corresponding `openfea-*` paths before starting it.
+Some storage keys, Core schema/provenance identifiers, backup headers, the `opencae-project-backups` bucket, and archived fixtures retain their original identifiers for compatibility. Renaming infrastructure requires a separate migration.
 
 ## Documentation
 

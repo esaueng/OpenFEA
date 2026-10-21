@@ -31,8 +31,6 @@ Uploaded STEP, STP, STL, and OBJ source data can be embedded into the project me
 
 The open-section clipping plane is not part of this file format. Its enabled state, X/Y/Z axis, normalized offset, and flip direction are browser workspace UI preferences only.
 
-Runtime artifacts are stored separately under `data/artifacts` during local API use. Those artifacts include uploaded models, display metadata, mesh summaries, solver inputs/logs, result bundles, HTML reports, and PDF reports.
-
 ## OpenFEA Core model schema 0.4.0
 
 Core readers accept `0.1.0`, `0.2.0`, `0.3.0`, and `0.4.0`. Schema `0.3.0` adds a `modal` step with `boundaryConditions` and `modeCount` (1–10). Modal steps use material density and supports but no load references.
