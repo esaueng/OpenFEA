@@ -168,7 +168,17 @@ describe("cloud retirement guard", () => {
       "services/openfea-core-cloud",
       "wrangler.containers.jsonc",
       "wrangler.local-first.jsonc",
-      "scripts/verify-runner-version.mjs"
+      "scripts/verify-runner-version.mjs",
+      // Undeployed reference backend, deleted in R0.9.
+      "apps/openfea-api",
+      "services/openfea-cad-service",
+      "services/openfea-mesh-service",
+      "services/openfea-post-service",
+      "services/openfea-solver-service",
+      "libs/openfea-db",
+      "libs/openfea-jobs",
+      "libs/openfea-storage",
+      "runners/openfea-runner-local"
     ]) {
       expect(existsSync(resolve(rootDir, retiredPath)), `${retiredPath} must stay deleted`).toBe(false);
     }

@@ -1,6 +1,6 @@
 # OpenFEA Architecture
 
-OpenFEA's production workflow runs in the browser. The separately runnable reference backend shares schema and Core packages but does not handle production simulation jobs.
+OpenFEA's production workflow runs in the browser. There is no separate API server; the Cloudflare Worker serves the app and a small set of non-solve routes.
 
 ## Production path
 
@@ -8,16 +8,7 @@ OpenFEA's production workflow runs in the browser. The separately runnable refer
 - Browser workers run geometry/mesh and OpenFEA Core solve jobs. localStorage and IndexedDB persist workspace state and completed results; portable project files embed geometry and saved results.
 - The service worker caches app and analysis assets. The app reports offline readiness only after installation completes.
 - The Cloudflare Worker serves static assets, health routes, consent-gated client-encrypted recovery backups, and the Glimpse analytics relay. It stores no plaintext project snapshot or decryption key. Aggregate backend metrics and optional browser analytics follow the controls in [Glimpse integration](../glimpse.md).
-- `pnpm build:cloudflare` includes Core and the web app, excluding the reference API and services. Core packages resolve from this repo's emitted `packages/*/dist` exports.
-
-## Reference backend
-
-`pnpm dev` also starts a loopback-only Fastify API for independent HTTP workflows. The web app's simulation workflow does not call it.
-
-- Fastify handles reference projects, uploads, study mutations, validation, run orchestration, reports, and artifact lookup.
-- SQLite stores reference project/study metadata through `@openfea/db`; filesystem storage holds geometry, mesh summaries, solver artifacts, results, and reports under `data/artifacts`.
-- An in-memory queue and run-state provider publish progress through Server-Sent Events.
-- CAD, mesh, solver, and post-processing services sit behind package boundaries. These boundaries are encoded by manifests, TypeScript resolution, builds, and the production Cloudflare configuration verifier; there is no general architecture-boundary linter.
+- `pnpm build:cloudflare` builds Core and the web app. Core packages resolve from this repo's emitted `packages/*/dist` exports.
 
 CAD entities remain the source of truth. Mesh entities are generated artifacts. Results and reports are immutable study-run artifacts. Loads, supports, contacts, and named selections bind to CAD topology references.
 
@@ -51,6 +42,6 @@ Equivalent bolt preload is a static load pair, not a contact model. Preflight re
 
 ## Materials And Workspace Sections
 
-Starter materials and optional project-scoped custom materials resolve through `@openfea/materials`. The same strict resolver is used by UI assignment, study validation, mesh intake, browser/API Core adapters, and reports. An explicit dangling material ID is an error; no solver boundary substitutes a default material. Custom values are stored canonically in Pa and kg/m³, are marked user-supplied/unverified, and remain local to the owning project.
+Starter materials and optional project-scoped custom materials resolve through `@openfea/materials`. The same strict resolver is used by UI assignment, study validation, mesh intake, the browser Core adapter, and reports. An explicit dangling material ID is an error; no solver boundary substitutes a default material. Custom values are stored canonically in Pa and kg/m³, are marked user-supplied/unverified, and remain local to the owning project.
 
 The open-section plane belongs to workspace UI state rather than the project model. Three.js local clipping is applied only below explicit geometry roots, including mesh/result materials and line-based feature/undeformed edges. Boundary-condition glyphs, probes, dimensions, and labels are separate scene branches and are not clipped. The WebGL `Open section` label is therefore present in viewer captures without becoming portable project data.
