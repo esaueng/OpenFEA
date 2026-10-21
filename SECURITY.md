@@ -14,8 +14,8 @@ Please redact tokens and personal information from logs and screenshots.
 
 OpenFEA is a local-first browser CAD/CAE workspace. Production simulations run
 in the browser. The production Worker serves assets and supports consent-based,
-client-encrypted recovery backups. The independently runnable reference API
-is also part of this repository; identify which component a report affects.
+client-encrypted recovery backups; there is no separate API server. Identify
+which component a report affects.
 
 Imported geometry and project files are untrusted inputs. Backup authorization,
 confidentiality, bounded input handling, and build/dependency security are
