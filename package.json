@@ -22,11 +22,15 @@
     "deploy:cloudflare:static:dry-run": "pnpm build:cloudflare && wrangler deploy --config wrangler.static.jsonc --dry-run",
     "test": "vitest run",
     "typecheck": "pnpm --filter \"./packages/*\" --if-present typecheck && pnpm --filter @openfea/web exec tsc --noEmit",
+    "lint": "eslint .",
     "audit:dependencies": "pnpm audit --audit-level=high"
   },
   "devDependencies": {
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.0",
     "vitest": "^5.0.5",
     "wrangler": "^4.151.1"
   },
