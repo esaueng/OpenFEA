@@ -84,13 +84,13 @@ Full table. *Solve* is CG only for static, and the whole `solveCore*` call for m
    The answers are still physically sound. Reactions balance the load to 1.2e-7 or better, and slender Tet10 tip deflection is within 0.16–0.21% of Timoshenko beam theory at every rung.
 
    From 30k to 150k the iteration count grows about 1.7–1.8× for both variants. Slender needs 17–23× more iterations at every rung (6,240 and 11,221 at 150k, against 369 and 479 for block). That absolute gap is what R5.2 (preconditioner evaluation) should close. The diagnostics' `converged: true` does not reflect the true residual.
-4. **Slender modal misses the fundamental modes at 30k. This is a correctness finding, not just a performance one.** Requested 3 modes, converged 1 (Tet4 107.3 Hz, Tet10 102.1 Hz) after hitting the 30-iteration subspace cap.
+4. **Slender modal drops the fundamental modes at 30k.** Requested 3 modes, converged 1 after hitting the 30-iteration subspace cap.
 
-   For this cantilever, beam theory puts the first bending pair (y and z) at about 16.3 Hz and the second bending mode at about 102 Hz. The single "converged" mode is the second bending mode, and the near-degenerate fundamental pair is missing from the reported result.
+   The solver labels it correctly as **mode 3** (Tet4 107.3 Hz, Tet10 102.1 Hz) and sets `partialConvergenceWarning`. Modes 1 and 2 stalled at scaled residuals of 2.5e-6 and 2.0e-6, just above the 1e-6 tolerance, so they were dropped from the result. These are the near-degenerate first bending pair (y and z), about 16.3 Hz by beam theory, and the second bending mode is about 102 Hz.
 
-   The same fixture at about 10k DOF converges all three in 8 iterations: 18.2, 20.4 and 114 Hz, with Tet4 stiffening the values. So convergence degrades with refinement on slender parts, where the inner Jacobi CG solves run with the loosened early tolerances (1e-3 → 1e-7).
+   The same fixture at about 10k DOF converges all three in 8 iterations: 18.2, 20.4 and 114 Hz, with Tet4 stiffening the values. So on slender parts, convergence of the near-degenerate pair degrades as the mesh is refined.
 
-   The block variant converges 3/3 modes in 10–12 iterations. This needs a follow-up in the modal solver. It is out of scope for this measurement PR and is not fixed here.
+   The result is not mislabelled, but a user asking for the first three modes of a slender part gets only a higher mode plus a warning. This needs a follow-up in the modal solver: more iterations or a larger block, a tighter inner solve, or SSOR. That work is out of scope for this measurement PR and is not done here. The block variant converges 3/3 in 10–12 iterations.
 5. **The Jacobi baseline for R5.2 at 30k:**
    - Modal: block 62–103 s; slender 25.5 min (Tet4) and 68 min (Tet10).
    - Dynamic, 20 Newmark steps: block 2,413–2,853 CG iterations in total, 40–87 s. Slender 21,386–27,301 iterations, with up to 7,164 in one step, taking 6.2–14.7 min.
