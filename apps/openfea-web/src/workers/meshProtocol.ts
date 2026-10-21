@@ -11,6 +11,7 @@ import type {
   MeshTimings,
   SourceSelectionMetadata,
   StepBodyBounds,
+  StepBodyIdentity,
   StepAttributionTessellation,
   StepGeometryInspection,
   StepGeometryRepairReport,
@@ -37,6 +38,8 @@ export type MeshWorkerPayloads = {
     /** Exact connected groups selected by pairwise Boolean-fuse assembly connections. */
     fuseBodyGroups?: StepBodyBounds[][];
     preservePartIdentity?: boolean;
+    /** Per-body materials (plan 036 R1.3): name each meshed volume after its source body. */
+    bodyIdentities?: StepBodyIdentity[];
     /**
      * STEP display tessellation + faceIds (plan A-M3): when present, the
      * worker stamps every boundary facet's sourceFaceId per surface set so

@@ -300,6 +300,25 @@ describe("buildReportData", () => {
     });
   });
 
+  test("reports one material row per body for a per-body study", () => {
+    const baseStudy = bracketDemoProject.studies[0]!;
+    const assignment = baseStudy.materialAssignments[0]!;
+    const study: Study = {
+      ...baseStudy,
+      materialAssignments: [
+        { ...assignment, id: "default", materialId: "mat-steel" },
+        { ...assignment, id: "body-2", bodyId: "step-object-2", materialId: "mat-petg", parameters: { manufacturingProcessId: "fdm", printed: true, infillDensity: 40 } }
+      ]
+    };
+    const data = report({ study, bodyIds: ["step-object-1", "step-object-2", "step-object-3"] });
+
+    const targets = data.materials.rows.map((row) => row[0]).filter((label) => !label?.startsWith("As analyzed"));
+    expect(targets).toEqual(["Steel / Body 1", "PETG / Body 2", "Steel / Body 3"]);
+    expect(data.manufacturing.rows.map((row) => row[0])).toEqual(["Steel / Body 1", "PETG / Body 2", "Steel / Body 3"]);
+    expect(data.manufacturing.rows[1]?.[1]).toBe("FDM printing");
+    expect(data.geometry.find((row) => row.label === "Bodies")?.value).toBe("3");
+  });
+
   test("reports the manufacturing process, print settings, and as-analyzed properties", () => {
     const baseStudy = bracketDemoProject.studies[0]!;
     const study: Study = {

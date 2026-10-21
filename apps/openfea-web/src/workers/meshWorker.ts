@@ -105,6 +105,7 @@ async function runOperation(request: MeshWorkerRequest, reportPhase: (phase: Mes
     meshSizeMm: request.payload.meshSizeMm,
     structuralBodyBounds: request.payload.structuralBodyBounds,
     fuseBodyGroups: request.payload.fuseBodyGroups,
+    bodyIdentities: request.payload.bodyIdentities,
     preservePartIdentity: request.payload.preservePartIdentity,
     onPhase
   });

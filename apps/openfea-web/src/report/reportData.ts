@@ -1,8 +1,11 @@
 import { assessResultFailure, classifyResultProvenance, estimateAllowableLoadForSafetyFactor, isModalResultSummary, isStructuralResultSummary, isThermalResultSummary } from "@openfea/schema";
 import type { DisplayModel, FailureAssessment, Material, MeshConvergenceRecord, ModalResultSummary, Project, ResultField, ResultSummary, RunTimingEstimate, StructuralResultSummary, Study, ThermalResultSummary } from "@openfea/schema";
 import {
+  bodyLabelForId,
   effectiveMaterialProperties,
+  hasPerBodyMaterialAssignments,
   manufacturingProcessForId,
+  materialAssignmentForBody,
   normalizeManufacturingParameters,
   resolveMaterial,
   type ManufacturingParameters,
@@ -132,6 +135,8 @@ export interface BuildReportDataInput {
    */
   resolvedDeformation?: ResolvedDeformation | null;
   showDeformed?: boolean;
+  /** Body ids of a multi-body model; per-body studies then get one material row per body. */
+  bodyIds?: readonly string[];
   /** Reverse-check target from the results panel; defaults to 1.5 like the panel. */
   targetSafetyFactor?: number;
   /** Mesh-convergence ladder records for this project (newest last); the report renders the latest. */
@@ -186,7 +191,7 @@ export function buildReportData(input: BuildReportDataInput): ReportData {
       { label: "Reaction force", value: formatResultMetric(summary.reactionForce, summary.reactionForceUnits) }
     ],
     failureAssessment: assessment,
-    geometry: geometryRows(input.project, input.displayModel ? displayModelForUnits(input.displayModel, input.unitSystem) : null),
+    geometry: geometryRows(input.project, input.displayModel ? displayModelForUnits(input.displayModel, input.unitSystem) : null, input.bodyIds),
     geometryFiles: {
       headers: ["File", "Format", "Size"],
       rows: input.project.geometryFiles.map((geometry) => [
@@ -196,8 +201,8 @@ export function buildReportData(input: BuildReportDataInput): ReportData {
       ]),
       emptyMessage: "No geometry file recorded."
     },
-    materials: materialTable(input.study, input.unitSystem, criticalLayerAxis, input.project.customMaterials),
-    manufacturing: manufacturingTable(input.study, input.project.customMaterials),
+    materials: materialTable(input.study, input.unitSystem, criticalLayerAxis, input.project.customMaterials, input.bodyIds),
+    manufacturing: manufacturingTable(input.study, input.project.customMaterials, input.bodyIds),
     supports: supportTable(input.study),
     loads: loadTable(input.study, input.unitSystem),
     boundaryFigure: boundaryFigureData(input.study, input.captures.boundary),
@@ -267,14 +272,14 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
       { label: "Highest returned frequency", value: lastMode ? `${Number(lastMode.frequencyHz.toPrecision(6))} Hz` : MISSING }
     ],
     failureAssessment: assessment,
-    geometry: geometryRows(input.project, input.displayModel ? displayModelForUnits(input.displayModel, input.unitSystem) : null),
+    geometry: geometryRows(input.project, input.displayModel ? displayModelForUnits(input.displayModel, input.unitSystem) : null, input.bodyIds),
     geometryFiles: {
       headers: ["File", "Format", "Size"],
       rows: input.project.geometryFiles.map((geometry) => [geometry.filename, geometryFormat(geometry.filename), geometryFileSize(geometry.metadata)]),
       emptyMessage: "No geometry file recorded."
     },
-    materials: materialTable(input.study, input.unitSystem, criticalLayerAxis, input.project.customMaterials),
-    manufacturing: manufacturingTable(input.study, input.project.customMaterials),
+    materials: materialTable(input.study, input.unitSystem, criticalLayerAxis, input.project.customMaterials, input.bodyIds),
+    manufacturing: manufacturingTable(input.study, input.project.customMaterials, input.bodyIds),
     supports: supportTable(input.study),
     loads: { headers: ["Load", "Magnitude", "Direction", "Target"], rows: [], emptyMessage: "Applied loads are not used in modal analysis." },
     boundaryFigure: boundaryFigureData(input.study, input.captures.boundary),
@@ -342,14 +347,14 @@ function buildThermalReportData(input: BuildReportDataInput, summary: ThermalRes
       { label: "Energy balance error", value: formatResultMetric(summary.energyBalanceRelativeError * 100, "%") }
     ],
     failureAssessment: assessment,
-    geometry: geometryRows(input.project, input.displayModel ? displayModelForUnits(input.displayModel, input.unitSystem) : null),
+    geometry: geometryRows(input.project, input.displayModel ? displayModelForUnits(input.displayModel, input.unitSystem) : null, input.bodyIds),
     geometryFiles: {
       headers: ["File", "Format", "Size"],
       rows: input.project.geometryFiles.map((geometry) => [geometry.filename, geometryFormat(geometry.filename), geometryFileSize(geometry.metadata)]),
       emptyMessage: "No geometry file recorded."
     },
-    materials: thermalMaterialTable(input.study, input.project.customMaterials),
-    manufacturing: manufacturingTable(input.study, input.project.customMaterials),
+    materials: thermalMaterialTable(input.study, input.project.customMaterials, input.bodyIds),
+    manufacturing: manufacturingTable(input.study, input.project.customMaterials, input.bodyIds),
     supports: supportTable(input.study),
     loads: loadTable(input.study, input.unitSystem),
     boundaryFigure: boundaryFigureData(input.study, input.captures.boundary),
@@ -429,7 +434,7 @@ function coverMetaRows(input: BuildReportDataInput, summary: ResultSummary, mesh
   ];
 }
 
-function geometryRows(project: Project, displayModel: DisplayModel | null): ReportRow[] {
+function geometryRows(project: Project, displayModel: DisplayModel | null, bodyIds?: readonly string[]): ReportRow[] {
   const geometry = displayModel?.coreCloudGeometry;
   let source = "No geometry available";
   if (geometry?.kind === "sample_procedural") {
@@ -453,22 +458,40 @@ function geometryRows(project: Project, displayModel: DisplayModel | null): Repo
   return [
     { label: "Source", value: source },
     { label: "Display model", value: displayModel?.name ?? MISSING },
-    { label: "Bodies", value: displayModel ? String(displayModel.bodyCount) : MISSING },
+    { label: "Bodies", value: bodyIds && bodyIds.length > 1 ? String(bodyIds.length) : displayModel ? String(displayModel.bodyCount) : MISSING },
     { label: "Dimensions", value: displayModel?.dimensions
       ? `${displayModel.dimensions.x} × ${displayModel.dimensions.y} × ${displayModel.dimensions.z} ${displayModel.dimensions.units}`
       : MISSING }
   ];
 }
 
-function thermalMaterialTable(study: Study, customMaterials: Project["customMaterials"]): ReportTable {
+type MaterialReportTarget = { assignment: Study["materialAssignments"][number] | undefined; target: string };
+
+/**
+ * Rows of the material tables. A per-body study on a known multi-body model
+ * reports one row per body — inherited whole-model materials included — so
+ * the record shows what every body was solved with.
+ */
+function materialReportTargets(study: Study, bodyIds: readonly string[] | undefined): MaterialReportTarget[] {
+  if (bodyIds && bodyIds.length > 1 && hasPerBodyMaterialAssignments(study.materialAssignments)) {
+    return bodyIds.map((bodyId) => ({ assignment: materialAssignmentForBody(study.materialAssignments, bodyId), target: bodyLabelForId(bodyId) }));
+  }
+  return study.materialAssignments.map((assignment) => ({
+    assignment,
+    target: assignment.bodyId ? bodyLabelForId(assignment.bodyId) : selectionLabel(study, assignment.selectionRef)
+  }));
+}
+
+function thermalMaterialTable(study: Study, customMaterials: Project["customMaterials"], bodyIds?: readonly string[]): ReportTable {
   return {
     headers: ["Material / target", "Thermal conductivity (W/(m K))"],
-    rows: study.materialAssignments.map((assignment) => {
+    rows: materialReportTargets(study, bodyIds).map(({ assignment, target }) => {
+      if (!assignment) return [`${MISSING} / ${target}`, MISSING];
       const material = tryResolveReportMaterial(assignment.materialId, customMaterials);
       const effective = material ? effectiveMaterialProperties(material, assignment.parameters ?? {}) : undefined;
       const conductivity = effective?.thermalConductivity ?? material?.thermalConductivity;
       return [
-        `${material ? reportMaterialName(material) : assignment.materialId} / ${selectionLabel(study, assignment.selectionRef)}`,
+        `${material ? reportMaterialName(material) : assignment.materialId} / ${target}`,
         typeof conductivity === "number" && Number.isFinite(conductivity) ? formatResultNumber(conductivity) : MISSING
       ];
     }),
@@ -480,14 +503,16 @@ function materialTable(
   study: Study,
   unitSystem: UnitSystem,
   criticalLayerAxis: "x" | "y" | "z" | undefined,
-  customMaterials: Project["customMaterials"]
+  customMaterials: Project["customMaterials"],
+  bodyIds?: readonly string[]
 ): ReportTable {
   return {
     headers: ["Material / target", "Young's modulus", "Poisson ratio", "Density", "Yield strength"],
-    rows: study.materialAssignments.flatMap((assignment) => {
+    rows: materialReportTargets(study, bodyIds).flatMap(({ assignment, target }) => {
+      if (!assignment) return [[`${MISSING} / ${target}`, MISSING, MISSING, MISSING, MISSING]];
       const material = tryResolveReportMaterial(assignment.materialId, customMaterials);
       const datasheetRow = [
-        `${material ? reportMaterialName(material) : assignment.materialId} / ${selectionLabel(study, assignment.selectionRef)}`,
+        `${material ? reportMaterialName(material) : assignment.materialId} / ${target}`,
         material ? formatMaterialStress(material.youngsModulus, unitSystem) : MISSING,
         material ? String(material.poissonRatio) : MISSING,
         material ? formatDensity(material.density, "kg/m^3", unitSystem) : MISSING,
@@ -512,12 +537,13 @@ function materialTable(
   };
 }
 
-function manufacturingTable(study: Study, customMaterials: Project["customMaterials"]): ReportTable {
+function manufacturingTable(study: Study, customMaterials: Project["customMaterials"], bodyIds?: readonly string[]): ReportTable {
   return {
     headers: ["Material / target", "Process", "Process settings"],
-    rows: study.materialAssignments.map((assignment) => {
+    rows: materialReportTargets(study, bodyIds).map(({ assignment, target: bodyTarget }) => {
+      if (!assignment) return [`${MISSING} / ${bodyTarget}`, MISSING, MISSING];
       const material = tryResolveReportMaterial(assignment.materialId, customMaterials);
-      const target = `${material ? reportMaterialName(material) : assignment.materialId} / ${selectionLabel(study, assignment.selectionRef)}`;
+      const target = `${material ? reportMaterialName(material) : assignment.materialId} / ${bodyTarget}`;
       if (!material) return [target, MISSING, MISSING];
       const process = assignmentProcess(material, assignment.parameters);
       if (!process) return [target, MISSING, MISSING];
