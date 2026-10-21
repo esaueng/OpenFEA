@@ -39,20 +39,20 @@ describe("captureResultViews", () => {
     expect(reportCapturesAreCurrent({ ...figures, revision: REPORT_CAPTURE_REVISION, boundary: { png: "png", revision: BOUNDARY_CAPTURE_REVISION } }, staticFields, true)).toBe(true);
   });
 
-  test("uses von Mises for reports even when a larger principal measure is selected", async () => {
+  test.each([true, false])("uses von Mises for reports even when a larger principal measure is selected (getter: %s)", async (hasGetter) => {
     let component: StressComponent = "principal_max";
     let mode: ResultMode = "stress";
     let frameIndex = 0;
     const captures = await captureResultViews({
       getViewMode: () => "results", getResultMode: () => mode, setResultMode: (next) => { mode = next; },
-      getStressComponent: () => component, setStressComponent: (next) => { component = next; },
+      ...(hasGetter ? { getStressComponent: () => component } : {}), setStressComponent: (next) => { component = next; },
       getResultFrameIndex: () => frameIndex, setResultFrameIndex: (next) => { frameIndex = next; }, getPlaybackPlaying: () => false, setPlaybackPlaying: () => {},
       resultFields: [...dynamicFields, { ...dynamicFields[0]!, id: "principal-peak", component: "principal_max", values: [999, 1000] }],
       surfaceMeshRef: "surface", capture: () => `data:image/png;base64,${component}`, isCurrent: () => true, waitForAnimationFrame: async () => {}
     });
     expect(captures.stress?.fieldId).toBe("stress-surface-1");
     expect(captures.stress?.png).toBe("data:image/png;base64,von_mises");
-    expect(component).toBe("principal_max");
+    expect(component).toBe(hasGetter ? "principal_max" : "von_mises");
   });
   test("serializes automatic and manual capture tasks and continues after failures", async () => {
     const queue = createCaptureQueue();
