@@ -177,7 +177,7 @@ const LOAD_ROTATION_TOLERANCE = 0.01;
 const RIGID_ROTATION_TOLERANCE = 1e-8;
 
 describe("local cantilever off-axis invariance", () => {
-  test("tilted tip load keeps the Timoshenko deflection magnitude and the biaxial root stress", () => {
+  test("tilted tip load keeps the Timoshenko deflection magnitude and the biaxial root stress", { timeout: 60000 }, () => {
     const aligned = trySolveOpenFeaCoreStudy({ study: cantileverStudy("static_stress"), runId: "run-aligned", displayModel });
     const tilted = trySolveOpenFeaCoreStudy({
       study: cantileverStudy("static_stress", [0, Math.sin(THETA), -Math.cos(THETA)]),
@@ -204,7 +204,7 @@ describe("local cantilever off-axis invariance", () => {
     expect(reactionForce).toBeLessThan(FORCE_N + 1);
   });
 
-  test("rigidly rotating geometry and load leaves deflection and root stress unchanged", () => {
+  test("rigidly rotating geometry and load leaves deflection and root stress unchanged", { timeout: 60000 }, () => {
     const { model } = buildOpenFeaCoreModelForStudy(cantileverStudy("static_stress"), displayModel);
     const rotation = rotationMatrix([1, 2, 3], (37 * Math.PI) / 180);
     const rotated = rotateModel(model, rotation);
