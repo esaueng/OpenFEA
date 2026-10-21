@@ -71,6 +71,7 @@ pnpm --filter @opencae/viewer build
 pnpm --filter "./packages/*" --if-present test
 node scripts/verify-cloudflare-config.mjs
 pnpm typecheck
+pnpm lint
 pnpm test
 pnpm verify:step-selection-browser
 pnpm verify:project-results-browser
@@ -82,7 +83,7 @@ pnpm --filter @opencae/web check:bundle
 
 `verify:project-results-browser` checks history invalidation and portable dynamic cases in Chrome with software WebGL, using local ports 5199 and 9337.
 
-There is no root lint script and CI has no lint job. The five `packages/*` lint scripts are aliases for their typechecks; `pnpm typecheck` is the workspace-wide check.
+`pnpm lint` runs ESLint (`eslint.config.mjs`, type-aware via `typescript-eslint`) over `apps/openfea-web` (src and worker), `packages/*` and the `libs/*` the web app uses; the reference backend is not linted. The rule set is deliberately small: `no-floating-promises`, `no-misused-promises`, `eqeqeq` (`== null` allowed), and React hooks rules for the web app (`exhaustive-deps` warns). The `packages/*` lint scripts run ESLint on their own package. `libs/tsconfig.json` and `packages/*/tests/tsconfig.json` exist so the project service can type those files. Lint needs the core packages built, like `pnpm typecheck`.
 
 Re-verified 2026-08-15: every command in the block passes, including `pnpm test` (1,569 tests). The earlier known baseline failure in `apps/opencae-web/src/cloudBackup.test.ts` — a mocked backup expiring at `2026-08-11T12:00:00.000Z`, audited 2026-08-11 — no longer exists; the fixture now uses relative and far-future dates.
 
