@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import type { ResultField } from "@openfea/schema";
-import type { ResultMode, StressComponent } from "../workspaceViewTypes";
+import type { ResultMode, StressComponent, ViewMode } from "../workspaceViewTypes";
 import { BOUNDARY_CAPTURE_REVISION, REPORT_CAPTURE_REVISION, reportCapturesAreCurrent, captureResultViews, createCaptureQueue, peakResultField } from "./captureResultViews";
 
 const staticFields = [
@@ -22,6 +22,14 @@ const thermalFields = [
   { id: "heat-flux", runId: "run", type: "heat_flux", location: "face", values: [0, 12], min: 0, max: 12, units: "W/m²" }
 ] satisfies ResultField[];
 
+function pendingFrame() {
+  let arrive!: () => void;
+  let release!: () => void;
+  const arrived = new Promise<void>((resolve) => { arrive = resolve; });
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  return { arrived, release, wait: () => { arrive(); return pending; } };
+}
+
 describe("captureResultViews", () => {
   test("rejects legacy blue screenshots and outdated thermal boundary captures", () => {
     const figures = { stress: { png: "png", fieldId: "stress", selection: "static" as const }, displacement: { png: "png", fieldId: "displacement", selection: "static" as const } };
@@ -33,10 +41,12 @@ describe("captureResultViews", () => {
 
   test("uses von Mises for reports even when a larger principal measure is selected", async () => {
     let component: StressComponent = "principal_max";
+    let mode: ResultMode = "stress";
+    let frameIndex = 0;
     const captures = await captureResultViews({
-      getViewMode: () => "results", getResultMode: () => "stress", setResultMode: () => {},
+      getViewMode: () => "results", getResultMode: () => mode, setResultMode: (next) => { mode = next; },
       getStressComponent: () => component, setStressComponent: (next) => { component = next; },
-      getResultFrameIndex: () => 0, setResultFrameIndex: () => {}, getPlaybackPlaying: () => false, setPlaybackPlaying: () => {},
+      getResultFrameIndex: () => frameIndex, setResultFrameIndex: (next) => { frameIndex = next; }, getPlaybackPlaying: () => false, setPlaybackPlaying: () => {},
       resultFields: [...dynamicFields, { ...dynamicFields[0]!, id: "principal-peak", component: "principal_max", values: [999, 1000] }],
       surfaceMeshRef: "surface", capture: () => `data:image/png;base64,${component}`, isCurrent: () => true, waitForAnimationFrame: async () => {}
     });
@@ -139,7 +149,7 @@ describe("captureResultViews", () => {
 
   test("captures the boundary-condition view in model view and restores results view", async () => {
     let mode: ResultMode = "stress";
-    const viewModes: string[] = [];
+    const viewModes: ("model" | null)[] = [];
     const result = await captureResultViews({
       getViewMode: () => "results",
       getResultMode: () => mode,
@@ -152,16 +162,224 @@ describe("captureResultViews", () => {
       capture: () => `data:image/png;base64,${viewModes.at(-1) === "model" ? "boundary" : mode}`,
       isCurrent: () => true,
       waitForAnimationFrame: async () => undefined,
-      setViewMode: (next) => { viewModes.push(next); },
+      setCaptureViewMode: (next) => { viewModes.push(next); },
       captureBoundaryView: true
     });
 
     expect(result.boundary).toEqual({ png: "data:image/png;base64,boundary", revision: BOUNDARY_CAPTURE_REVISION });
-    expect(viewModes).toEqual(["model", "results"]);
+    expect(viewModes).toEqual(["model", null]);
   });
 
-  test("restores results view when the boundary capture finds stale results", async () => {
-    const viewModes: string[] = [];
+  test("boundary-only modal capture preserves phase and mode changes made while its frames are pending", async () => {
+    const fields: ResultField[] = [{
+      id: "mode-1", runId: "run-modal", type: "mode_shape", location: "node",
+      values: [1], vectors: [[1, 0, 0]], min: 0, max: 1, units: "normalized",
+      modeIndex: 1, frequencyHz: 100, eigenvalue: 394_784, scaledResidual: 1e-8
+    }];
+    const canonicalFields = structuredClone(fields);
+    // A boundary-only capture must not own the current result-mode selection.
+    let mode: ResultMode = "displacement";
+    let frameIndex = 0;
+    let captureViewMode: "model" | null = null;
+    const firstFrame = pendingFrame();
+    const secondFrame = pendingFrame();
+    const waitForAnimationFrame = vi.fn()
+      .mockImplementationOnce(firstFrame.wait)
+      .mockImplementationOnce(secondFrame.wait);
+    const setResultMode = vi.fn((next: ResultMode) => { mode = next; });
+    const setResultFrameIndex = vi.fn((next: number) => { frameIndex = next; });
+    const viewModes: ("model" | null)[] = [];
+    const capture = vi.fn(() => {
+      expect(captureViewMode).toBe("model");
+      return "data:image/png;base64,boundary";
+    });
+    const pendingCapture = captureResultViews({
+      getViewMode: () => "results",
+      getResultMode: () => mode,
+      setResultMode,
+      getResultFrameIndex: () => frameIndex,
+      setResultFrameIndex,
+      getPlaybackPlaying: () => false,
+      setPlaybackPlaying: () => undefined,
+      resultFields: fields,
+      capture,
+      isCurrent: () => true,
+      waitForAnimationFrame,
+      setCaptureViewMode: (next) => { captureViewMode = next; viewModes.push(next); },
+      captureBoundaryView: true
+    });
+
+    await firstFrame.arrived;
+    expect(capture).not.toHaveBeenCalled();
+    firstFrame.release();
+    await secondFrame.arrived;
+    expect(capture).not.toHaveBeenCalled();
+    expect(setResultFrameIndex).not.toHaveBeenCalled();
+    expect(setResultMode).not.toHaveBeenCalled();
+    // The user selects the modal display and half-cycle phase before capture ends.
+    mode = "mode_shape";
+    frameIndex = 12;
+    secondFrame.release();
+    const result = await pendingCapture;
+
+    expect({ mode, frameIndex }).toEqual({ mode: "mode_shape", frameIndex: 12 });
+    expect(result).toEqual({
+      revision: REPORT_CAPTURE_REVISION,
+      boundary: { png: "data:image/png;base64,boundary", revision: BOUNDARY_CAPTURE_REVISION }
+    });
+    expect(reportCapturesAreCurrent(result, fields, true)).toBe(true);
+    expect(capture).toHaveBeenCalledOnce();
+    expect(waitForAnimationFrame).toHaveBeenCalledTimes(2);
+    expect(viewModes).toEqual(["model", null]);
+    expect(captureViewMode).toBeNull();
+    expect(fields).toEqual(canonicalFields);
+  });
+
+  test.each(["mode", "frame", "component", "playback"] as const)("rejects a peak figure when the user changes its %s before capture", async (changed) => {
+    let mode: ResultMode = "displacement";
+    let frameIndex = 0;
+    let component: StressComponent = "principal_max";
+    let playing = true;
+    const frame = pendingFrame();
+    const capture = vi.fn(() => "data:image/png;base64,wrong-view");
+    const fields = structuredClone(dynamicFields);
+    const pending = captureResultViews({
+      getViewMode: () => "results",
+      getResultMode: () => mode, setResultMode: (next) => { mode = next; },
+      getStressComponent: () => component, setStressComponent: (next) => { component = next; },
+      getResultFrameIndex: () => frameIndex, setResultFrameIndex: (next) => { frameIndex = next; },
+      getPlaybackPlaying: () => playing, setPlaybackPlaying: (next) => { playing = next; },
+      resultFields: fields, surfaceMeshRef: "surface", capture, isCurrent: () => true,
+      waitForAnimationFrame: vi.fn().mockResolvedValueOnce(undefined).mockImplementationOnce(frame.wait)
+    });
+    await frame.arrived;
+    expect({ mode, frameIndex, component, playing }).toEqual({ mode: "stress", frameIndex: 1, component: "von_mises", playing: false });
+    if (changed === "mode") mode = "velocity";
+    if (changed === "frame") frameIndex = 12;
+    if (changed === "component") component = "principal_min";
+    if (changed === "playback") playing = true;
+    const rejection = expect(pending).rejects.toThrow("Results changed while the report figures were being captured");
+    frame.release();
+    await rejection;
+    expect(capture).not.toHaveBeenCalled();
+    expect({ mode, frameIndex, component, playing }).toEqual({
+      mode: changed === "mode" ? "velocity" : "displacement",
+      frameIndex: changed === "frame" ? 12 : 0,
+      component: changed === "component" ? "principal_min" : "principal_max",
+      playing: true
+    });
+    expect(fields).toEqual(dynamicFields);
+  });
+
+  test("rejects a view change while the screenshot promise is pending", async () => {
+    let mode: ResultMode = "displacement";
+    let frameIndex = 0;
+    const screenshot = pendingFrame();
+    const pending = captureResultViews({
+      getViewMode: () => "results",
+      getResultMode: () => mode, setResultMode: (next) => { mode = next; },
+      getResultFrameIndex: () => frameIndex, setResultFrameIndex: (next) => { frameIndex = next; },
+      getPlaybackPlaying: () => false, setPlaybackPlaying: () => undefined,
+      resultFields: dynamicFields, surfaceMeshRef: "surface", isCurrent: () => true,
+      waitForAnimationFrame: async () => undefined,
+      capture: async () => { await screenshot.wait(); return "data:image/png;base64,stale"; }
+    });
+    await screenshot.arrived;
+    frameIndex = 12;
+    const rejection = expect(pending).rejects.toThrow("Results changed while the report figures were being captured");
+    screenshot.release();
+    await rejection;
+    expect({ mode, frameIndex }).toEqual({ mode: "displacement", frameIndex: 12 });
+  });
+
+  test("does not restore old selections into a replacement run even when their values match", async () => {
+    let current = true;
+    let mode: ResultMode = "displacement";
+    let frameIndex = 0;
+    let component: StressComponent = "principal_max";
+    let playing = true;
+    const frame = pendingFrame();
+    const setResultMode = vi.fn((next: ResultMode) => { mode = next; });
+    const setResultFrameIndex = vi.fn((next: number) => { frameIndex = next; });
+    const setStressComponent = vi.fn((next: StressComponent) => { component = next; });
+    const setPlaybackPlaying = vi.fn((next: boolean) => { playing = next; });
+    const capture = vi.fn(() => "unused");
+    const pending = captureResultViews({
+      getViewMode: () => "results", getResultMode: () => mode, setResultMode,
+      getStressComponent: () => component, setStressComponent,
+      getResultFrameIndex: () => frameIndex, setResultFrameIndex,
+      getPlaybackPlaying: () => playing, setPlaybackPlaying,
+      resultFields: dynamicFields, surfaceMeshRef: "surface", capture,
+      isCurrent: () => current, waitForAnimationFrame: frame.wait
+    });
+    await frame.arrived;
+    current = false;
+    // These same values now belong to the newly loaded run, not this capture.
+    const replacement = { mode, frameIndex, component, playing };
+    for (const setter of [setResultMode, setResultFrameIndex, setStressComponent, setPlaybackPlaying]) setter.mockClear();
+    const rejection = expect(pending).rejects.toThrow("Results changed while the report figures were being captured");
+    frame.release();
+    await rejection;
+    expect({ mode, frameIndex, component, playing }).toEqual(replacement);
+    for (const setter of [setResultMode, setResultFrameIndex, setStressComponent, setPlaybackPlaying]) expect(setter).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  test.each(["navigation", "new run", "capture failure"] as const)("clears the boundary override after %s without changing the user's view or selections", async (change) => {
+    let viewMode: ViewMode = "results";
+    let captureViewMode: "model" | null = null;
+    let current = true;
+    let mode: ResultMode = "mode_shape";
+    let frameIndex = 0;
+    const frame = pendingFrame();
+    const setResultMode = vi.fn((next: ResultMode) => { mode = next; });
+    const setResultFrameIndex = vi.fn((next: number) => { frameIndex = next; });
+    const capture = vi.fn(() => { throw new Error("capture unavailable"); });
+    const pending = captureResultViews({
+      getViewMode: () => viewMode, getResultMode: () => mode, setResultMode,
+      getResultFrameIndex: () => frameIndex, setResultFrameIndex,
+      getPlaybackPlaying: () => false, setPlaybackPlaying: () => undefined,
+      resultFields: [], capture, isCurrent: () => current,
+      waitForAnimationFrame: vi.fn().mockImplementationOnce(frame.wait).mockResolvedValue(undefined),
+      setCaptureViewMode: (next) => { captureViewMode = next; }, captureBoundaryView: true
+    });
+    await frame.arrived;
+    expect(captureViewMode).toBe("model");
+    if (change === "navigation") viewMode = "mesh";
+    if (change === "new run") current = false;
+    mode = "velocity";
+    frameIndex = 12;
+    const rejection = expect(pending).rejects.toThrow(change === "capture failure" ? "capture unavailable" : "Results changed while the report figures were being captured");
+    frame.release();
+    await rejection;
+    expect(captureViewMode).toBeNull();
+    expect(viewMode).toBe(change === "navigation" ? "mesh" : "results");
+    expect({ mode, frameIndex }).toEqual({ mode: "velocity", frameIndex: 12 });
+    expect(setResultMode).not.toHaveBeenCalled();
+    expect(setResultFrameIndex).not.toHaveBeenCalled();
+    if (change !== "capture failure") expect(capture).not.toHaveBeenCalled();
+  });
+
+  test("restores capture-owned selections after a screenshot failure", async () => {
+    let mode: ResultMode = "displacement";
+    let frameIndex = 0;
+    let component: StressComponent = "principal_max";
+    let playing = true;
+    await expect(captureResultViews({
+      getViewMode: () => "results",
+      getResultMode: () => mode, setResultMode: (next) => { mode = next; },
+      getStressComponent: () => component, setStressComponent: (next) => { component = next; },
+      getResultFrameIndex: () => frameIndex, setResultFrameIndex: (next) => { frameIndex = next; },
+      getPlaybackPlaying: () => playing, setPlaybackPlaying: (next) => { playing = next; },
+      resultFields: dynamicFields, surfaceMeshRef: "surface", isCurrent: () => true,
+      waitForAnimationFrame: async () => undefined,
+      capture: () => { throw new Error("capture unavailable"); }
+    })).rejects.toThrow("capture unavailable");
+    expect({ mode, frameIndex, component, playing }).toEqual({ mode: "displacement", frameIndex: 0, component: "principal_max", playing: true });
+  });
+
+  test("clears the boundary override when the capture finds stale results", async () => {
+    const viewModes: ("model" | null)[] = [];
     let framesWaited = 0;
     await expect(captureResultViews({
       getViewMode: () => "results",
@@ -176,10 +394,10 @@ describe("captureResultViews", () => {
       // Stale only after the boundary capture's frame waits begin.
       isCurrent: () => framesWaited < 1,
       waitForAnimationFrame: async () => { framesWaited += 1; },
-      setViewMode: (next) => { viewModes.push(next); },
+      setCaptureViewMode: (next) => { viewModes.push(next); },
       captureBoundaryView: true
     })).rejects.toThrow("Results changed while the report figures were being captured");
-    expect(viewModes).toEqual(["model", "results"]);
+    expect(viewModes).toEqual(["model", null]);
   });
 
   test("returns static capture metadata when the result has no transient frames", async () => {

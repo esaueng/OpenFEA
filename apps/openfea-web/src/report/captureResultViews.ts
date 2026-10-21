@@ -58,8 +58,8 @@ export interface CaptureResultViewsOptions {
   capture: (() => string | Promise<string>) | null;
   isCurrent: () => boolean;
   waitForAnimationFrame?: () => Promise<void>;
-  /** Switches the viewer between results and model view for the boundary-condition capture. */
-  setViewMode?: (mode: ViewMode) => void;
+  /** Temporary report-only override; clearing it reveals the user's current view. */
+  setCaptureViewMode?: (mode: "model" | null) => void;
   /** Capture a model-view snapshot of the support/load markers for the report's boundary-conditions figure. */
   captureBoundaryView?: boolean;
   /**
@@ -91,7 +91,7 @@ export async function captureResultViews(options: CaptureResultViewsOptions): Pr
   }
 
   const availableCaptures = REPORT_RESULT_CAPTURES.filter(({ mode }) => options.resultFields.some((field) => field.type === mode));
-  const captureBoundary = Boolean(options.captureBoundaryView && options.setViewMode);
+  const captureBoundary = Boolean(options.captureBoundaryView && options.setCaptureViewMode);
   if ((availableCaptures.length || captureBoundary) && !options.capture) {
     throw new Error("The 3D result view is still loading. Wait for it to appear, then generate the report again.");
   }
@@ -102,21 +102,48 @@ export async function captureResultViews(options: CaptureResultViewsOptions): Pr
   const originalPlaybackPlaying = options.getPlaybackPlaying();
   const waitForFrame = options.waitForAnimationFrame ?? nextAnimationFrame;
   const captures: ResultViewCaptures = { revision: REPORT_CAPTURE_REVISION };
+  let capturedMode: ResultMode | undefined;
+  let capturedStressComponent: StressComponent | undefined;
+  let capturedFrameIndex: number | undefined;
+  let pausedPlayback = false;
+  const assertCaptureOwned = () => {
+    assertCurrent(options);
+    if ((capturedMode !== undefined && options.getResultMode() !== capturedMode)
+      || (capturedStressComponent !== undefined && options.getStressComponent?.() !== capturedStressComponent)
+      || (capturedFrameIndex !== undefined && options.getResultFrameIndex() !== capturedFrameIndex)
+      || (pausedPlayback && options.getPlaybackPlaying())) {
+      throw staleResultsError();
+    }
+  };
 
   try {
-    if (originalPlaybackPlaying) options.setPlaybackPlaying(false);
+    assertCurrent(options);
+    if (originalPlaybackPlaying && availableCaptures.length) {
+      options.setPlaybackPlaying(false);
+      pausedPlayback = true;
+    }
     for (const { mode, slot } of availableCaptures) {
       assertCurrent(options);
       const peakField = peakResultField(options.resultFields, mode, options.surfaceMeshRef);
       if (!peakField) continue;
       options.setResultMode(mode);
-      if (mode === "stress") options.setStressComponent?.("von_mises");
-      if (peakField.frameIndex !== undefined) options.setResultFrameIndex(peakField.frameIndex);
+      capturedMode = mode;
+      if (mode === "stress" && options.setStressComponent && options.getStressComponent) {
+        options.setStressComponent("von_mises");
+        capturedStressComponent = "von_mises";
+      }
+      if (peakField.frameIndex !== undefined) {
+        options.setResultFrameIndex(peakField.frameIndex);
+        capturedFrameIndex = peakField.frameIndex;
+      }
       await waitForFrame();
+      assertCaptureOwned();
       await waitForFrame();
-      assertCurrent(options);
+      assertCaptureOwned();
+      const png = await options.capture!();
+      assertCaptureOwned();
       captures[slot] = {
-        png: await options.capture!(),
+        png,
         fieldId: peakField.id,
         selection: peakField.frameIndex === undefined ? "static" : "peak",
         ...(peakField.frameIndex === undefined ? {} : { frameIndex: peakField.frameIndex }),
@@ -124,30 +151,38 @@ export async function captureResultViews(options: CaptureResultViewsOptions): Pr
       };
     }
     if (captureBoundary) {
-      captures.boundary = await captureBoundaryView(options, waitForFrame);
+      captures.boundary = await captureBoundaryView(options, waitForFrame, assertCaptureOwned);
     }
     return captures;
   } finally {
-    options.setResultFrameIndex(originalFrameIndex);
-    options.setResultMode(originalMode);
-    if (originalStressComponent) options.setStressComponent?.(originalStressComponent);
-    if (originalPlaybackPlaying) options.setPlaybackPlaying(true);
+    // A capture may span user input or a new run. Restore only settings this
+    // capture changed and still owns; boundary-only captures own no selection.
+    if (options.isCurrent() && options.getViewMode() === "results") {
+      if (capturedFrameIndex !== undefined && options.getResultFrameIndex() === capturedFrameIndex) options.setResultFrameIndex(originalFrameIndex);
+      if (capturedMode !== undefined && options.getResultMode() === capturedMode) options.setResultMode(originalMode);
+      if (capturedStressComponent !== undefined && options.getStressComponent?.() === capturedStressComponent && originalStressComponent) options.setStressComponent?.(originalStressComponent);
+      if (pausedPlayback && !options.getPlaybackPlaying()) options.setPlaybackPlaying(true);
+    }
   }
 }
 
 // The boundary markers (supports + loads) only render outside the results
-// view, so flip the viewer to model view for the snapshot and restore it.
-async function captureBoundaryView(options: CaptureResultViewsOptions, waitForFrame: () => Promise<void>): Promise<CapturedBoundaryView> {
-  assertCurrent(options);
-  options.setViewMode!("model");
+// view, so temporarily override the viewer without changing the user's view.
+async function captureBoundaryView(options: CaptureResultViewsOptions, waitForFrame: () => Promise<void>, assertCaptureOwned: () => void): Promise<CapturedBoundaryView> {
+  assertCaptureOwned();
+  options.setCaptureViewMode!("model");
   try {
     await options.waitForBoundaryViewReady?.();
+    assertCaptureOwned();
     await waitForFrame();
+    assertCaptureOwned();
     await waitForFrame();
-    if (!options.isCurrent()) throw staleResultsError();
-    return { png: await options.capture!(), revision: BOUNDARY_CAPTURE_REVISION };
+    assertCaptureOwned();
+    const png = await options.capture!();
+    assertCaptureOwned();
+    return { png, revision: BOUNDARY_CAPTURE_REVISION };
   } finally {
-    options.setViewMode!("results");
+    options.setCaptureViewMode!(null);
   }
 }
 

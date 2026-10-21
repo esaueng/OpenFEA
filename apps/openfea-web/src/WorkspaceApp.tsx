@@ -1780,7 +1780,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       surfaceMeshRef: resultSurfaceMesh?.id,
       capture,
       isCurrent: () => reportStateRef.current.resultSummary === sourceSummary && reportStateRef.current.completedRunId === runId,
-      setViewMode: (mode) => setCaptureViewMode(mode === "results" ? null : mode),
+      setCaptureViewMode,
       captureBoundaryView,
       // Uploaded STEP previews re-tessellate when the viewer leaves the
       // results view; wait for that (with a fallback timeout) before shooting.
