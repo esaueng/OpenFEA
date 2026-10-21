@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "pnpm run typecheck",
+    "lint": "eslint .",
     "test": "vitest run"
   }
 }
