@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
@@ -15,7 +15,6 @@ const productionRoots = [
 const productionExtensions = new Set([".ts", ".tsx", ".mjs", ".cjs", ".js", ".jsx", ".json", ".jsonc", ".Dockerfile"]);
 
 const allowedPatterns = [
-  /(^|\/)legacy-calculix-container\//,
   /(^|\/)docs\//,
   /(^|\/)dist\//,
   /(^|\/)node_modules\//,
@@ -34,6 +33,7 @@ function collectFiles(entry) {
     return readdirSync(rootDir).filter((name) => /^wrangler.*\.jsonc$/.test(name));
   }
   const absolute = resolve(rootDir, entry);
+  if (!existsSync(absolute)) return [];
   const stat = statSync(absolute);
   if (stat.isFile()) return [entry];
   return collectDirectory(entry);
@@ -54,12 +54,15 @@ function collectDirectory(relativeDir) {
 }
 
 describe("CalculiX production quarantine", () => {
-  test("old FEA container service is absent or quarantined under legacy-calculix-container", () => {
-    const oldPath = resolve(rootDir, "services/openfea-fea-container");
-    const legacyPath = resolve(rootDir, "services/legacy-calculix-container");
-
-    expect(() => statSync(oldPath)).toThrow();
-    expect(() => statSync(legacyPath)).not.toThrow();
+  test("retired FEA container paths stay deleted", () => {
+    // The services/legacy-calculix-container tombstone was removed with the
+    // reference backend (R0.9); the token sweep below is the content guard.
+    for (const retiredPath of [
+      "services/openfea-fea-container",
+      "services/legacy-calculix-container"
+    ]) {
+      expect(existsSync(resolve(rootDir, retiredPath)), `${retiredPath} must stay deleted`).toBe(false);
+    }
   });
 
   test("package scripts expose no container commands (cloud solver retired 2026-07)", () => {
