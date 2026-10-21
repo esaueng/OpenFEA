@@ -199,6 +199,11 @@ export function toCsrMatrix(builder: SparseMatrixBuilder): CsrMatrix {
 
 export function csrMatVec(matrix: CsrMatrix, vector: Float64Array): Float64Array {
   const result = new Float64Array(matrix.rowCount);
+  csrMatVecInto(matrix, vector, result);
+  return result;
+}
+
+function csrMatVecInto(matrix: CsrMatrix, vector: Float64Array, result: Float64Array): void {
   for (let row = 0; row < matrix.rowCount; row += 1) {
     let sum = 0;
     for (let entry = matrix.rowPtr[row]; entry < matrix.rowPtr[row + 1]; entry += 1) {
@@ -206,7 +211,6 @@ export function csrMatVec(matrix: CsrMatrix, vector: Float64Array): Float64Array
     }
     result[row] = sum;
   }
-  return result;
 }
 
 export const sparseMatVec = csrMatVec;
@@ -264,8 +268,8 @@ export function solveConjugateGradient(
   const hasGuess = options.initialGuess !== undefined && options.initialGuess.length === rhs.length;
   const x = hasGuess ? Float64Array.from(options.initialGuess!) : new Float64Array(rhs.length);
   const r = Float64Array.from(rhs);
-  if (hasGuess) {
-    const ax = csrMatVec(matrix, x);
+  const ax = hasGuess ? csrMatVec(matrix, x) : undefined;
+  if (ax) {
     for (let i = 0; i < r.length; i += 1) r[i] -= ax[i];
   }
   const z = new Float64Array(rhs.length);
@@ -274,7 +278,8 @@ export function solveConjugateGradient(
   const diagonal = preconditioner === "none" ? undefined : csrDiagonal(matrix);
   const diagonalTolerance = diagonal ? sparseDiagonalTolerance(diagonal) : 0;
   const ssorOmega = validSparseSsorOmega(options.ssorOmega);
-  applyPreconditioner(matrix, r, z, diagonal, diagonalTolerance, preconditioner, ssorOmega);
+  const ssorForward = preconditioner === "ssor" ? new Float64Array(rhs.length) : undefined;
+  applyPreconditioner(matrix, r, z, diagonal, diagonalTolerance, preconditioner, ssorOmega, ssorForward);
   p.set(z);
   let rzOld = dot(r, z);
   const rhsNorm = norm(rhs);
@@ -294,6 +299,9 @@ export function solveConjugateGradient(
     };
   }
 
+  // Scratch belongs to this solve, including reentrant solves from hooks. The
+  // initial product is no longer needed after forming r and can be reused.
+  const ap = ax ?? new Float64Array(matrix.rowCount);
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
     if (shouldCancel?.()) {
       const residualNorm = norm(r);
@@ -310,7 +318,7 @@ export function solveConjugateGradient(
         relativeResidual
       };
     }
-    const ap = csrMatVec(matrix, p);
+    csrMatVecInto(matrix, p, ap);
     const denominator = dot(p, ap);
     const denominatorTolerance = sparseCurvatureTolerance(norm(p), norm(ap));
     if (!Number.isFinite(denominator) || denominator <= denominatorTolerance) {
@@ -342,7 +350,7 @@ export function solveConjugateGradient(
     if (iteration % 25 === 0) {
       emitProgress(iteration, relativeResidual);
     }
-    applyPreconditioner(matrix, r, z, diagonal, diagonalTolerance, preconditioner, ssorOmega);
+    applyPreconditioner(matrix, r, z, diagonal, diagonalTolerance, preconditioner, ssorOmega, ssorForward);
     const rzNew = dot(r, z);
     const beta = rzNew / rzOld;
     for (let i = 0; i < p.length; i += 1) {
@@ -423,10 +431,11 @@ function applyPreconditioner(
   diagonal: Float64Array | undefined,
   diagonalTolerance: number,
   preconditioner: "none" | "jacobi" | "ssor",
-  omega: number
+  omega: number,
+  ssorForward: Float64Array | undefined
 ): void {
   if (preconditioner === "ssor" && diagonal) {
-    applySsorPreconditioner(matrix, source, target, diagonal, omega, diagonalTolerance);
+    applySsorPreconditionerInto(matrix, source, target, diagonal, omega, diagonalTolerance, ssorForward);
     return;
   }
   for (let i = 0; i < source.length; i += 1) {
@@ -444,7 +453,18 @@ export function applySsorPreconditioner(
   omega = 1,
   diagonalTolerance = sparseDiagonalTolerance(diagonal)
 ): void {
-  const forward = new Float64Array(source.length);
+  applySsorPreconditionerInto(matrix, source, target, diagonal, omega, diagonalTolerance);
+}
+
+function applySsorPreconditionerInto(
+  matrix: CsrMatrix,
+  source: Float64Array,
+  target: Float64Array,
+  diagonal: Float64Array,
+  omega: number,
+  diagonalTolerance: number,
+  forward: Float64Array = new Float64Array(source.length)
+): void {
   for (let row = 0; row < matrix.rowCount; row += 1) {
     let value = source[row];
     for (let entry = matrix.rowPtr[row]; entry < matrix.rowPtr[row + 1]; entry += 1) {
