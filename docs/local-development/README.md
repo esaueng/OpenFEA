@@ -10,25 +10,17 @@ pnpm --filter @openfea/web dev
 
 OpenFEA Core packages are part of this monorepo under `packages/*`. `pnpm build:core` only builds those local packages; it does not install dependencies, clone another repository, or mutate the lockfile. CI and local verification should use `pnpm install --frozen-lockfile`.
 
-The web app runs at `http://localhost:5173` and handles geometry, meshing, solves, results, and reports locally. It does not need the reference API.
-
-For reference-backend development, `pnpm dev` starts the Fastify API on `http://localhost:4317` and the Vite web app on `http://localhost:5173`. The API creates and seeds the SQLite database if needed. It has no authentication or tenant isolation and must remain loopback-only.
+The web app runs at `http://localhost:5173` and handles geometry, meshing, solves, results, and reports locally. `pnpm dev` is shorthand for `pnpm --filter @openfea/web dev`.
 
 ## Commands
 
 ```bash
-pnpm db:migrate
-pnpm db:seed
-pnpm reset:local
 pnpm build
 pnpm test
 pnpm verify:perf
 ```
 
-- `pnpm db:migrate` prepares the local SQLite schema.
-- `pnpm db:seed` writes the seeded demo project and artifacts.
-- `pnpm reset:local` clears and reseeds local database state.
-- `pnpm build` builds the API and web app.
+- `pnpm build` builds the Core packages and the web app.
 - `pnpm test` runs the Vitest suite across the workspace.
 - `pnpm verify:perf` builds the web app and runs the web performance verifier.
 
