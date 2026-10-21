@@ -932,7 +932,7 @@ describe("RightPanel payload mass controls", () => {
     expect(editableNumberCommitValue("0.0", 0)).toBe(0);
   });
 
-  test("renders OpenFEA Core backend and fidelity controls for simulation runs", () => {
+  test("renders the local backend and no inert fidelity control for simulation runs", () => {
     const detailedStudy: Study = {
       ...study,
       solverSettings: { backend: "opencae_core_local", fidelity: "ultra" }
@@ -943,7 +943,8 @@ describe("RightPanel payload mass controls", () => {
 
     expect(runHtml).toContain("Simulation settings");
     expect(runHtml).toContain("Local (in-browser)");
-    expect(runHtml).toContain("Fidelity");
+    // Fidelity is stored for older files but no solve path reads it, so it is not offered.
+    expect(runHtml).not.toContain("Fidelity");
     expect(meshHtml).toContain("Ultra");
     // The heuristic sample count meant nothing to a user; the element size does (2026-09 review F5).
     expect(meshHtml).not.toContain("Analysis samples");
