@@ -376,6 +376,13 @@ describe("buildReportData", () => {
     expect(invalid.loadCapacity).toEqual([]);
   });
 
+  test("does not print the solver-inert fidelity setting", () => {
+    // No solve path reads fidelity, so printing it implied an accuracy control that does not exist.
+    const base = bracketDemoProject.studies[0]!;
+    const data = report({ study: { ...base, solverSettings: { backend: "auto", fidelity: "ultra" } } as Study });
+    expect(data.solver.map((row) => row.label)).not.toContain("Fidelity");
+  });
+
   test("adds dynamic solver and transient rows", () => {
     const dynamicStudy: Study = {
       ...bracketDemoProject.studies[0]!,

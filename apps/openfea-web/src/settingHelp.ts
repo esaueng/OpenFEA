@@ -118,7 +118,7 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
   },
   simulationSettings: {
     title: "Simulation settings",
-    body: "Settings that apply to the whole run rather than to any one load or face. The analysis type is locked while a run is in progress. Every run solves locally in your browser, so there is no compute backend to choose. Fidelity is saved with the study and printed on the report, but no solve path reads it today: it does not change mesh density, solver tolerance, or accuracy.",
+    body: "Settings that apply to the whole run rather than to any one load or face. The analysis type is locked while a run is in progress. Every run solves locally in your browser, so there is no compute backend to choose.",
     visual: "results"
   },
   preconfigured: {
