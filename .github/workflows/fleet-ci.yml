@@ -146,9 +146,60 @@ jobs:
             flock --exclusive 9
           fi
           pnpm verify:project-results-browser
+  # The mesh and offline proofs need the URL harness that release builds strip,
+  # so they get their own VITE_BROWSER_PROOF=1 build instead of reusing the
+  # release artifact that `quality` budget-checks.
+  browser-proof:
+    needs: quality
+    if: always() && !cancelled() && needs.quality.result == 'success'
+    timeout-minutes: 30
+    runs-on: *fleet-runner
+    steps:
+      - *fleet-isolation
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build OpenFEA Core packages
+        run: |
+          pnpm --filter @openfea/core build
+          pnpm --filter @openfea/examples build
+          pnpm --filter @openfea/solver-cpu build
+          pnpm --filter @openfea/solver-webgpu build
+          pnpm --filter @openfea/viewer build
+
+      - name: Build browser-proof web app
+        env:
+          VITE_BROWSER_PROOF: "1"
+        run: pnpm --filter @openfea/web build
+
+      - name: Verify in-browser Gmsh meshing and solve in Chrome
+        run: |
+          if [ "${{ runner.environment }}" = self-hosted ]; then
+            exec 9</run/ci-browser.lock
+            flock --exclusive 9
+          fi
+          pnpm verify:wasm-mesh-browser
+
+      - name: Verify offline PWA mesh and solve in Chrome
+        run: |
+          if [ "${{ runner.environment }}" = self-hosted ]; then
+            exec 9</run/ci-browser.lock
+            flock --exclusive 9
+          fi
+          pnpm verify:offline-pwa
   test:
     name: test
-    needs: [quality, browser]
+    needs: [quality, browser, browser-proof]
     if: always()
     timeout-minutes: 10
     runs-on: *fleet-runner

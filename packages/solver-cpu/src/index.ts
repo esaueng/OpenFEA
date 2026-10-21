@@ -33,7 +33,9 @@ export { computeTet4Geometry } from "./geometry";
 export { ELEMENT_GEOMETRY_POLICY, elementCharacteristicLength, elementVolumeTolerance } from "./geometry-policy";
 export {
   boundedStructuralMaxDofs,
+  boundedThermalMaxDofs,
   DEFAULT_STRUCTURAL_MAX_DOFS,
+  DEFAULT_THERMAL_MAX_DOFS,
   structuralDofCount,
   structuralDofLimitError
 } from "./limits";

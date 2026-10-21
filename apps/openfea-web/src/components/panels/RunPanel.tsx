@@ -4,7 +4,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 
 import { AlertTriangle, Check, Play, X } from "lucide-react";
 
-import type { DisplayModel, DynamicSolverSettings, SimulationFidelity, Study } from "@openfea/schema";
+import type { DisplayModel, DynamicSolverSettings, Study } from "@openfea/schema";
 
 import { STUDY_TYPE_LABELS, studyTypeSwitchConsequence } from "../../studyTypeSwitch";
 
@@ -12,10 +12,10 @@ import { type SettingHelpId } from "../../settingHelp";
 
 import { defaultSolverMethodForStudy } from "../../unitDisplay";
 
-import type { RightPanelProps, SolverSettingsPatch } from "./RightPanelProps";
+import type { RightPanelProps } from "./RightPanelProps";
 import { Panel } from "./PanelChrome";
-import { DEFAULT_DYNAMIC_LOAD_PROFILE_HELPER, DEFAULT_DYNAMIC_OUTPUT_INTERVAL_SECONDS, DYNAMIC_LOAD_PROFILE_OPTIONS, MIN_DYNAMIC_OUTPUT_INTERVAL_SECONDS, SIMULATION_FIDELITIES } from "./RightPanelProps";
-import { HelpLabel, Info, SectionTitle, capitalize, dynamicFrameEstimate, formatSeconds, isDynamicLoadProfile, normalizedDynamicOutputInterval } from "./PanelChrome";
+import { DEFAULT_DYNAMIC_LOAD_PROFILE_HELPER, DEFAULT_DYNAMIC_OUTPUT_INTERVAL_SECONDS, DYNAMIC_LOAD_PROFILE_OPTIONS, MIN_DYNAMIC_OUTPUT_INTERVAL_SECONDS } from "./RightPanelProps";
+import { HelpLabel, Info, SectionTitle, dynamicFrameEstimate, formatSeconds, isDynamicLoadProfile, normalizedDynamicOutputInterval } from "./PanelChrome";
 export function RunPanel({ study, displayModel, runProgress, runError, runTiming, solveElapsedMs, onRunSimulation, onCancelSimulation, canCancelSimulation, onUpdateSolverSettings, onChangeStudyType, canRunSimulation, missingRunItems, runReadiness }: RightPanelProps) {
   const progressPercent = Math.max(0, Math.min(100, Math.round(runProgress)));
   const isRunning = canCancelSimulation ?? (progressPercent > 0 && progressPercent < 100);
@@ -48,10 +48,6 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
   const dynamic = study.type === "dynamic_structural" ? study.solverSettings : null;
   const modal = study.type === "modal_analysis" ? study.solverSettings : null;
   const thermal = study.type === "steady_state_thermal";
-  const fidelity = solverFidelityForStudy(study);
-  const updateSolverChoice = (settings: SolverSettingsPatch) => {
-    onUpdateSolverSettings?.(settings);
-  };
   const updateDynamicNumber = (key: keyof Pick<DynamicSolverSettings, "startTime" | "endTime" | "timeStep" | "outputInterval" | "dampingRatio">, value: number) => {
     if (!Number.isFinite(value)) return;
     onUpdateSolverSettings?.({ [key]: value });
@@ -113,12 +109,6 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
           </p>
         )}
       </div>
-      <label className="field">
-        <span>Fidelity</span>
-        <select value={fidelity} onChange={(event) => updateSolverChoice({ fidelity: event.currentTarget.value as SimulationFidelity })}>
-          {SIMULATION_FIDELITIES.map((option) => <option key={option} value={option}>{capitalize(option)}</option>)}
-        </select>
-      </label>
       {dynamic && (
         <>
           <SectionTitle>Dynamic settings</SectionTitle>
@@ -298,11 +288,6 @@ export function editableNumberCommitValue(rawValue: string, min: number): number
 
 function formatEditableNumberValue(value: number): string {
   return Number.isFinite(value) ? String(value) : "";
-}
-
-function solverFidelityForStudy(study: Study): SimulationFidelity {
-  const fidelity = (study.solverSettings as { fidelity?: unknown }).fidelity;
-  return fidelity === "detailed" || fidelity === "ultra" ? fidelity : "standard";
 }
 
 // Solver info rows show the backend the run will actually use. Every run
