@@ -774,7 +774,7 @@ export function buildOpenFeaCoreModelForStudy(
   model = {
     ...model,
     schemaVersion: OPENFEA_MODEL_SCHEMA_VERSION,
-    materials: [coreMaterial],
+    materials: [materialInModelUnits(coreMaterial, model.coordinateSystem?.solverUnits)],
     // Stored mesh artifacts carry the material resolved at mesh time; the run
     // applies the study's current material, so every block must follow it or
     // model validation rejects the dangling mesh-time reference.
@@ -1473,6 +1473,24 @@ type MaterialStudyResolution = {
   material: ReturnType<typeof resolveMaterial>;
   parameters: Record<string, unknown>;
 };
+
+/**
+ * Catalog properties are SI (Pa, kg/m^3, W/(m K)). A stored mm-N-s-MPa model
+ * needs MPa, tonne/mm^3 and W/(mm K), the same conversion mesh intake applies.
+ */
+function materialInModelUnits<T extends { youngModulus: number; yieldStrength?: number; density?: number; thermalConductivity?: number }>(
+  material: T,
+  solverUnits: string | undefined
+): T {
+  if (solverUnits !== "mm-N-s-MPa") return material;
+  return {
+    ...material,
+    youngModulus: material.youngModulus / 1_000_000,
+    ...(material.yieldStrength !== undefined ? { yieldStrength: material.yieldStrength / 1_000_000 } : {}),
+    ...(material.density !== undefined ? { density: material.density / 1e12 } : {}),
+    ...(material.thermalConductivity !== undefined ? { thermalConductivity: material.thermalConductivity / 1000 } : {})
+  };
+}
 
 function materialForStudy(study: Study, customMaterials: readonly CustomMaterial[] = []): MaterialStudyResolution {
   const assignment = study.materialAssignments[0];
