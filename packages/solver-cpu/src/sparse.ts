@@ -482,7 +482,12 @@ function applySsorPreconditionerInto(
       if (col > row) value -= omega * matrix.values[entry] * target[col];
     }
     const d = diagonal[row];
-    target[row] = factor * (usableSparseDiagonal(d, diagonalTolerance) ? value / d : value);
+    target[row] = usableSparseDiagonal(d, diagonalTolerance) ? value / d : value;
+  }
+  // Back substitution consumes unscaled later rows. Scaling each row early
+  // changes the triangular solve and makes M^-1 nonsymmetric when omega != 1.
+  if (factor !== 1) {
+    for (let row = 0; row < matrix.rowCount; row += 1) target[row] *= factor;
   }
 }
 
