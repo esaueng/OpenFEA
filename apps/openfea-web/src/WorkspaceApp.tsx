@@ -1905,6 +1905,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     setLogs([]);
   }
 
+  // UI callbacks call this fire-and-forget (`void updateStudy(...)`): nothing
+  // awaits the commit, and the result reaches the user through pushMessage.
   async function updateStudy(action: Promise<{ study: Study; message: string }>, nextStep?: StepId) {
     const response = await action;
     // Snapshot the latest committed project (not the render closure) so quick consecutive mutations
@@ -2438,7 +2440,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     setRunProgress(0);
     setRunTiming(null);
     pushMessage(response.message);
-    const source = subscribeToRun(response.run.id, async (event: RunEvent) => {
+    const handleRunEvent = async (event: RunEvent) => {
       if (typeof event.progress === "number") setRunProgress(event.progress);
       setRunTiming(timingFromRunEvent(event));
       pushMessage(messageWithEta(event));
@@ -2517,7 +2519,9 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         if (event.type === "error") { trackUsage("solver_failed"); trackDetail("error_solver"); }
         if (event.type === "error") setRunError(event.message || "Simulation run failed.");
       }
-    });
+    };
+    // Run events are push notifications; the handler catches its own result-loading failures.
+    const source = subscribeToRun(response.run.id, (event) => void handleRunEvent(event));
     activeRunSourceRef.current = source;
     processingRunIdRef.current = response.run.id;
   }
@@ -2659,7 +2663,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         {showRunButton ? (
           <button
             className={`primary topbar-action ${solverRunning ? "running" : ""}`}
-            onClick={solverRunning ? () => void handleCancelSimulation() : handleRunSimulation}
+            onClick={solverRunning ? () => void handleCancelSimulation() : () => void handleRunSimulation()}
             disabled={solverRunning ? false : !effectiveCanRunSimulation}
             title={solverRunning ? "Stop the running simulation" : effectiveMissingRunItems.length ? `Complete before running: ${effectiveMissingRunItems.join(", ")}` : "Run simulation"}
             aria-label={solverRunning ? `Stop simulation: ${runButtonProgress}% complete` : "Run simulation"}
@@ -2883,7 +2887,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           onSectionPlaneChange={setSectionPlane}
           onStressExaggerationChange={setStressExaggeration}
           onAssignMaterial={(materialId, parameters) =>
-            updateStudy(assignMaterial(study.id, materialId, parameters, study, project?.customMaterials), shouldAutoAdvanceAfterMaterialAssignment() ? "supports" : undefined)
+            void updateStudy(assignMaterial(study.id, materialId, parameters, study, project?.customMaterials), shouldAutoAdvanceAfterMaterialAssignment() ? "supports" : undefined)
           }
           onSaveCustomMaterial={handleSaveCustomMaterial}
           onDeleteCustomMaterial={handleDeleteCustomMaterial}
@@ -2897,7 +2901,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
                 parameters: { label: nextSupportLabel(study.constraints, "prescribed_temperature"), value: options.value ?? 20, units: "°C" },
                 status: "complete"
               };
-              updateStudy(saveStudyPatch(study.id, { constraints: [...study.constraints, constraint] }, "Temperature boundary added.", study));
+              void updateStudy(saveStudyPatch(study.id, { constraints: [...study.constraints, constraint] }, "Temperature boundary added.", study));
               return;
             }
             if (options?.type === "prescribed_displacement") {
@@ -2916,7 +2920,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
                 },
                 status: "complete"
               };
-              updateStudy(saveStudyPatch(
+              void updateStudy(saveStudyPatch(
                 study.id,
                 { constraints: [...study.constraints, constraint] },
                 extraRefs.length ? `Prescribed displacement added on ${extraRefs.length + 1} faces.` : "Prescribed displacement added.",
@@ -2926,7 +2930,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             }
             const extraRefs = [...new Set((extras?.selectionRefs ?? []).filter((ref) => ref && ref !== selectionRef))];
             if (!extraRefs.length) {
-              updateStudy(addSupport(study.id, selectionRef, study));
+              void updateStudy(addSupport(study.id, selectionRef, study));
               return;
             }
             const constraint: Constraint = {
@@ -2937,7 +2941,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
               parameters: { label: nextSupportLabel(study.constraints, "fixed") },
               status: "complete"
             };
-            updateStudy(saveStudyPatch(
+            void updateStudy(saveStudyPatch(
               study.id,
               { constraints: [...study.constraints, constraint] },
               `Fixed support added on ${extraRefs.length + 1} faces.`,
@@ -2960,7 +2964,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             );
           }}
           onRemoveSupport={(supportId) =>
-            updateStudy(saveStudyPatch(study.id, { constraints: study.constraints.filter((item) => item.id !== supportId) }, "Support removed.", study))
+            void updateStudy(saveStudyPatch(study.id, { constraints: study.constraints.filter((item) => item.id !== supportId) }, "Support removed.", study))
           }
           onDraftLoadTypeChange={(type) => {
             setDraftLoadType(type);
@@ -2985,7 +2989,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             const { selectionRefs: extraRefsRaw, ...restMetadata } = payloadMetadata;
             const extraRefs = [...new Set((extraRefsRaw ?? []).filter((ref) => ref && ref !== selectionRef))];
             if (selection) {
-              updateStudy(addLoad(
+              void updateStudy(addLoad(
                 study.id, type, value, selection.id,
                 directionVectorForLabel(direction, directionFace, displayModel ?? undefined),
                 applicationPoint, payloadObject, study,
@@ -3020,7 +3024,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           }}
           onPreviewLoadEdit={setPreviewLoadEdit}
           onRemoveLoad={(loadId) =>
-            updateStudy(saveStudyPatch(study.id, {
+            void updateStudy(saveStudyPatch(study.id, {
               loads: study.loads.filter((item) => item.id !== loadId),
               ...((study.type === "static_stress" || study.type === "dynamic_structural") ? {
                 loadCases: structuralLoadCases(study).map((loadCase) => ({ ...loadCase, loadIds: loadCase.loadIds.filter((id) => id !== loadId) }))
@@ -3028,10 +3032,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             }, "Load removed.", study))
           }
           onLoadCasesChange={(loadCases, loadCombinations) =>
-            updateStudy(saveStudyPatch(study.id, { loadCases, loadCombinations }, "Load cases updated.", study))
+            void updateStudy(saveStudyPatch(study.id, { loadCases, loadCombinations }, "Load cases updated.", study))
           }
           onGenerateMesh={handleGenerateMesh}
-          onConnectionsChange={(contacts) => updateStudy(saveStudyPatch(study.id, { contacts, meshSettings: { ...study.meshSettings, status: "not_started", meshRef: undefined, summary: undefined } }, "Assembly connections updated. Regenerate the mesh.", study))}
+          onConnectionsChange={(contacts) => void updateStudy(saveStudyPatch(study.id, { contacts, meshSettings: { ...study.meshSettings, status: "not_started", meshRef: undefined, summary: undefined } }, "Assembly connections updated. Regenerate the mesh.", study))}
           onCancelMesh={handleCancelMesh}
           meshPhaseProgress={meshPhaseProgress}
           meshError={meshError}
@@ -3040,8 +3044,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           convergenceProgress={convergenceProgress}
           onUpdateSolverSettings={handleUpdateSolverSettings}
           onChangeStudyType={handleChangeStudyType}
-          onRunSimulation={handleRunSimulation}
-          onCancelSimulation={handleCancelSimulation}
+          onRunSimulation={() => void handleRunSimulation()}
+          onCancelSimulation={() => void handleCancelSimulation()}
           canCancelSimulation={solverRunning}
           canRunSimulation={effectiveCanRunSimulation}
           missingRunItems={effectiveMissingRunItems}
