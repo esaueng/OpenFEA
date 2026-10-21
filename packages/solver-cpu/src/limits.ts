@@ -1,6 +1,9 @@
 import type { CpuSolverError } from "./types";
 
 export const DEFAULT_STRUCTURAL_MAX_DOFS = 150_000;
+// Thermal has one scalar temperature DOF per node; this is intentionally
+// separate from the structural translation-DOF product contract.
+export const DEFAULT_THERMAL_MAX_DOFS = 150_000;
 
 type StructuralNodeModel = {
   nodes: {
@@ -20,6 +23,16 @@ export function boundedStructuralMaxDofs(
   return requestedLimit === undefined
     ? DEFAULT_STRUCTURAL_MAX_DOFS
     : Math.min(requestedLimit, DEFAULT_STRUCTURAL_MAX_DOFS);
+}
+
+/** A caller may lower the thermal temperature-DOF cap but cannot raise the solver-owned ceiling. */
+export function boundedThermalMaxDofs(
+  requested: unknown
+): number {
+  const requestedLimit = positiveInteger(requested);
+  return requestedLimit === undefined
+    ? DEFAULT_THERMAL_MAX_DOFS
+    : Math.min(requestedLimit, DEFAULT_THERMAL_MAX_DOFS);
 }
 
 export function structuralDofLimitError(dofs: number, maxDofs: number): CpuSolverError | undefined {

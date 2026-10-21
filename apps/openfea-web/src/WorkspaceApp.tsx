@@ -15,7 +15,7 @@ import { StartScreen } from "./components/StartScreen";
 import { StepNav, type StepId } from "./components/StepNav";
 import { ProjectMenu } from "./components/ProjectMenu";
 import { readinessForStudy } from "./runReadiness";
-import { BoundaryConditionMenu, CreateSimulationScreen } from "./components/SimulationWorkflow";
+import { CreateSimulationScreen } from "./components/SimulationWorkflow";
 import {
   createViewerLoadMarkers,
   directionVectorForLabel,
@@ -270,7 +270,6 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const [sampleModel, setSampleModel] = useState<SampleModelId>(restoredUi?.sampleModel ?? "bracket");
   const [sampleAnalysisType, setSampleAnalysisType] = useState<SampleAnalysisType>(restoredUi?.sampleAnalysisType ?? "static_stress");
   const [previewPrintLayerOrientation, setPreviewPrintLayerOrientation] = useState<PrintLayerOrientation | null | undefined>(undefined);
-  const [showBoundaryConditionMenu, setShowBoundaryConditionMenu] = useState(false);
   const [isRepairingModel, setIsRepairingModel] = useState(false);
   const [singleKeyShortcutsEnabled, setSingleKeyShortcutsEnabled] = useState(() => {
     try {
@@ -2215,7 +2214,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     setCaptureViewMode(null);
   }
 
-  function handleUpdateSolverSettings(settings: Partial<DynamicSolverSettings & ModalSolverSettings> & { fidelity?: SimulationFidelity }) {
+  function handleUpdateSolverSettings(settings: Partial<DynamicSolverSettings & ModalSolverSettings>) {
     if (!study) return;
     const nextSettings = study.type === "dynamic_structural"
       ? normalizedDynamicSolverSettings(study.solverSettings, { ...study.solverSettings, ...settings }, settings)
@@ -2291,18 +2290,6 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
 
   function isDynamicLoadProfile(value: unknown): value is DynamicSolverSettings["loadProfile"] {
     return value === "ramp" || value === "step" || value === "quasi_static" || value === "sinusoidal";
-  }
-
-  function handleBoundaryConditionType(type: "fixed" | "prescribed_displacement" | "prescribed_temperature" | LoadType) {
-    setShowBoundaryConditionMenu(false);
-    if (type === "fixed" || type === "prescribed_displacement" || type === "prescribed_temperature") {
-      // The face stays selected; the Supports panel's Add button commits it.
-      applyStep("supports");
-      return;
-    }
-    setDraftLoadType(type);
-    setDraftLoadValue(defaultValueForLoadType(type));
-    applyStep("loads");
   }
 
   function handleRotateModel(axis: RotationAxis) {
@@ -3076,14 +3063,6 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           onResultPlaybackReverseLoopChange={setResultPlaybackReverseLoop}
           onStepSelect={handleStepSelect}
         />
-        {showBoundaryConditionMenu && study ? (
-          <BoundaryConditionMenu
-            open
-            studyType={study.type}
-            onSelect={handleBoundaryConditionType}
-            onClose={() => setShowBoundaryConditionMenu(false)}
-          />
-        ) : null}
       </main>
 
       <BottomPanel
@@ -3188,22 +3167,15 @@ function latestCompletedRunId(study: Study | null, activeRunId: string): string 
 }
 
 function runDiagnosticsMessage(study: Study, displayModel?: DisplayModel): string {
-  const fidelity = solverFidelityForDiagnostics(study);
   const resolvedBackend = resolveSolverBackend(study, displayModel);
   return [
     `Run diagnostics: backend=${resolvedBackend.backend}${resolvedBackend.source === "auto" ? " (auto)" : ""}`,
-    `fidelity=${fidelity}`,
     `analysis=${study.type}`,
     `materials=${study.materialAssignments.length}`,
     `supports=${study.constraints.length}`,
     `loads=${study.loads.length}`,
     `mesh=${study.meshSettings.status}`
   ].join("; ") + ".";
-}
-
-function solverFidelityForDiagnostics(study: Study): SimulationFidelity {
-  const fidelity = (study.solverSettings as { fidelity?: unknown }).fidelity;
-  return fidelity === "detailed" || fidelity === "ultra" || fidelity === "standard" ? fidelity : "standard";
 }
 
 /**
@@ -3421,15 +3393,6 @@ function faceForPayloadObject(payloadObject: PayloadObjectSelection): DisplayFac
     normal: [0, 0, 1],
     stressValue: 0
   };
-}
-
-function defaultValueForLoadType(type: LoadType) {
-  if (type === "heat_flux") return 10_000;
-  if (type === "heat_generation") return 1_000_000;
-  if (type === "pressure" || type === "surface_traction") return 100;
-  if (type === "volume_force") return 1000;
-  if (type === "gravity") return 5;
-  return 500;
 }
 
 async function saveProjectToLocalDisk(project: Project, displayModel: DisplayModel, results?: LocalResultBundle): Promise<{ savedAt: string; handle?: SaveFilePickerHandle } | null> {

@@ -2,8 +2,6 @@ packages:
   - "packages/*"
   - "apps/*"
   - "libs/*"
-  - "services/*"
-  - "runners/*"
 overrides:
   # jsPDF pulls dompurify in as an optionalDependency for its html() path. That
   # path is aliased to a throwing stub in apps/openfea-web/vite.config.ts, so no
@@ -36,10 +34,9 @@ overrides:
   # (DoS via unbounded intermediate arrays bypassing the first fix).
   "brace-expansion@^5.0.0": "^5.0.9"
   # GHSA-7p8r-x3mc-p8w7 (high): fast-uri host confusion via backslash authority
-  # introducer. Transitive through fastify (reference API): ajv wants ^3.0.1,
-  # fast-json-stringify@7 wants ^4.0.0 — both patched floors stay in range.
+  # introducer. Build-time only (vite-plugin-pwa -> workbox-build -> ajv, which
+  # wants ^3.0.1); the patched floor stays in range.
   "fast-uri@^3.0.0": "^3.1.6"
-  "fast-uri@^4.0.0": "^4.1.3"
   # GHSA-2v37-7h3g-55p8 (high): nanoid <3.3.18 custom generators can loop forever
   # on size zero. Build-time only (vite -> postcss); ^3.3.17 range accepts it.
   "nanoid@^3.0.0": "^3.3.18"
@@ -51,16 +48,12 @@ overrides:
   "sharp@^0.35.0": "^0.35.5"
   "fflate@^0.8.0": "^0.8.3"
   "fflate@^0.6.0": "^0.6.11"
-  # concurrently invokes the shell parser in development only.
-  "shell-quote@^1.0.0": "^1.11.0"
 allowBuilds:
-  better-sqlite3: true
   core-js: false
   esbuild: true
   sharp: true
   workerd: true
 onlyBuiltDependencies:
-  - better-sqlite3
   - esbuild
   - sharp
   - workerd
