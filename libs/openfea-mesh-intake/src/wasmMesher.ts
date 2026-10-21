@@ -37,11 +37,25 @@ export type StepMeshWasmOptions = MeshWasmOptions & {
   fuseBodyGroups?: StepBodyBounds[][];
   /** Preserve imported STEP volumes as separate mesh components for assembly connections. Defaults to false for legacy single-part studies. */
   preservePartIdentity?: boolean;
+  /**
+   * Per-body materials (plan 036 R1.3): name every meshed volume after the
+   * preview body it came from, so each body's elements form their own
+   * `name` physical volume. Without explicit assembly connections, touching
+   * bodies are fragmented (conformal shared interface, separate volumes)
+   * instead of fused into one volume that would lose body identity.
+   */
+  bodyIdentities?: StepBodyIdentity[];
 };
 
 export type StepBodyBounds = {
   min: [number, number, number];
   max: [number, number, number];
+};
+
+export type StepBodyIdentity = {
+  /** Physical volume name stamped on the body's elements. */
+  name: string;
+  bounds: StepBodyBounds;
 };
 
 export type GeoMeshResult = {
@@ -163,6 +177,8 @@ export class StepGeometryError extends Error {
 /** Stable marker for the repair path that starts with a volume but loses it while sewing. */
 export const STEP_GEOMETRY_REPAIR_LOST_VOLUME_ERROR_NAME = "StepGeometryRepairLostVolume";
 
+/** Per-body identity failures are not open-surface problems; their own action replaces that advice. */
+const ONE_MATERIAL_ACTION = "use one material for the whole model.";
 const FIX_OPEN_SURFACES_ACTION =
   "Use Fix open surfaces on the Model step, or re-export the part from CAD as a solid body.";
 
@@ -496,7 +512,7 @@ export function diagnoseStepMeshFailure(error: Error): Error {
 
 function withStepGeometryAction(error: Error): Error {
   if (error.name !== "StepGeometryError" && !isRepairLostVolumeError(error)) return error;
-  if (error.message.includes("Fix open surfaces")) return error;
+  if (error.message.includes("Fix open surfaces") || error.message.includes(ONE_MATERIAL_ACTION)) return error;
   return new StepGeometryError(`${error.message} ${FIX_OPEN_SURFACES_ACTION}`);
 }
 
@@ -700,6 +716,8 @@ function meshStepSession(
       // and the connected-component check own that case).
       if (options.fuseBodyGroups?.length) {
         multiBodyFusion = fuseRequestedStepVolumeGroups(gmsh, options.fuseBodyGroups);
+      } else if (options.bodyIdentities?.length && !options.preservePartIdentity) {
+        fragmentStepVolumesConformally(gmsh);
       } else if (!options.preservePartIdentity) {
         multiBodyFusion = fuseImportedStepVolumes(gmsh);
       }
@@ -726,7 +744,8 @@ function meshStepSession(
       // the parser) — the input the A-M3 facet->face attribution votes over.
       // Without physical groups gmsh writes physicalTag 0 for every element
       // and the parser collapses the whole boundary into one set.
-      addPerSurfacePhysicalGroups(gmsh);
+      // Matched after repair: healing may renumber volumes.
+      addPerSurfacePhysicalGroups(gmsh, options.bodyIdentities?.length ? volumeBodyNames(gmsh, options.bodyIdentities) : undefined);
     });
     timePhaseSync(timings, options, "mesh2d", totalStart, () => gmsh.model.mesh.generate(2));
     timePhaseSync(timings, options, "mesh3d", totalStart, () => gmsh.model.mesh.generate(3));
@@ -928,6 +947,67 @@ function fuseRequestedStepVolumeGroups(gmsh: GmshApi, requestedGroups: StepBodyB
     throw new StepGeometryError("Boolean fuse did not join every selected STEP body. Confirm that each selected body pair touches or overlaps.");
   }
   return { inputVolumeCount: volumeTags.length, fusedVolumeCount };
+}
+
+/**
+ * Boolean fragments (OCC general fuse) of every imported volume: touching
+ * bodies share one conformal interface, so the mesh stays one connected
+ * component, while each body remains its own volume. Overlapping bodies would
+ * leave an intersection volume owned by two bodies, which has no single
+ * material, so they are rejected.
+ */
+function fragmentStepVolumesConformally(gmsh: GmshApi): void {
+  const volumeTags = entityTags(gmsh, 3);
+  if (volumeTags.length < 2) return;
+  const [firstTag, ...restTags] = volumeTags;
+  let outDimTagsMap: number[][];
+  try {
+    ({ outDimTagsMap } = gmsh.model.occ.fragment([3, firstTag!], restTags.flatMap((tag) => [3, tag])));
+    gmsh.model.occ.synchronize();
+  } catch (error) {
+    throw new StepGeometryError(`Could not join the STEP bodies at their shared faces: ${error instanceof Error ? error.message : "OpenCASCADE fragment failed."}`);
+  }
+  const sourceCountByVolume = new Map<number, number>();
+  for (const dimTags of outDimTagsMap) {
+    for (let index = 0; index + 1 < dimTags.length; index += 2) {
+      if (dimTags[index] !== 3) continue;
+      const tag = dimTags[index + 1]!;
+      sourceCountByVolume.set(tag, (sourceCountByVolume.get(tag) ?? 0) + 1);
+    }
+  }
+  if ([...sourceCountByVolume.values()].some((count) => count > 1)) {
+    throw new StepGeometryError(
+      `Two or more STEP bodies overlap. Per-body materials need bodies that touch without interpenetrating; remove the overlap in CAD or ${ONE_MATERIAL_ACTION}`
+    );
+  }
+}
+
+/** Name each final volume after its source body: exact bounds first, else the first body inside a fused volume. */
+function volumeBodyNames(gmsh: GmshApi, identities: readonly StepBodyIdentity[]): Map<number, string> {
+  const names = new Map<number, string>();
+  for (const tag of entityTags(gmsh, 3)) {
+    const bounds = boundsFromGmsh(gmsh.model.getBoundingBox(3, tag));
+    let best: { identity: StepBodyIdentity; score: number } | undefined;
+    for (const identity of identities) {
+      const score = stepBoundsMatchScore(identity.bounds, bounds);
+      if (!best || score < best.score) best = { identity, score };
+    }
+    const identity = best && best.score <= 0.1
+      ? best.identity
+      : identities.find((candidate) => boundsContain(bounds, candidate.bounds));
+    if (!identity) {
+      throw new StepGeometryError(`Could not match a meshed STEP volume to its source body, so per-body materials cannot be applied; ${ONE_MATERIAL_ACTION}`);
+    }
+    names.set(tag, identity.name);
+  }
+  return names;
+}
+
+function boundsContain(outer: StepBodyBounds, inner: StepBodyBounds): boolean {
+  const tolerance = 1e-6 * Math.max(Math.hypot(...boundsSize(outer)), 1e-9);
+  return [0, 1, 2].every((axis) =>
+    inner.min[axis]! >= outer.min[axis]! - tolerance && inner.max[axis]! <= outer.max[axis]! + tolerance
+  );
 }
 
 function retainStructuralStepVolumes(gmsh: GmshApi, structuralBounds: StepBodyBounds[]): void {
@@ -1498,17 +1578,31 @@ function orderedOpenBoundaryLoops(gmsh: GmshApi): number[][] {
   return loops;
 }
 
-function addPerSurfacePhysicalGroups(gmsh: GmshApi): void {
+function addPerSurfacePhysicalGroups(gmsh: GmshApi, bodyNameByVolume?: ReadonlyMap<number, string>): void {
   for (const tag of entityTags(gmsh, 2)) {
+    // A fragmented interface bounds two volumes; it is interior to the solid
+    // and must not become a boundary facet set.
+    if (bodyNameByVolume && gmsh.model.getAdjacencies(2, tag).upward.length > 1) continue;
     const physical = gmsh.model.addPhysicalGroup(2, [tag], -1);
     gmsh.model.setPhysicalName(2, physical, `surface_${tag}`);
   }
   // Volume group so gmsh still writes the volume elements once physical
   // groups exist (only physical entities are saved by default).
   const volumeTags = entityTags(gmsh, 3);
-  if (volumeTags.length > 0) {
+  if (volumeTags.length === 0) return;
+  if (!bodyNameByVolume) {
     const physical = gmsh.model.addPhysicalGroup(3, volumeTags, -1);
     gmsh.model.setPhysicalName(3, physical, "solid");
+    return;
+  }
+  const tagsByName = new Map<string, number[]>();
+  for (const tag of volumeTags) {
+    const name = bodyNameByVolume.get(tag)!;
+    tagsByName.set(name, [...(tagsByName.get(name) ?? []), tag]);
+  }
+  for (const [name, tags] of tagsByName) {
+    const physical = gmsh.model.addPhysicalGroup(3, tags, -1);
+    gmsh.model.setPhysicalName(3, physical, name);
   }
 }
 
