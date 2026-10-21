@@ -2212,7 +2212,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     setCaptureViewMode(null);
   }
 
-  function handleUpdateSolverSettings(settings: Partial<DynamicSolverSettings & ModalSolverSettings> & { fidelity?: SimulationFidelity }) {
+  function handleUpdateSolverSettings(settings: Partial<DynamicSolverSettings & ModalSolverSettings>) {
     if (!study) return;
     const nextSettings = study.type === "dynamic_structural"
       ? normalizedDynamicSolverSettings(study.solverSettings, { ...study.solverSettings, ...settings }, settings)
@@ -3163,22 +3163,15 @@ function latestCompletedRunId(study: Study | null, activeRunId: string): string 
 }
 
 function runDiagnosticsMessage(study: Study, displayModel?: DisplayModel): string {
-  const fidelity = solverFidelityForDiagnostics(study);
   const resolvedBackend = resolveSolverBackend(study, displayModel);
   return [
     `Run diagnostics: backend=${resolvedBackend.backend}${resolvedBackend.source === "auto" ? " (auto)" : ""}`,
-    `fidelity=${fidelity}`,
     `analysis=${study.type}`,
     `materials=${study.materialAssignments.length}`,
     `supports=${study.constraints.length}`,
     `loads=${study.loads.length}`,
     `mesh=${study.meshSettings.status}`
   ].join("; ") + ".";
-}
-
-function solverFidelityForDiagnostics(study: Study): SimulationFidelity {
-  const fidelity = (study.solverSettings as { fidelity?: unknown }).fidelity;
-  return fidelity === "detailed" || fidelity === "ultra" || fidelity === "standard" ? fidelity : "standard";
 }
 
 /**

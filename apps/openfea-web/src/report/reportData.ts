@@ -640,7 +640,6 @@ function solverRows(input: BuildReportDataInput, summary: ResultSummary): Report
   const rows: ReportRow[] = [
     { label: "Analysis type", value: input.study.type === "dynamic_structural" ? "Dynamic structural" : input.study.type === "modal_analysis" ? "Modal analysis" : input.study.type === "steady_state_thermal" ? "Steady-state thermal" : "Static stress" },
     { label: "Backend", value: settings.backend === "opencae_core_local" ? "OpenFEA Core local" : "Automatic (local-first)" },
-    { label: "Fidelity", value: humanize(settings.fidelity ?? "standard") },
     { label: "Solver method", value: solverMethodForResult(summary, input.study) },
     { label: "Core version", value: provenance?.coreVersion ?? MISSING },
     { label: "Solver version", value: provenance?.solverCpuVersion ?? provenance?.solverVersion ?? MISSING },

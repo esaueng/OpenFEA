@@ -2,7 +2,7 @@
    Panels import from here; they never import each other. */
 import { useEffect, useLayoutEffect } from "react";
 
-import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, LoadCase, LoadCombination, MeshConnection, MeshQuality, ModalSolverSettings, Project, ResultField, ResultSummary, RunTimingEstimate, RunVariantRef, SimulationFidelity, Study } from "@openfea/schema";
+import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, LoadCase, LoadCombination, MeshConnection, MeshQuality, ModalSolverSettings, Project, ResultField, ResultSummary, RunTimingEstimate, RunVariantRef, Study } from "@openfea/schema";
 
 import type { RunReadinessItem } from "../../runReadiness";
 
@@ -166,9 +166,8 @@ export interface RightPanelProps {
 
 export const EMPTY_PARAMETERS: Record<string, unknown> = {};
 export const noopDraftPayloadPreviewChange = () => undefined;
-export type SolverSettingsPatch = Partial<DynamicSolverSettings & ModalSolverSettings> & { fidelity?: SimulationFidelity };
+export type SolverSettingsPatch = Partial<DynamicSolverSettings & ModalSolverSettings>;
 export const MESH_PRESETS: MeshQuality[] = ["coarse", "medium", "fine", "ultra"];
-export const SIMULATION_FIDELITIES: SimulationFidelity[] = ["standard", "detailed", "ultra"];
 
 export function stressComponentLabel(component: StressComponent): string {
   if (component === "principal_max") return "σ₁";
