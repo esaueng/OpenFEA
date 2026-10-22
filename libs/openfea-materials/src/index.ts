@@ -535,3 +535,4 @@ function numberFrom(value: unknown, fallback: number): number {
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
+export * from "./bodyAssignments";

@@ -1,5 +1,5 @@
 import type { Constraint, CustomMaterial, Diagnostic, DisplayModel, DynamicSolverSettings, Load, ModalSolverSettings, Study } from "@openfea/schema";
-import { manufacturingProcessCompatibilityError, resolveMaterial } from "@openfea/materials";
+import { bodyLabelForId, hasPerBodyMaterialAssignments, manufacturingProcessCompatibilityError, materialAssignmentForBody, resolveMaterial } from "@openfea/materials";
 
 export type PrintCriticalAxis = "x" | "y" | "z";
 
@@ -53,10 +53,17 @@ export function usesLegacySampleFrame(displayModel: DisplayModel): boolean {
     !displayModel.id.includes("uploaded");
 }
 
-export function validateStaticStressStudy(study: Study, customMaterials: readonly CustomMaterial[] = []): Diagnostic[] {
+/** Facts about the loaded geometry that the study alone does not record. */
+export interface StudyValidationContext {
+  /** Body ids of a multi-body model (STEP preview bodies are `step-object-<n>`), when known. */
+  bodyIds?: readonly string[];
+}
+
+export function validateStaticStressStudy(study: Study, customMaterials: readonly CustomMaterial[] = [], context: StudyValidationContext = {}): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   if (study.materialAssignments.length === 0) diagnostics.push(issue("validation-material", "Choose what the part is made of."));
   diagnostics.push(...materialProcessDiagnostics(study, customMaterials));
+  diagnostics.push(...bodyMaterialDiagnostics(study, context));
   if (study.constraints.length === 0) diagnostics.push(issue("validation-support", "Choose where the part is held fixed."));
   diagnostics.push(...prescribedDisplacementDiagnostics(study));
   // A study driven only by nonzero imposed motion needs no applied loads;
@@ -97,11 +104,11 @@ export function validateStaticStressStudy(study: Study, customMaterials: readonl
   return diagnostics;
 }
 
-export function validateStudy(study: Study, customMaterials: readonly CustomMaterial[] = []): Diagnostic[] {
-  if (study.type === "dynamic_structural") return validateDynamicStructuralStudy(study, customMaterials);
-  if (study.type === "modal_analysis") return validateModalStudy(study, customMaterials);
-  if (study.type === "steady_state_thermal") return validateSteadyStateThermalStudy(study, customMaterials);
-  return validateStaticStressStudy(study, customMaterials);
+export function validateStudy(study: Study, customMaterials: readonly CustomMaterial[] = [], context: StudyValidationContext = {}): Diagnostic[] {
+  if (study.type === "dynamic_structural") return validateDynamicStructuralStudy(study, customMaterials, context);
+  if (study.type === "modal_analysis") return validateModalStudy(study, customMaterials, context);
+  if (study.type === "steady_state_thermal") return validateSteadyStateThermalStudy(study, customMaterials, context);
+  return validateStaticStressStudy(study, customMaterials, context);
 }
 
 /**
@@ -111,10 +118,11 @@ export function validateStudy(study: Study, customMaterials: readonly CustomMate
  * direction vector, and an inward surface heat flux is signed — a negative
  * value is cooling, not an error. Only zero and non-finite are wrong.
  */
-export function validateSteadyStateThermalStudy(study: Study, customMaterials: readonly CustomMaterial[] = []): Diagnostic[] {
+export function validateSteadyStateThermalStudy(study: Study, customMaterials: readonly CustomMaterial[] = [], context: StudyValidationContext = {}): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   if (study.materialAssignments.length === 0) diagnostics.push(issue("validation-material", "Choose what the part is made of."));
   diagnostics.push(...materialProcessDiagnostics(study, customMaterials));
+  diagnostics.push(...bodyMaterialDiagnostics(study, context));
   if (!study.constraints.some((constraint) => constraint.type === "prescribed_temperature")) {
     // Without a prescribed temperature the conduction system is singular: every
     // solution shifted by a constant is equally valid.
@@ -144,11 +152,12 @@ export function validateSteadyStateThermalStudy(study: Study, customMaterials: r
   return diagnostics;
 }
 
-export function validateModalStudy(study: Extract<Study, { type: "modal_analysis" }>, customMaterials: readonly CustomMaterial[] = []): Diagnostic[] {
+export function validateModalStudy(study: Extract<Study, { type: "modal_analysis" }>, customMaterials: readonly CustomMaterial[] = [], context: StudyValidationContext = {}): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const settings = study.solverSettings as ModalSolverSettings;
   if (study.materialAssignments.length === 0) diagnostics.push(issue("validation-material", "Choose what the part is made of."));
   diagnostics.push(...materialProcessDiagnostics(study, customMaterials));
+  diagnostics.push(...bodyMaterialDiagnostics(study, context));
   if (study.constraints.length === 0) diagnostics.push(issue("validation-modal-support", "Add at least one support for modal analysis."));
   diagnostics.push(...prescribedDisplacementDiagnostics(study));
   if (study.meshSettings.status !== "complete") diagnostics.push(issue("validation-mesh", "Generate the mesh before running."));
@@ -158,11 +167,12 @@ export function validateModalStudy(study: Extract<Study, { type: "modal_analysis
   return diagnostics;
 }
 
-export function validateDynamicStructuralStudy(study: Study, customMaterials: readonly CustomMaterial[] = []): Diagnostic[] {
+export function validateDynamicStructuralStudy(study: Study, customMaterials: readonly CustomMaterial[] = [], context: StudyValidationContext = {}): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const solverSettings = study.solverSettings as DynamicSolverSettings;
   if (study.materialAssignments.length === 0) diagnostics.push(issue("validation-material", "Choose what the part is made of."));
   diagnostics.push(...materialProcessDiagnostics(study, customMaterials));
+  diagnostics.push(...bodyMaterialDiagnostics(study, context));
   for (const load of study.loads) {
     const expectedSelectionType = load.type === "volume_force" ? "body" : "face";
     const missing = selectionRefsFor(load).filter((ref) => {
@@ -372,6 +382,17 @@ function equivalentLoadForceNewtons(load: Load, face: PrintCriticalFace): number
     return pressurePa * face.areaM2;
   }
   return units === "lbf" ? value * 4.4482216152605 : value;
+}
+
+/**
+ * Per-body materials (plan 036 R1.3): once any assignment names a body, every
+ * known body needs its own assignment or a whole-model default to fall back on.
+ */
+function bodyMaterialDiagnostics(study: Study, context: StudyValidationContext): Diagnostic[] {
+  if (!hasPerBodyMaterialAssignments(study.materialAssignments)) return [];
+  return (context.bodyIds ?? [])
+    .filter((bodyId) => !materialAssignmentForBody(study.materialAssignments, bodyId))
+    .map((bodyId) => issue(`validation-material-body-${bodyId}`, `Choose what ${bodyLabelForId(bodyId)} is made of.`));
 }
 
 function materialProcessDiagnostics(study: Study, customMaterials: readonly CustomMaterial[]): Diagnostic[] {

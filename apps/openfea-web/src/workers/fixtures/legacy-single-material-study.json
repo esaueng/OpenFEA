@@ -1,0 +1,182 @@
+{
+  "id": "study-static_stress",
+  "projectId": "project-1",
+  "name": "Series bars",
+  "type": "static_stress",
+  "geometryScope": [
+    {
+      "bodyId": "body-uploaded",
+      "entityType": "body",
+      "entityId": "body-uploaded",
+      "label": "Series bars"
+    }
+  ],
+  "materialAssignments": [
+    {
+      "id": "assign-material-current",
+      "materialId": "00000000-0000-4000-8000-00000000000a",
+      "selectionRef": "selection-body",
+      "parameters": {},
+      "status": "complete"
+    }
+  ],
+  "namedSelections": [
+    {
+      "id": "selection-body",
+      "name": "Series bars",
+      "entityType": "body",
+      "geometryRefs": [
+        {
+          "bodyId": "body-uploaded",
+          "entityType": "body",
+          "entityId": "body-uploaded",
+          "label": "Series bars"
+        }
+      ],
+      "fingerprint": "body"
+    },
+    {
+      "id": "selection-x0",
+      "name": "Face x0",
+      "entityType": "face",
+      "geometryRefs": [
+        {
+          "bodyId": "body-uploaded",
+          "entityType": "face",
+          "entityId": "face-x0",
+          "label": "Face x0"
+        }
+      ],
+      "fingerprint": "face-x0"
+    },
+    {
+      "id": "selection-xL",
+      "name": "Face xL",
+      "entityType": "face",
+      "geometryRefs": [
+        {
+          "bodyId": "body-uploaded",
+          "entityType": "face",
+          "entityId": "face-xL",
+          "label": "Face xL"
+        }
+      ],
+      "fingerprint": "face-xL"
+    },
+    {
+      "id": "selection-y0",
+      "name": "Face y0",
+      "entityType": "face",
+      "geometryRefs": [
+        {
+          "bodyId": "body-uploaded",
+          "entityType": "face",
+          "entityId": "face-y0",
+          "label": "Face y0"
+        }
+      ],
+      "fingerprint": "face-y0"
+    },
+    {
+      "id": "selection-yB",
+      "name": "Face yB",
+      "entityType": "face",
+      "geometryRefs": [
+        {
+          "bodyId": "body-uploaded",
+          "entityType": "face",
+          "entityId": "face-yB",
+          "label": "Face yB"
+        }
+      ],
+      "fingerprint": "face-yB"
+    },
+    {
+      "id": "selection-z0",
+      "name": "Face z0",
+      "entityType": "face",
+      "geometryRefs": [
+        {
+          "bodyId": "body-uploaded",
+          "entityType": "face",
+          "entityId": "face-z0",
+          "label": "Face z0"
+        }
+      ],
+      "fingerprint": "face-z0"
+    },
+    {
+      "id": "selection-zB",
+      "name": "Face zB",
+      "entityType": "face",
+      "geometryRefs": [
+        {
+          "bodyId": "body-uploaded",
+          "entityType": "face",
+          "entityId": "face-zB",
+          "label": "Face zB"
+        }
+      ],
+      "fingerprint": "face-zB"
+    }
+  ],
+  "contacts": [],
+  "constraints": [
+    {
+      "id": "support-x0",
+      "type": "prescribed_displacement",
+      "selectionRef": "selection-x0",
+      "parameters": {
+        "component": "x",
+        "value": 0
+      },
+      "status": "complete"
+    },
+    {
+      "id": "support-y0",
+      "type": "prescribed_displacement",
+      "selectionRef": "selection-y0",
+      "parameters": {
+        "component": "y",
+        "value": 0
+      },
+      "status": "complete"
+    },
+    {
+      "id": "support-z0",
+      "type": "prescribed_displacement",
+      "selectionRef": "selection-z0",
+      "parameters": {
+        "component": "z",
+        "value": 0
+      },
+      "status": "complete"
+    }
+  ],
+  "loads": [
+    {
+      "id": "pull",
+      "type": "force",
+      "selectionRef": "selection-xL",
+      "parameters": {
+        "value": 8000,
+        "units": "N",
+        "direction": [
+          1,
+          0,
+          0
+        ]
+      },
+      "status": "complete"
+    }
+  ],
+  "meshSettings": {
+    "preset": "medium",
+    "status": "complete"
+  },
+  "validation": [],
+  "runs": [],
+  "solverSettings": {
+    "backend": "opencae_core_local"
+  }
+}

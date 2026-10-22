@@ -49,6 +49,8 @@ interface CadViewerProps {
   assignedFaceTints?: ViewerFaceTint[];
   payloadObjectSelectionMode: boolean;
   selectedPayloadObject: PayloadObjectSelection | null;
+  /** STEP body (`step-object-<n>`) to highlight, e.g. while its material row is hovered. */
+  highlightedBodyId?: string | null;
   onViewerMiss: () => void;
   onSelectFace: (face: DisplayFace, point?: [number, number, number], payloadObject?: PayloadObjectSelection) => void;
   viewMode: ViewMode;
@@ -1779,6 +1781,7 @@ function BracketModel({
   assignedFaceTints,
   payloadObjectSelectionMode,
   selectedPayloadObject,
+  highlightedBodyId,
   onSelectFace,
   viewMode,
   resultMode,
@@ -1815,7 +1818,8 @@ function BracketModel({
   const placementMode = activeStep === "loads" || activeStep === "supports";
   const hasDraftLoadPreview = activeStep === "loads" && loadMarkers.some((marker) => marker.preview);
   const showModelHitLabel = shouldShowModelHitLabel(viewMode, Boolean(hoveredHit), hasDraftLoadPreview);
-  const activePayloadObjectId = payloadHighlightObjectId(payloadObjectSelectionMode, selectedPayloadObject ?? hoveredHit?.payloadObject ?? null);
+  const activePayloadObjectId = payloadHighlightObjectId(payloadObjectSelectionMode, selectedPayloadObject ?? hoveredHit?.payloadObject ?? null)
+    ?? highlightedBodyId ?? undefined;
   const markerScale = useMemo(() => (
     boundaryMarkerScale(modelKind === "uploaded" && uploadedPreviewBounds ? uploadedPreviewBounds : dimensionBoundsForDisplayModel(displayModel))
   ), [displayModel, modelKind, uploadedPreviewBounds]);

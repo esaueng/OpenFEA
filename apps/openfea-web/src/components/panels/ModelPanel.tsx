@@ -24,7 +24,7 @@ import { SAMPLE_OPTIONS, sampleOptionFor } from "../sampleOptions";
 import type { RightPanelProps } from "./RightPanelProps";
 import { Panel } from "./PanelChrome";
 import { Callout, Collapsible, ConceptCard, HelpLabel, Info, ModelDimensions, SectionTitle, SupportIcon, formatEquivalentForce } from "./PanelChrome";
-export function ModelPanel({ project, displayModel, study, showDimensions, sampleModel, sampleAnalysisType = "static_stress", onRotateModel, onResetModelOrientation, onLoadSample, onUploadModel, onRepairModel, isRepairingModel = false }: RightPanelProps) {
+export function ModelPanel({ project, displayModel, study, showDimensions, sampleModel, sampleAnalysisType = "static_stress", onRotateModel, onResetModelOrientation, onLoadSample, onUploadModel, onRepairModel, isRepairingModel = false, modelBodies = [] }: RightPanelProps) {
   const [confirmSampleLoad, setConfirmSampleLoad] = useState(false);
   const [pendingSampleModel, setPendingSampleModel] = useState<SampleModelId>(sampleModel);
   const [pendingAnalysisType, setPendingAnalysisType] = useState<SampleAnalysisType>(sampleAnalysisType);
@@ -44,7 +44,8 @@ export function ModelPanel({ project, displayModel, study, showDimensions, sampl
   const uploadPreviewFormat = typeof geometry?.metadata.previewFormat === "string" ? geometry.metadata.previewFormat.toUpperCase() : "";
   const isNativeCadImport = Boolean(geometry?.metadata.nativeCadImport);
   const faceCount = Number(geometry?.metadata.faceCount ?? 0);
-  const bodyCount = Number(geometry?.metadata.bodyCount ?? 0);
+  // A STEP import records one body at upload; its face registry knows the real solid count.
+  const bodyCount = modelBodies.length > 1 ? modelBodies.length : Number(geometry?.metadata.bodyCount ?? 0);
   const stepGeometry = stepGeometryMetadataForProject(project);
   const stepGeometryResolvedByMesh = Boolean(study.meshSettings.summary?.artifacts?.actualCoreModel);
   const sampleLabel = sampleOptionFor(pendingSampleModel).title;

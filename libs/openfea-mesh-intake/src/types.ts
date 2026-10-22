@@ -15,6 +15,8 @@ export type CloudStudyLike = {
   materialAssignments?: Array<{
     materialId?: string;
     parameters?: Record<string, unknown>;
+    /** Per-body scope (plan 036 R1.3); absent = whole-model default. */
+    bodyId?: string;
   }>;
   namedSelections?: Array<{
     id?: string;

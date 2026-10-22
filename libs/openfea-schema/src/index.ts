@@ -400,6 +400,13 @@ const MaterialAssignmentSchema = z.object({
   id: z.string(),
   materialId: z.string(),
   selectionRef: z.string(),
+  /**
+   * Optional per-body scope (plan 036 R1.3): the viewer body id this material
+   * applies to (STEP preview bodies are `step-object-<n>`). An assignment
+   * without one covers every body that has no assignment of its own, which is
+   * how every single-material project stored before per-body materials reads.
+   */
+  bodyId: z.string().min(1).optional(),
   parameters: z.record(z.string(), z.unknown()).optional(),
   status: z.enum(["not_started", "ready", "warning", "complete"])
 });

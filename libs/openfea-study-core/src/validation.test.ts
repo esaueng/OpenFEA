@@ -493,6 +493,50 @@ describe("validateStaticStressStudy", () => {
   });
 });
 
+describe("per-body materials (plan 036 R1.3)", () => {
+  const study: Study = {
+    id: "study-bodies",
+    projectId: "project-test",
+    name: "Assembly",
+    type: "static_stress",
+    geometryScope: [],
+    materialAssignments: [
+      { id: "b1", materialId: "mat-steel", selectionRef: "body", bodyId: "step-object-1", status: "complete" }
+    ],
+    contacts: [],
+    constraints: [{ id: "fixed", type: "fixed", selectionRef: "face", parameters: {}, status: "complete" }],
+    namedSelections: [
+      { id: "face", name: "Face", entityType: "face", geometryRefs: [{ bodyId: "body", entityType: "face", entityId: "face-1", label: "Face" }], fingerprint: "face" }
+    ],
+    loads: [{ id: "force", type: "force", selectionRef: "face", parameters: { value: 500, direction: [0, -1, 0] }, status: "complete" }],
+    meshSettings: { preset: "medium", status: "complete", summary: { nodes: 10, elements: 4, warnings: [] } },
+    solverSettings: {},
+    validation: [],
+    runs: []
+  };
+  const bodyIds = ["step-object-1", "step-object-2"];
+
+  it("blocks the run until every body has a material", () => {
+    for (const type of ["static_stress", "dynamic_structural", "modal_analysis", "steady_state_thermal"] as const) {
+      const diagnostics = validateStudy({ ...study, type } as Study, [], { bodyIds });
+      expect(diagnostics.filter((item) => item.id.startsWith("validation-material")), type).toEqual([
+        expect.objectContaining({ id: "validation-material-body-step-object-2", message: "Choose what Body 2 is made of." })
+      ]);
+    }
+  });
+
+  it("accepts a whole-model default as every unassigned body's material", () => {
+    const withDefault = { ...study, materialAssignments: [...study.materialAssignments, { id: "all", materialId: "mat-aluminum-6061", selectionRef: "body", status: "complete" as const }] };
+    expect(validateStaticStressStudy(withDefault, [], { bodyIds })).toEqual([]);
+  });
+
+  it("keeps single-material studies exactly as before", () => {
+    const legacy = { ...study, materialAssignments: [{ id: "assign", materialId: "mat-steel", selectionRef: "body", status: "complete" as const }] };
+    expect(validateStaticStressStudy(legacy, [], { bodyIds })).toEqual(validateStaticStressStudy(legacy));
+    expect(validateStaticStressStudy(legacy)).toEqual([]);
+  });
+});
+
 describe("multi-face BCs (Decision 2)", () => {
   const readyStudy: Study = {
     id: "study-test",

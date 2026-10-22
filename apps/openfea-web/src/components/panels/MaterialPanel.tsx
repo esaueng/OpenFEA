@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { AlertTriangle, Atom, Check, ChevronRight, Factory, Layers3, Wrench } from "lucide-react";
 
-import { compatibleManufacturingProcessesFor, defaultManufacturingParametersFor, defaultManufacturingProcessIdFor, effectiveMaterialProperties, fdmPropertyFactorsFor, isManufacturingProcessCompatible, manufacturingParametersForAssignment, manufacturingProcessForId, materialCatalog, materialCategoryLabel, normalizeManufacturingParameters, type ManufacturingParameters, type ManufacturingProcessId } from "@openfea/materials";
+import { compatibleManufacturingProcessesFor, defaultManufacturingParametersFor, defaultManufacturingProcessIdFor, effectiveMaterialProperties, fdmPropertyFactorsFor, isManufacturingProcessCompatible, manufacturingParametersForAssignment, manufacturingProcessForId, materialAssignmentForBody, materialCatalog, materialCategoryLabel, normalizeManufacturingParameters, type ManufacturingParameters, type ManufacturingProcessId } from "@openfea/materials";
 
 import { inferGlobalCriticalPrintAxis } from "@openfea/study-core";
 
@@ -16,10 +16,29 @@ import type { RightPanelProps } from "./RightPanelProps";
 import { Panel } from "./PanelChrome";
 import { EMPTY_PARAMETERS } from "./RightPanelProps";
 import { Callout, HelpLabel, Info, SectionTitle, materialForId } from "./PanelChrome";
-export function MaterialPanel({ project, displayModel, study, onAssignMaterial, onSaveCustomMaterial, onDeleteCustomMaterial, onPreviewPrintLayerOrientation, registerBeforeNext }: RightPanelProps) {
+export function MaterialPanel({ project, displayModel, study, onAssignMaterial, onSaveCustomMaterial, onDeleteCustomMaterial, onPreviewPrintLayerOrientation, registerBeforeNext, modelBodies = [], selectedBodyId, onHighlightBody }: RightPanelProps) {
   const materials = useMemo(() => materialCatalog(project.customMaterials), [project.customMaterials]);
   const defaultMaterial = materials[0]!;
-  const currentAssignment = study.materialAssignments[0];
+  // Per-body materials (plan 036 R1.3): only a model with more than one body
+  // gets the body list; a single body keeps exactly the single-material panel.
+  const multiBody = modelBodies.length > 1;
+  const [activeBodyId, setActiveBodyId] = useState<string | undefined>(undefined);
+  const [hoveredBodyId, setHoveredBodyId] = useState<string | null>(null);
+  useEffect(() => {
+    if (selectedBodyId && modelBodies.some((body) => body.id === selectedBodyId)) setActiveBodyId(selectedBodyId);
+  }, [modelBodies, selectedBodyId]);
+  const activeBody = multiBody ? modelBodies.find((body) => body.id === activeBodyId) ?? modelBodies[0] : undefined;
+  const currentAssignment = activeBody ? materialAssignmentForBody(study.materialAssignments, activeBody.id) : study.materialAssignments[0];
+  const inheritsModelMaterial = Boolean(activeBody && currentAssignment && !currentAssignment.bodyId);
+  // The first material on a multi-body model covers every body; later
+  // choices override one body at a time.
+  const assignTargetBodyId = activeBody && study.materialAssignments.length > 0 ? activeBody.id : undefined;
+  const assignTarget = useMemo(() => (assignTargetBodyId ? { bodyId: assignTargetBodyId } : undefined), [assignTargetBodyId]);
+  useEffect(() => {
+    if (!multiBody) return undefined;
+    onHighlightBody?.(hoveredBodyId ?? activeBody?.id ?? null);
+    return () => onHighlightBody?.(null);
+  }, [activeBody?.id, hoveredBodyId, multiBody, onHighlightBody]);
   const current = currentAssignment?.materialId ?? "mat-aluminum-6061";
   const currentParameters = currentAssignment?.parameters ?? EMPTY_PARAMETERS;
   const initialMaterial = materialForId(current, materials) ?? defaultMaterial;
@@ -56,7 +75,9 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
   const assignedDetail = assignedProcess
     ? `${assignedProcess.label}${assignedProcess.id === "fdm" ? ` · ${assignedParameters?.infillDensity}% infill` : ""}`
     : "Process not selected";
-  const assignedSelectionLabel = study.geometryScope[0]?.label ?? displayModel.name;
+  const assignedSelectionLabel = activeBody
+    ? `${activeBody.label}${inheritsModelMaterial ? " (model material)" : ""}`
+    : multiBody ? "all bodies" : study.geometryScope[0]?.label ?? displayModel.name;
   const pendingParameters = manufacturingParametersForAssignment(selectedMaterial, manufacturingParameters);
   // Both sides go through the assignment normalizer: stored parameters may
   // predate a derived field (e.g. `printed`) that the normalizer adds today.
@@ -79,9 +100,9 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
   // Next commits the previewed material (2026-09 review F3): leaving without
   // Apply used to be silent and only surfaced at Run as "Material assigned".
   useEffect(() => {
-    registerBeforeNext?.(selectionMatchesAssignment ? null : () => onAssignMaterial(selectedMaterialId, pendingParameters));
+    registerBeforeNext?.(selectionMatchesAssignment ? null : () => onAssignMaterial(selectedMaterialId, pendingParameters, assignTarget));
     return () => registerBeforeNext?.(null);
-  }, [onAssignMaterial, pendingParameters, registerBeforeNext, selectedMaterialId, selectionMatchesAssignment]);
+  }, [assignTarget, onAssignMaterial, pendingParameters, registerBeforeNext, selectedMaterialId, selectionMatchesAssignment]);
 
   useEffect(() => {
     onPreviewPrintLayerOrientation?.(processUsesBuildDirection ? manufacturingParameters.layerOrientation ?? "z" : null);
@@ -108,6 +129,19 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
     }
   }
 
+  function handleBodyMaterialPick(bodyId: string, materialId: string) {
+    const material = materialForId(materialId, materials);
+    if (!material) return;
+    const existing = study.materialAssignments.find((assignment) => assignment.bodyId === bodyId);
+    const previousProcessId = existing?.materialId === materialId ? undefined : normalizeManufacturingParameters(material, existing?.parameters ?? {}).manufacturingProcessId;
+    const processId = previousProcessId && isManufacturingProcessCompatible(material, previousProcessId) ? previousProcessId : defaultManufacturingProcessIdFor(material);
+    const parameters = existing?.materialId === materialId
+      ? normalizeManufacturingParameters(material, existing.parameters ?? {})
+      : defaultManufacturingParametersFor(material, processId);
+    setActiveBodyId(bodyId);
+    onAssignMaterial(materialId, manufacturingParametersForAssignment(material, parameters), { bodyId });
+  }
+
   function handleProcessChange(processId: ManufacturingProcessId) {
     setManufacturingParameters(defaultManufacturingParametersFor(selectedMaterial, processId));
     setCompatibilityNote(null);
@@ -119,7 +153,50 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
 
   return (
     <Panel title="Material" question="What is it made of?" step="material" helper="Choose the material, then how it is made." study={study}>
-      <SectionTitle helpId="materialLibrary">Base material</SectionTitle>
+      {multiBody ? (
+        <>
+          <SectionTitle helpId="bodyMaterials">Bodies</SectionTitle>
+          <ul className="material-body-list" aria-label="Body materials" onMouseLeave={() => setHoveredBodyId(null)}>
+            {modelBodies.map((body) => {
+              const assignment = materialAssignmentForBody(study.materialAssignments, body.id);
+              const assigned = assignment ? materialForId(assignment.materialId, materials) : undefined;
+              const active = body.id === activeBody?.id;
+              const summary = !assignment
+                ? "No material"
+                : `${assigned?.name ?? `Unknown “${assignment.materialId}”`}${assignment.bodyId ? "" : " · model material"}`;
+              return (
+                <li
+                  key={body.id}
+                  className={`material-body-row${active ? " active" : ""}${assignment ? "" : " missing"}`}
+                  onMouseEnter={() => setHoveredBodyId(body.id)}
+                >
+                  <button
+                    className="material-body-select"
+                    type="button"
+                    aria-pressed={active}
+                    aria-label={`Edit ${body.label} material. Current: ${summary}`}
+                    onClick={() => setActiveBodyId(body.id)}
+                    onFocus={() => setHoveredBodyId(body.id)}
+                    onBlur={() => setHoveredBodyId(null)}
+                  >
+                    <strong>{body.label}</strong>
+                    <small>{summary}</small>
+                  </button>
+                  <select
+                    aria-label={`Material for ${body.label}`}
+                    value={assignment?.bodyId ? assignment.materialId : ""}
+                    onChange={(event) => handleBodyMaterialPick(body.id, event.currentTarget.value)}
+                  >
+                    <option value="" disabled>{assigned && !assignment?.bodyId ? `Model (${assigned.name})` : "Choose…"}</option>
+                    {materials.map((material) => <option key={material.id} value={material.id}>{material.name}</option>)}
+                  </select>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      ) : null}
+      <SectionTitle helpId="materialLibrary">{activeBody ? `${activeBody.label} material` : "Base material"}</SectionTitle>
       <div className="base-material-card">
         <button className="base-material-selector" type="button" onClick={() => setShowLibrary(true)} aria-label={`Change base material. Current material: ${selectedMaterial.name}`}>
           <span className="base-material-icon"><Atom size={20} aria-hidden="true" /></span>
@@ -244,8 +321,15 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
       )}
 
       {!selectionMatchesAssignment && (
-        <button className="primary wide material-apply-button" type="button" onClick={() => onAssignMaterial(selectedMaterialId, pendingParameters)}>Apply material &amp; process</button>
+        <button className="primary wide material-apply-button" type="button" onClick={() => onAssignMaterial(selectedMaterialId, pendingParameters, assignTarget)}>
+          {assignTarget ? <>Apply to {activeBody!.label}</> : <>Apply material &amp; process</>}
+        </button>
       )}
+      {multiBody && study.materialAssignments.some((assignment) => assignment.bodyId) ? (
+        <button className="secondary wide material-apply-all-button" type="button" onClick={() => onAssignMaterial(selectedMaterialId, pendingParameters)}>
+          Use {selectedMaterial.name} for all bodies
+        </button>
+      ) : null}
       <MaterialLibraryModal
         open={showLibrary}
         selectedMaterialId={selectedMaterialId}

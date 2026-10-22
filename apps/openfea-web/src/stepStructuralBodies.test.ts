@@ -5,6 +5,7 @@ import { buildStepFaceRegistry, stepAttributionForRegistry } from "./stepFaces";
 import {
   planStepStructuralBodies,
   stepFuseBodyGroups,
+  stepMaterialBodyIdentities,
   stepStructuralBodyWarning,
   studyWithStepPayloadContacts
 } from "./stepStructuralBodies";
@@ -115,6 +116,27 @@ describe("STEP structural body planning", () => {
       { min: [2, 0, 0], max: [4, 2, 1] }
     ]]);
     expect(planStepStructuralBodies(study, registry)).toBeNull();
+  });
+
+  it("names every STEP body for per-body materials and refuses to fuse bodies with different materials", () => {
+    const registry = buildStepFaceRegistry([
+      oneFaceBody([[0, 0, 0], [2, 0, 0], [0, 2, 0]], [0, 0, 1]),
+      oneFaceBody([[2, 0, 0], [4, 0, 0], [2, 2, 0]], [4, 2, 1])
+    ]);
+    const study = payloadStudy();
+    const assignment = { id: "default", materialId: "mat-steel", selectionRef: "body", parameters: {}, status: "complete" as const };
+    study.materialAssignments = [assignment, { ...assignment, id: "b2", bodyId: "step-object-2", materialId: "mat-aluminum-6061" }];
+
+    expect(stepMaterialBodyIdentities(study, registry)).toEqual([
+      { name: "body:step-object-1", bounds: { min: [0, 0, 0], max: [2, 2, 1] } },
+      { name: "body:step-object-2", bounds: { min: [2, 0, 0], max: [4, 2, 1] } }
+    ]);
+
+    study.namedSelections = [faceSelection("fuse-source", "step-face-0"), faceSelection("fuse-target", "step-face-1")];
+    study.contacts = [{ id: "fuse-1", status: "ready", type: "fuse", source: "fuse-source", target: "fuse-target", kinematics: "small_sliding" }];
+    expect(() => stepMaterialBodyIdentities(study, registry)).toThrow(/Boolean fuse joins Body 1, Body 2 into one solid/);
+    study.materialAssignments = [assignment, { ...assignment, id: "b2", bodyId: "step-object-2" }];
+    expect(stepMaterialBodyIdentities(study, registry)).toHaveLength(2);
   });
 
   it("groups long fuse chains without recursion depth limits", () => {

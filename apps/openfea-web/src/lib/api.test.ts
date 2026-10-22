@@ -411,6 +411,45 @@ describe("api", () => {
     expect(response.message).toBe("Material assigned to Imported body.");
   });
 
+  test("assigns a material to one body, keeps the others, and discards a mesh without body identity", async () => {
+    const meshed: Study = {
+      ...study,
+      meshSettings: { preset: "medium", status: "complete", meshRef: "mesh", summary: { nodes: 10, elements: 4, warnings: [] } }
+    };
+    const whole = await assignMaterial("study-1", "mat-steel", {}, meshed);
+    const response = await assignMaterial("study-1", "mat-pla", { infillDensity: 35 }, whole.study, [], { bodyId: "step-object-2" });
+
+    expect(response.study.materialAssignments).toEqual([
+      whole.study.materialAssignments[0],
+      { id: "assign-material-step-object-2", materialId: "mat-pla", selectionRef: "selection-body-1", bodyId: "step-object-2", parameters: { infillDensity: 35 }, status: "complete" }
+    ]);
+    expect(response.study.meshSettings.status).toBe("not_started");
+    expect(response.study.meshSettings.summary).toBeUndefined();
+    expect(response.message).toBe("Material assigned to Body 2. Regenerate the mesh so each body keeps its own material.");
+
+    const again = await assignMaterial("study-1", "mat-abs", {}, response.study, [], { bodyId: "step-object-2" });
+    expect(again.study.materialAssignments.map((assignment) => [assignment.bodyId, assignment.materialId])).toEqual([[undefined, "mat-steel"], ["step-object-2", "mat-abs"]]);
+
+    const reset = await assignMaterial("study-1", "mat-steel", {}, again.study);
+    expect(reset.study.materialAssignments).toHaveLength(1);
+    expect(reset.study.materialAssignments[0]?.bodyId).toBeUndefined();
+  });
+
+  test("keeps a mesh that already carries body identity when a body's material changes", async () => {
+    const meshed: Study = {
+      ...study,
+      meshSettings: {
+        preset: "medium",
+        status: "complete",
+        meshRef: "mesh",
+        summary: { nodes: 10, elements: 4, warnings: [], artifacts: { actualCoreModel: { model: { elementBlocks: [{ name: "body:step-object-1" }, { name: "body:step-object-2" }] } } } }
+      } as Study["meshSettings"]
+    };
+    const response = await assignMaterial("study-1", "mat-pla", {}, meshed, [], { bodyId: "step-object-1" });
+    expect(response.study.meshSettings).toBe(meshed.meshSettings);
+    expect(response.message).toBe("Material assigned to Body 1.");
+  });
+
   test("rejects an incompatible explicit material and manufacturing process before calling the API", async () => {
     const fetchMock = vi.fn(async () => new Response("missing", { status: 404 }));
     vi.stubGlobal("fetch", fetchMock);

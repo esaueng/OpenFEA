@@ -15,6 +15,7 @@ import { StartScreen } from "./components/StartScreen";
 import { StepNav, type StepId } from "./components/StepNav";
 import { ProjectMenu } from "./components/ProjectMenu";
 import { readinessForStudy } from "./runReadiness";
+import { bodyIdForFace, useModelBodies } from "./modelBodies";
 import { CreateSimulationScreen } from "./components/SimulationWorkflow";
 import {
   createViewerLoadMarkers,
@@ -557,7 +558,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const solverRunning = Boolean(processingRunId) || (runProgress > 0 && runProgress < 100);
   const runButtonProgress = Math.min(100, Math.max(0, Math.round(runProgress)));
   reportStateRef.current = { viewMode, resultMode, stressComponent, resultSummary, completedRunId, resultPlaybackPlaying };
-  const runReadiness = useMemo(() => readinessForStudy(study, project?.customMaterials), [project?.customMaterials, study]);
+  const modelBodies = useModelBodies(displayModel);
+  const modelBodyIds = useMemo(() => (modelBodies.length > 1 ? modelBodies.map((body) => body.id) : undefined), [modelBodies]);
+  const [highlightedBodyId, setHighlightedBodyId] = useState<string | null>(null);
+  const runReadiness = useMemo(() => readinessForStudy(study, project?.customMaterials, { bodyIds: modelBodyIds }), [modelBodyIds, project?.customMaterials, study]);
   const canRunSimulation = runReadiness.every((item) => item.done) && !solverRunning && !convergenceBusy;
   const missingRunItems = runReadiness.filter((item) => !item.done).map((item) => item.label);
   const hasActualVolumeMesh = Boolean(study?.meshSettings.summary?.artifacts?.actualCoreModel);
@@ -1871,6 +1875,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         project,
         study,
         displayModel,
+        bodyIds: modelBodyIds,
         resultSummary: sourceSummary,
         resultFields,
         solverMeshSummary,
@@ -2778,6 +2783,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
               selectedFaceId={selectedFaceId}
               payloadObjectSelectionMode={Boolean(study && activeStep === "loads" && draftLoadType === "gravity")}
               selectedPayloadObject={selectedPayloadObject}
+              highlightedBodyId={activeStep === "material" ? highlightedBodyId : null}
               onViewerMiss={handleViewerMiss}
               onSelectFace={handleViewportFaceSelect}
               viewMode={captureViewMode ?? viewMode}
@@ -2902,8 +2908,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           onToggleDimensions={() => setShowDimensions((value) => !value)}
           onSectionPlaneChange={setSectionPlane}
           onStressExaggerationChange={setStressExaggeration}
-          onAssignMaterial={(materialId, parameters) =>
-            void updateStudy(assignMaterial(study.id, materialId, parameters, study, project?.customMaterials), shouldAutoAdvanceAfterMaterialAssignment() ? "supports" : undefined)
+          modelBodies={modelBodies}
+          selectedBodyId={bodyIdForFace(modelBodies, selectedFaceId) ?? null}
+          onHighlightBody={setHighlightedBodyId}
+          onAssignMaterial={(materialId, parameters, options) =>
+            void updateStudy(assignMaterial(study.id, materialId, parameters, study, project?.customMaterials, options), shouldAutoAdvanceAfterMaterialAssignment() && modelBodies.length <= 1 ? "supports" : undefined)
           }
           onSaveCustomMaterial={handleSaveCustomMaterial}
           onDeleteCustomMaterial={handleDeleteCustomMaterial}

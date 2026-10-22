@@ -12,6 +12,7 @@ export type SettingHelpId =
   | "dimensions"
   | "orientation"
   | "materialLibrary"
+  | "bodyMaterials"
   | "manufacturingProcess"
   | "printSettings"
   | "printedPart"
@@ -154,6 +155,11 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
   materialLibrary: {
     title: "Base material",
     body: "Selects the material family and its nominal solid properties. Manufacturing effects are applied separately after you choose a compatible process.",
+    visual: "results"
+  },
+  bodyMaterials: {
+    title: "Bodies",
+    body: "Each solid body can have its own material. A body without its own choice uses the model material. Pick a body to edit its material and process below; hovering a row highlights the body in the viewer.",
     visual: "results"
   },
   manufacturingProcess: {

@@ -672,6 +672,20 @@ describe("per-model solver backend resolution", () => {
     expect(volume).toMatchObject({ type: "bodyForceDensity", elementSet: physicalName });
   });
 
+  test("writes run-time materials in the stored model's mm-N-s-MPa units", () => {
+    const storedModel = { ...actualCoreModelFixture(), coordinateSystem: { solverUnits: "mm-N-s-MPa" as const, renderCoordinateSpace: "solver" } };
+    storedModel.nodes = { coordinates: storedModel.nodes.coordinates.map((value) => value * 1000) };
+    const meshSettings = actualMeshSettings();
+    meshSettings.summary!.artifacts!.actualCoreModel = { model: storedModel };
+
+    const material = buildOpenFeaCoreModelForStudy(autoStudy({ meshSettings }), cantileverDisplayModel()).model.materials[0]!;
+
+    // Aluminum 6061 catalog values are SI; the model is MPa / tonne per mm^3.
+    expect(material.youngModulus).toBeCloseTo(68_900, 6);
+    expect(material.yieldStrength).toBeCloseTo(276, 9);
+    expect(material.density).toBeCloseTo(2.7e-9, 18);
+  });
+
   test("rejects unverifiable index-only mappings from pre-alias mesh artifacts", () => {
     const storedModel = actualCoreModelFixture();
     storedModel.surfaceFacets = storedModel.surfaceFacets.map(({ sourceSelectionRef: _selection, sourceFaceId: _face, ...facet }) => facet);

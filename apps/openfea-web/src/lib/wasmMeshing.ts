@@ -9,6 +9,7 @@
 // flag check passes, so default builds and the initial bundle stay untouched.
 import type { DisplayModel, MeshQuality, Study } from "@openfea/schema";
 import type { CloudAnalysisType, CoreVolumeMeshArtifact, ElementOrderFallbackMetadata } from "@openfea/mesh-intake";
+import { hasPerBodyMaterialAssignments } from "@openfea/materials";
 import { inferGlobalCriticalPrintAxis } from "@openfea/study-core";
 import { geometrySourceForStudy, studyForCoreGeometryDispatch, type CoreCloudGeometrySource } from "../workers/openfeaCoreSolve";
 import { unpackCoreVolumeMeshArtifact } from "../workers/meshProtocol";
@@ -190,6 +191,7 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
   let stepFaceRegistry: import("../stepFaces").StepFaceRegistry | undefined;
   let stepStructuralBodyPlan: import("../stepStructuralBodies").StepStructuralBodyPlan | undefined;
   let stepFuseBodyGroups: import("@openfea/mesh-intake").StepBodyBounds[][] | undefined;
+  let stepBodyIdentities: import("@openfea/mesh-intake").StepBodyIdentity[] | undefined;
 
   if (geometry.kind === "sample_procedural" && geometry.sampleId === "bracket") {
     // Native curved Gmsh Tet10 elements can invert around the bracket's
@@ -231,7 +233,15 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
         // derived preview bounds into the editable study.
         stepFuseBodyGroups = fuseBodyGroups;
       }
+      if (hasPerBodyMaterialAssignments(planningStudy.materialAssignments)) {
+        try {
+          stepBodyIdentities = structuralBodies.stepMaterialBodyIdentities(planningStudy, registry);
+        } catch (error) {
+          throw new PerBodyMaterialPlanError(error instanceof Error ? error.message : String(error));
+        }
+      }
     } catch (error) {
+      if (error instanceof PerBodyMaterialPlanError) throw new Error(error.message);
       if (study.contacts.some((connection) => connection.type === "fuse")) {
         throw new Error(`Boolean fuse requires stable STEP body selections: ${error instanceof Error ? error.message : "STEP face registry unavailable."}`);
       }
@@ -250,6 +260,7 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
         meshSizeMm: options.meshSizeMm,
         structuralBodyBounds: stepStructuralBodyPlan?.structuralBodyBounds,
         fuseBodyGroups: stepFuseBodyGroups,
+        bodyIdentities: stepBodyIdentities,
         preservePartIdentity: study.contacts.some((connection) => connection.type === "tie" || connection.type === "contact"),
         attribution
       },
@@ -383,6 +394,9 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
     message: `Mesh generated in browser (gmsh-wasm): ${nodes.toLocaleString()} nodes, ${elements.toLocaleString()} ${elementType} elements.`
   };
 }
+
+/** A per-body material conflict is the user's to fix, not a registry failure to fall back from. */
+class PerBodyMaterialPlanError extends Error {}
 
 function formatMeshSizeMm(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);

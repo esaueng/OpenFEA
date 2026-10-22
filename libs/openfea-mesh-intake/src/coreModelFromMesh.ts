@@ -14,6 +14,10 @@
 //     compatibility and effective-property calculations cannot drift from the app.
 //  4. Modal studies emit a load-free modal step instead of the legacy fallback load;
 //     this mirrors the browser Core builder added by the medium-feature roadmap.
+//  5. Per-body materials (plan 036 R1.3): a mesh whose volume physical groups
+//     carry body identity (`body:<bodyId>`) becomes one element block per body,
+//     each with its own assigned material. Meshes without body identity keep
+//     the single "solid" block and material exactly as upstream.
 import {
   OPENFEA_MODEL_SCHEMA,
   OPENFEA_MODEL_SCHEMA_VERSION,
@@ -29,7 +33,18 @@ import {
   type SurfaceFacetJson,
   type SurfaceSetJson
 } from "@openfea/core";
-import { effectiveMaterialProperties, resolveMaterial as resolveCatalogMaterial, starterMaterials, type PrintStrengthContext } from "@openfea/materials";
+import {
+  addDistinctMaterial,
+  bodyElementBlockName,
+  bodyIdFromElementBlockName,
+  bodyLabelForId,
+  effectiveMaterialProperties,
+  hasPerBodyMaterialAssignments,
+  materialAssignmentForBody,
+  resolveMaterial as resolveCatalogMaterial,
+  starterMaterials,
+  type PrintStrengthContext
+} from "@openfea/materials";
 import type { CloudAnalysisType, CloudStudyLike, CoreVolumeMeshArtifact } from "./types";
 
 type BuildCoreModelInput = {
@@ -90,32 +105,16 @@ type MaterialCatalog = Map<string, BuiltInMaterial>;
 
 const BUILT_IN_MATERIAL_IDS = new Set(starterMaterials.map((material) => material.id));
 
-export function buildCoreModelFromCloudMesh(input: BuildCoreModelInput): OpenFEAModelJson {
-  validateVolumeMeshArtifact(input.volumeMesh);
-  const resolvedMaterial = resolveMaterial(input);
-  const mm = input.volumeMesh.coordinateSystem.solverUnits === "mm-N-s-MPa";
-  const material: IsotropicLinearElasticMaterialJson = {
-    ...resolvedMaterial,
-    // Catalog densities are kg/m^3; solver mm units need tonne/mm^3 (kg/m^3 / 1e12).
-    // Young's modulus and yield strength stay in catalog Pa/MPa-consistent
-    // values only when the mesh is m-based; mm meshes need MPa-scale stiffness.
-    ...(mm
-      ? {
-        youngModulus: resolvedMaterial.youngModulus / 1_000_000,
-        yieldStrength: resolvedMaterial.yieldStrength === undefined ? undefined : resolvedMaterial.yieldStrength / 1_000_000,
-        density: (resolvedMaterial.density ?? 0) / 1e12
-      }
-      : {}),
-    ...(resolvedMaterial.thermalConductivity !== undefined
-      ? { thermalConductivity: mm ? resolvedMaterial.thermalConductivity / 1000 : resolvedMaterial.thermalConductivity }
-      : {})
-  };
-  const elementBlocks = [{
-    name: "solid",
-    type: input.volumeMesh.elements[0]?.type ?? "Tet4",
-    material: material.name,
-    connectivity: input.volumeMesh.elements.flatMap((element) => element.connectivity)
-  }];
+export function buildCoreModelFromCloudMesh(rawInput: BuildCoreModelInput): OpenFEAModelJson {
+  validateVolumeMeshArtifact(rawInput.volumeMesh);
+  const mm = rawInput.volumeMesh.coordinateSystem.solverUnits === "mm-N-s-MPa";
+  const bodyIds = rawInput.material === undefined ? bodyIdsForVolumeMesh(rawInput.volumeMesh) : [];
+  // Element indices are global across blocks in block order, so per-body
+  // blocks need the elements (and every facet's owner index) grouped by body.
+  const input = bodyIds.length ? { ...rawInput, volumeMesh: bodyOrderedVolumeMesh(rawInput.volumeMesh, bodyIds) } : rawInput;
+  const { materials, elementBlocks } = bodyIds.length
+    ? perBodyMaterialBlocks(input, bodyIds, mm)
+    : singleMaterialBlock(input, mm);
   const elementSets = elementSetsForVolumeMesh(input.volumeMesh);
   const surfaceSets = cloneSurfaceSets(input.volumeMesh.surfaceSets);
   const nodeSets: NodeSetJson[] = [];
@@ -327,7 +326,7 @@ export function buildCoreModelFromCloudMesh(input: BuildCoreModelInput): OpenFEA
     schema: OPENFEA_MODEL_SCHEMA,
     schemaVersion: OPENFEA_MODEL_SCHEMA_VERSION,
     nodes: { coordinates: [...input.volumeMesh.nodes.coordinates] },
-    materials: [material],
+    materials,
     elementBlocks,
     nodeSets,
     elementSets,
@@ -495,6 +494,107 @@ function elementComponentIds(elements: CoreVolumeMeshArtifact["elements"]): { co
     componentCount += 1;
   }
   return { componentIds, componentCount };
+}
+
+function singleMaterialBlock(input: BuildCoreModelInput, mm: boolean): Pick<OpenFEAModelJson, "materials" | "elementBlocks"> {
+  const assignments = input.study?.materialAssignments ?? [];
+  if (input.material === undefined && hasPerBodyMaterialAssignments(assignments) && new Set(assignments.map(materialAssignmentKey)).size > 1) {
+    throw new Error("This mesh has no per-body element identity, so it cannot carry different materials per body. Generate the mesh again.");
+  }
+  const material = solverUnitMaterial(resolveMaterial(input), mm);
+  return {
+    materials: [material],
+    elementBlocks: [{
+      name: "solid",
+      type: input.volumeMesh.elements[0]?.type ?? "Tet4",
+      material: material.name,
+      connectivity: input.volumeMesh.elements.flatMap((element) => element.connectivity)
+    }]
+  };
+}
+
+function perBodyMaterialBlocks(input: BuildCoreModelInput, bodyIds: readonly string[], mm: boolean): Pick<OpenFEAModelJson, "materials" | "elementBlocks"> {
+  const assignments = input.study?.materialAssignments ?? [];
+  const catalog = providedMaterialCatalog([...(input.materials ?? [])]);
+  const context: PrintStrengthContext = { criticalLayerAxis: input.criticalLayerAxis };
+  const materials: IsotropicLinearElasticMaterialJson[] = [];
+  const elementBlocks: OpenFEAModelJson["elementBlocks"] = [];
+  for (const bodyId of bodyIds) {
+    const assignment = materialAssignmentForBody(assignments, bodyId);
+    if (!assignment) throw new Error(`${bodyLabelForId(bodyId)} has no material assigned. Choose a material for every body.`);
+    const resolved = materialFromUnknown(assignment, catalog, context);
+    if (!resolved) throw new Error(`Unknown material "${assignment.materialId ?? ""}".`);
+    const material = addDistinctMaterial(materials, solverUnitMaterial(resolved, mm));
+    const name = bodyElementBlockName(bodyId);
+    const elements = input.volumeMesh.elements.filter((element) => element.physicalName === name);
+    elementBlocks.push({
+      name,
+      type: elements[0]!.type,
+      material: material.name,
+      connectivity: elements.flatMap((element) => element.connectivity)
+    });
+  }
+  return { materials, elementBlocks };
+}
+
+function solverUnitMaterial(resolvedMaterial: IsotropicLinearElasticMaterialJson, mm: boolean): IsotropicLinearElasticMaterialJson {
+  return {
+    ...resolvedMaterial,
+    // Catalog densities are kg/m^3; solver mm units need tonne/mm^3 (kg/m^3 / 1e12).
+    // Young's modulus and yield strength stay in catalog Pa/MPa-consistent
+    // values only when the mesh is m-based; mm meshes need MPa-scale stiffness.
+    ...(mm
+      ? {
+        youngModulus: resolvedMaterial.youngModulus / 1_000_000,
+        yieldStrength: resolvedMaterial.yieldStrength === undefined ? undefined : resolvedMaterial.yieldStrength / 1_000_000,
+        density: (resolvedMaterial.density ?? 0) / 1e12
+      }
+      : {}),
+    ...(resolvedMaterial.thermalConductivity !== undefined
+      ? { thermalConductivity: mm ? resolvedMaterial.thermalConductivity / 1000 : resolvedMaterial.thermalConductivity }
+      : {})
+  };
+}
+
+function materialAssignmentKey(assignment: { materialId?: string; parameters?: Record<string, unknown> }): string {
+  const parameters = Object.entries(assignment.parameters ?? {}).filter(([, value]) => value !== undefined).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify([assignment.materialId ?? "", parameters]);
+}
+
+/** Body ids carried by `body:<id>` volume physical groups, in first-appearance order. */
+function bodyIdsForVolumeMesh(volumeMesh: CoreVolumeMeshArtifact): string[] {
+  const bodyIds: string[] = [];
+  const seen = new Set<string>();
+  for (const element of volumeMesh.elements) {
+    const bodyId = element.physicalName ? bodyIdFromElementBlockName(element.physicalName) : undefined;
+    if (bodyId === undefined || seen.has(bodyId)) continue;
+    seen.add(bodyId);
+    bodyIds.push(bodyId);
+  }
+  return bodyIds;
+}
+
+function bodyOrderedVolumeMesh(volumeMesh: CoreVolumeMeshArtifact, bodyIds: readonly string[]): CoreVolumeMeshArtifact {
+  const order: number[] = [];
+  for (const bodyId of bodyIds) {
+    const name = bodyElementBlockName(bodyId);
+    volumeMesh.elements.forEach((element, index) => {
+      if (element.physicalName === name) order.push(index);
+    });
+  }
+  if (order.length !== volumeMesh.elements.length) {
+    throw new Error("The mesh mixes body-identified and unidentified volume elements. Generate the mesh again.");
+  }
+  if (order.every((oldIndex, newIndex) => oldIndex === newIndex)) return volumeMesh;
+  const newIndexByOld = new Int32Array(order.length);
+  order.forEach((oldIndex, newIndex) => {
+    newIndexByOld[oldIndex] = newIndex;
+  });
+  return {
+    ...volumeMesh,
+    elements: order.map((oldIndex) => volumeMesh.elements[oldIndex]!),
+    surfaceFacets: volumeMesh.surfaceFacets.map((facet) => ({ ...facet, element: newIndexByOld[facet.element]! }))
+  };
 }
 
 function resolveMaterial(input: BuildCoreModelInput): IsotropicLinearElasticMaterialJson {
