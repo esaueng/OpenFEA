@@ -668,6 +668,40 @@ describe("RightPanel payload mass controls", () => {
     // while open, so the labels are checked on the builder that feeds it.
     expect(markup).toContain("export-menu-trigger");
     expect(resultExportMenuItems({ onExportResultData: vi.fn() }, "mode").map((item) => item.label)).toEqual(["Selected-mode CSV", "Selected-mode VTU"]);
+    expect(markup).not.toContain("Effective mass");
+  });
+
+  test("renders per-direction effective mass with a cumulative row in kilograms", () => {
+    const modalStudy: Study = { ...study, name: "Modal Analysis", type: "modal_analysis", solverSettings: { modeCount: 2 } };
+    const modalSummary: ResultSummary = {
+      analysisType: "modal_analysis",
+      requestedModeCount: 2,
+      convergedModeCount: 2,
+      modes: [
+        { modeIndex: 1, frequencyHz: 59.66, eigenvalue: 140_520, scaledResidual: 3e-7, fieldId: "mode-1" },
+        { modeIndex: 2, frequencyHz: 96.76, eigenvalue: 369_610, scaledResidual: 4e-7, fieldId: "mode-2" }
+      ],
+      massParticipation: {
+        massUnits: "t",
+        massMatrix: "lumped",
+        totalMass: 0.0108,
+        unconstrainedMass: [0.01058, 0.01058, 0.01058],
+        computedOnProjectedModel: true,
+        modes: [
+          { modeIndex: 1, participationFactor: [0, 0, 0.0812], effectiveMass: [0, 0, 0.006588], effectiveMassRatio: [0, 0, 0.61], cumulativeEffectiveMassRatio: [0, 0, 0.61] },
+          { modeIndex: 2, participationFactor: [0, 0.0811, 0], effectiveMass: [0, 0.006577, 0], effectiveMassRatio: [0, 0.609, 0], cumulativeEffectiveMassRatio: [0, 0.609, 0.61] }
+        ]
+      }
+    };
+    const markup = renderPanel("results", { study: modalStudy, resultSummary: modalSummary, resultFields: [], resultMode: "mode_shape", selectedModeIndex: 1 });
+    expect(markup).toContain('aria-label="Effective mass participation"');
+    expect(markup).toContain("Cumulative");
+    expect(markup).toContain("61.0%");
+    expect(markup).toContain("60.9%");
+    // Solver tonnes (mm-N-s-MPa) display as kilograms.
+    expect(markup).toContain("Percent of total mass 10.8 kg");
+    expect(markup).toContain("0 kg / 0 kg / 6.588 kg");
+    expect(markup).toContain("projected linear Tet4 model");
   });
 
   test("renders thermal results as the final workflow step with readable metrics", () => {

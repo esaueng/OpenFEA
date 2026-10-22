@@ -17,7 +17,7 @@ const MAX_EMBEDDED_MODEL_BASE64_LENGTH = Math.ceil(MAX_EMBEDDED_MODEL_BYTES / 3)
 const MAX_VISUAL_MESH_BASE64_LENGTH = Math.ceil(MAX_VISUAL_MESH_BYTES / 3) * 4;
 const boundedId = z.string().min(1).max(256);
 const boundedLabel = z.string().max(512);
-const finiteNumber = z.number().finite();
+const finiteNumber = z.number();
 
 export const DiagnosticSchema = z.object({
   id: z.string(),
@@ -129,7 +129,7 @@ export const LoadCaseSchema = z.object({
 
 export const LoadCombinationFactorSchema = z.object({
   caseId: z.string().min(1),
-  factor: z.number().finite()
+  factor: z.number()
 });
 
 export const LoadCombinationSchema = z.object({
@@ -737,6 +737,24 @@ export const StructuralResultSummarySchema = z.object({
     .optional()
 });
 
+const FiniteTripleSchema = z.tuple([z.number(), z.number(), z.number()]);
+
+/** Mirrors @openfea/core CoreModalMassParticipation; masses are in solver units (`massUnits`). */
+export const ModalMassParticipationSchema = z.object({
+  massUnits: z.enum(["kg", "t"]),
+  massMatrix: z.literal("lumped"),
+  totalMass: z.number().positive(),
+  unconstrainedMass: FiniteTripleSchema,
+  computedOnProjectedModel: z.boolean(),
+  modes: z.array(z.object({
+    modeIndex: z.number().int().min(1),
+    participationFactor: FiniteTripleSchema,
+    effectiveMass: FiniteTripleSchema,
+    effectiveMassRatio: FiniteTripleSchema,
+    cumulativeEffectiveMassRatio: FiniteTripleSchema
+  })).max(10)
+});
+
 export const ModalResultSummarySchema = z.object({
   analysisType: z.literal("modal_analysis"),
   requestedModeCount: z.number().int().min(1).max(10),
@@ -748,6 +766,8 @@ export const ModalResultSummarySchema = z.object({
     scaledResidual: z.number().nonnegative(),
     fieldId: z.string()
   })).max(10),
+  /** Optional: modal results saved before participation was reported omit it. */
+  massParticipation: ModalMassParticipationSchema.optional(),
   warning: z.string().optional(),
   resultTier: ResultProvenanceTierSchema.optional(),
   provenance: ResultProvenanceSchema.optional(),
@@ -841,6 +861,7 @@ export type ResultPeakLocation = z.infer<typeof ResultPeakLocationSchema>;
 export type GeometryFile = z.infer<typeof GeometryFileSchema>;
 export type MeshSummary = z.infer<typeof MeshSummarySchema>;
 export type StructuralResultSummary = Omit<z.infer<typeof StructuralResultSummarySchema>, "diagnostics"> & { diagnostics?: Diagnostic[] };
+export type ModalMassParticipation = z.infer<typeof ModalMassParticipationSchema>;
 export type ModalResultSummary = Omit<z.infer<typeof ModalResultSummarySchema>, "diagnostics"> & { diagnostics?: Diagnostic[] };
 export type ThermalResultSummary = Omit<z.infer<typeof ThermalResultSummarySchema>, "diagnostics"> & { diagnostics?: Diagnostic[] };
 export type ResultSummary = StructuralResultSummary | ModalResultSummary | ThermalResultSummary;

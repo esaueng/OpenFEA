@@ -211,6 +211,53 @@ describe("app persistence", () => {
     expect(bundle?.summary.transient?.frameCount).toBe(21);
   });
 
+  test("restores modal results saved before mass participation and round-trips the new optional block", async () => {
+    const { parseResultBundle } = await import("./appPersistence");
+    // Shape persisted by modal runs before mass participation was reported.
+    const legacyModalSummary = {
+      analysisType: "modal_analysis",
+      requestedModeCount: 2,
+      convergedModeCount: 2,
+      modes: [
+        { modeIndex: 1, frequencyHz: 59.66, eigenvalue: 140_520, scaledResidual: 3.1e-7, fieldId: "mode-1-shape" },
+        { modeIndex: 2, frequencyHz: 96.76, eigenvalue: 369_610, scaledResidual: 4.2e-7, fieldId: "mode-2-shape" }
+      ]
+    };
+    const modalFields = legacyModalSummary.modes.map((mode) => ({
+      id: mode.fieldId,
+      runId: "run-modal",
+      type: "mode_shape",
+      location: "node",
+      values: [0, 1],
+      min: 0,
+      max: 1,
+      units: "normalized",
+      modeIndex: mode.modeIndex,
+      frequencyHz: mode.frequencyHz
+    }));
+    const legacy = parseResultBundle(JSON.parse(JSON.stringify({ completedRunId: "run-modal", summary: legacyModalSummary, fields: modalFields })), { provenance: "keep" });
+    expect(legacy).toBeDefined();
+    expect(legacy?.summary).not.toHaveProperty("massParticipation");
+
+    const massParticipation = {
+      massUnits: "t",
+      massMatrix: "lumped",
+      totalMass: 0.0108,
+      unconstrainedMass: [0.01058, 0.01058, 0.01058],
+      computedOnProjectedModel: false,
+      modes: [
+        { modeIndex: 1, participationFactor: [0, 0.0002, 0.0812], effectiveMass: [0, 4e-8, 0.006588], effectiveMassRatio: [0, 0, 0.61], cumulativeEffectiveMassRatio: [0, 0, 0.61] },
+        { modeIndex: 2, participationFactor: [0, 0.0811, 0.0002], effectiveMass: [0, 0.006577, 4e-8], effectiveMassRatio: [0, 0.609, 0], cumulativeEffectiveMassRatio: [0, 0.609, 0.61] }
+      ]
+    };
+    const current = parseResultBundle(JSON.parse(JSON.stringify({
+      completedRunId: "run-modal",
+      summary: { ...legacyModalSummary, massParticipation },
+      fields: modalFields
+    })), { provenance: "keep" });
+    expect(current?.summary).toMatchObject({ massParticipation });
+  });
+
   test("keeps computed provenance for this browser's own autosave but downgrades foreign files", async () => {
     // 2026-09 review D9: a plain page reload relabelled the same computed FEA
     // results "Estimate (not FEA)" because the autosave restore ran the

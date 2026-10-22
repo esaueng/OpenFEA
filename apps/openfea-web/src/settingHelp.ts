@@ -40,6 +40,7 @@ export type SettingHelpId =
   | "stressMeasure"
   | "colorScale"
   | "modalModes"
+  | "modalMassParticipation"
   | "modePhase"
   | "pinnedProbes"
   | "sectionPlane"
@@ -73,6 +74,11 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
   modalModes: {
     title: "Modes",
     body: "Lists the modes that converged, each with its natural frequency in Hz. Selecting one shows that shape in the viewer. Mode shapes are normalized: every shape is scaled so the largest nodal motion is exactly 1, so the amplitudes and colours show relative motion -- where the part moves most versus least -- and are not physical displacements. Only the frequencies are physical quantities. Scaled residual reports how well each mode satisfies the eigenproblem; smaller is better.",
+    visual: "results"
+  },
+  modalMassParticipation: {
+    title: "Effective mass",
+    body: "Shows how much of the part's mass each mode moves along global X, Y and Z, as a percent of the total model mass, with a cumulative row for all listed modes. A mode with a large share in a direction responds strongly to shaking or base acceleration in that direction; a common check is that the listed modes together reach about 80-90% in each direction you care about. Mass at supported points never moves, so the cumulative value can only approach the unconstrained mass, not 100%. Values use the same lumped mass the frequency solve used, and are computed on the linear Tet4 model when the solve projected a large quadratic mesh.",
     visual: "results"
   },
   modePhase: {
