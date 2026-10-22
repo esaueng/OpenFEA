@@ -16,6 +16,7 @@ import { formatDisplayNumber, formatMeshSourceLabel, formatResultMetric, formatR
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 import { dynamicPlaybackFrames } from "../../resultFields";
+import { MODAL_DIRECTIONS, PROJECTED_PARTICIPATION_NOTE, cumulativeParticipation, formatMassKg, formatMassPercent, formatMassTripleKg } from "../../modalMassParticipation";
 import { resultScaleCssGradient, validManualResultRange, type ResultColorScaleSetting } from "../../resultColorScale";
 import { INVALID_REACTION_WARNING, PREVIEW_GEOMETRY_WARNING, canShowReverseLoadCapacity, hasInvalidReactionForce, hasUnavailableReactionDiagnostic, shouldBlockPreviewResultsForDisplayModel } from "../../resultProvenance";
 import {
@@ -146,6 +147,8 @@ export function ModalResultsPanelContent({
     : playbackOrdinalForSolverFramePosition(frameIndexes, activeFramePosition);
   const phaseDegrees = frames.length ? ((activeFramePosition / frames.length) * 360 + 360) % 360 : 0;
   const activeMode = resultSummary.modes.find((mode) => mode.modeIndex === selectedModeIndex) ?? resultSummary.modes[0];
+  const participation = resultSummary.massParticipation;
+  const activeParticipation = participation?.modes.find((mode) => mode.modeIndex === activeMode?.modeIndex);
   const resultProvenance = resultSummary.provenance;
   return (
     <Panel title="Results" step="results" helper="Inspect converged natural frequencies and normalized mode shapes." study={study}>
@@ -180,8 +183,42 @@ export function ModalResultsPanelContent({
           <Info label="Frequency" value={`${formatDisplayNumber(activeMode.frequencyHz)} Hz`} />
           <Info label="Eigenvalue" value={activeMode.eigenvalue.toExponential(3)} />
           <Info label="Scaled residual" value={activeMode.scaledResidual.toExponential(2)} />
+          {participation && activeParticipation && (
+            <Info label="Effective mass X / Y / Z" value={formatMassTripleKg(activeParticipation.effectiveMass, participation.massUnits)} />
+          )}
           <Info label="Shape units" value="normalized" />
         </div>
+      )}
+      {participation && participation.modes.length > 0 && (
+        <>
+          <SectionTitle helpId="modalMassParticipation">Effective mass</SectionTitle>
+          <table className="modal-participation-table" aria-label="Effective mass participation">
+            <thead>
+              <tr>
+                <th scope="col">Mode</th>
+                {MODAL_DIRECTIONS.map((direction) => <th key={direction} scope="col">{direction}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {participation.modes.map((mode) => (
+                <tr key={mode.modeIndex} aria-current={mode.modeIndex === activeMode?.modeIndex ? "true" : undefined}>
+                  <th scope="row">{mode.modeIndex}</th>
+                  {mode.effectiveMassRatio.map((ratio, direction) => <td key={MODAL_DIRECTIONS[direction]}>{formatMassPercent(ratio)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">Cumulative</th>
+                {cumulativeParticipation(participation).map((ratio, direction) => <td key={MODAL_DIRECTIONS[direction]}>{formatMassPercent(ratio)}</td>)}
+              </tr>
+            </tfoot>
+          </table>
+          <p className="modal-participation-note">
+            {`Percent of total mass ${formatMassKg(participation.totalMass, participation.massUnits)}. Unconstrained mass X / Y / Z: ${formatMassTripleKg(participation.unconstrainedMass, participation.massUnits)}.`}
+            {participation.computedOnProjectedModel ? ` ${PROJECTED_PARTICIPATION_NOTE}` : ""}
+          </p>
+        </>
       )}
       {frames.length > 1 && (
         <div className="dynamic-playback">

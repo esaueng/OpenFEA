@@ -3469,6 +3469,44 @@ img {
   opacity: 0.78;
 }
 
+.modal-participation-table {
+  width: 100%;
+  margin: var(--sp-2) 0;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.modal-participation-table th,
+.modal-participation-table td {
+  padding: 3px var(--sp-2);
+  text-align: right;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-participation-table th:first-child {
+  text-align: left;
+}
+
+.modal-participation-table td {
+  font-family: var(--font-mono);
+}
+
+.modal-participation-table tr[aria-current="true"] {
+  background: var(--color-accent-dim);
+}
+
+.modal-participation-table tfoot th,
+.modal-participation-table tfoot td {
+  font-weight: var(--fw-semibold);
+  border-bottom: 0;
+}
+
+.modal-participation-note {
+  margin: 0 0 14px;
+  font-size: var(--fs-mini);
+  opacity: 0.78;
+}
+
 .segmented.mesh-quality {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }

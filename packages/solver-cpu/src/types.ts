@@ -1,4 +1,4 @@
-import type { CoreModalSolveResult as CoreModalFeaResult, CoreSolveResult, CoreStructuralSolveResult, LoadAssemblyDiagnostics, NormalizedOpenFEAModel, OpenFEAModelJson, ValidationReport } from "@openfea/core";
+import type { CoreModalMassParticipation, CoreModalSolveResult as CoreModalFeaResult, CoreSolveResult, CoreStructuralSolveResult, LoadAssemblyDiagnostics, NormalizedOpenFEAModel, OpenFEAModelJson, ValidationReport } from "@openfea/core";
 
 export type CpuSolverInput = OpenFEAModelJson | NormalizedOpenFEAModel;
 
@@ -94,6 +94,7 @@ export type ModalCpuDiagnostics = {
 
 export type ModalCpuResult = {
   modes: ModalMode[];
+  massParticipation?: CoreModalMassParticipation;
   coreResult?: CoreModalFeaResult;
 };
 
@@ -193,6 +194,7 @@ export type DynamicTet4CpuFrame = {
   nodalStress?: DynamicResultField;
   vonMisesPeak?: DynamicResultField;
   safety_factor: DynamicResultField;
+  /** MDOF solves report constrained support forces here, with zero at free DOFs. */
   reactionForce?: Float64Array;
 };
 
@@ -252,6 +254,7 @@ export type DynamicTet4CpuDiagnostics = Omit<CpuSolverDiagnostics, "reactionBala
     frameIndex: number;
     timeSeconds: number;
     loadScale: number;
+    /** MDOF solves use the free-DOF dynamic equilibrium residual relative to the force terms. */
     relativeImbalance: number;
   }[];
   solver: "opencae-core-mdof-newmark" | "opencae-core-preview-sdof";

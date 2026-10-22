@@ -93,11 +93,42 @@ export type CoreModalModeSummary = {
   fieldId: string;
 };
 
+export type CoreModalMassParticipationMode = {
+  modeIndex: number;
+  /** Γ = φᵀ M r per global X/Y/Z, for φ normalized to φᵀ M φ = 1; units are sqrt(massUnits). */
+  participationFactor: [number, number, number];
+  /** Γ² / (φᵀ M φ) per global X/Y/Z, in massUnits. */
+  effectiveMass: [number, number, number];
+  /** effectiveMass / totalMass per direction. */
+  effectiveMassRatio: [number, number, number];
+  /** Running sum of effectiveMassRatio through this mode, in mode order. */
+  cumulativeEffectiveMassRatio: [number, number, number];
+};
+
+export type CoreModalMassParticipation = {
+  /** Solver-unit mass: kg for m-N-s-Pa, tonnes (N·s²/mm) for mm-N-s-MPa. */
+  massUnits: "kg" | "t";
+  /** Same lumped (Tet4 equal split / Tet10 HRZ) mass matrix the eigen solve used. */
+  massMatrix: "lumped";
+  /** Total translational model mass, the ratio denominator. */
+  totalMass: number;
+  /**
+   * Mass on unconstrained DOFs per direction. Σ effectiveMass over every mode
+   * equals this; mass at supported DOFs never participates.
+   */
+  unconstrainedMass: [number, number, number];
+  /** True when the solve used the Tet10→Tet4 corner projection. */
+  computedOnProjectedModel: boolean;
+  modes: CoreModalMassParticipationMode[];
+};
+
 export type CoreModalSolveSummary = {
   analysisType: "modal_analysis";
   requestedModeCount: number;
   convergedModeCount: number;
   modes: CoreModalModeSummary[];
+  /** Optional: results saved before mass participation was reported omit it. */
+  massParticipation?: CoreModalMassParticipation;
   warning?: string;
   provenance: CoreSolveProvenance;
 };
@@ -672,9 +703,38 @@ function validateModalCoreResult(result: CoreModalSolveResult): CoreResultValida
       errors.push(issue("invalid-modal-metadata", "Modal fields require finite positive frequency/eigenvalue and non-negative scaled residual metadata.", `fields[${index}]`));
     }
   });
+  if (result.summary.massParticipation) validateModalMassParticipation(result.summary, errors);
   const diagnostic = result.diagnostics.find((candidate) => candidate && typeof candidate === "object" && (candidate as { id?: unknown }).id === "modal-solve-diagnostics");
   if (!diagnostic) errors.push(issue("missing-modal-diagnostics", "Modal results require modal-solve-diagnostics.", "diagnostics"));
   return { ok: errors.length === 0, errors, warnings: [] };
+}
+
+function validateModalMassParticipation(summary: CoreModalSolveSummary, errors: CoreResultValidationIssue[]): void {
+  const participation = summary.massParticipation!;
+  const path = "summary.massParticipation";
+  if (participation.massUnits !== "kg" && participation.massUnits !== "t") {
+    errors.push(issue("invalid-mass-participation-units", "Mass participation massUnits must be kg or t.", `${path}.massUnits`));
+  }
+  if (!(participation.totalMass > 0) || !Number.isFinite(participation.totalMass)) {
+    errors.push(issue("invalid-mass-participation-total", "Mass participation totalMass must be positive and finite.", `${path}.totalMass`));
+  }
+  if (!finiteTriple(participation.unconstrainedMass)) {
+    errors.push(issue("invalid-mass-participation-total", "Mass participation unconstrainedMass must contain three finite numbers.", `${path}.unconstrainedMass`));
+  }
+  const modeIndexes = summary.modes.map((mode) => mode.modeIndex);
+  if (participation.modes.length !== modeIndexes.length || participation.modes.some((mode, index) => mode.modeIndex !== modeIndexes[index])) {
+    errors.push(issue("mass-participation-mode-mismatch", "Mass participation entries must match the converged modes in order.", `${path}.modes`));
+  }
+  participation.modes.forEach((mode, index) => {
+    const values = [mode.participationFactor, mode.effectiveMass, mode.effectiveMassRatio, mode.cumulativeEffectiveMassRatio];
+    if (!values.every(finiteTriple) || mode.effectiveMass.some((value) => value < 0)) {
+      errors.push(issue("invalid-mass-participation-mode", "Mass participation values must be finite with non-negative effective mass.", `${path}.modes[${index}]`));
+    }
+  });
+}
+
+function finiteTriple(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 3 && value.every((component) => typeof component === "number" && Number.isFinite(component));
 }
 
 function validateField(
