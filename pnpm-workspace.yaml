@@ -3,12 +3,48 @@ packages:
   - "apps/*"
   - "libs/*"
 overrides:
-  "dompurify": "3.4.17"
+  # jsPDF pulls dompurify in as an optionalDependency for its html() path. That
+  # path is aliased to a throwing stub in apps/openfea-web/vite.config.ts, so no
+  # dompurify code ships — but Dependabot reads the lockfile, not the bundle.
+  # 3.4.17 also covers GHSA-p98j-92pf-mc4p and GHSA-6688-9rhm-gjv2 and
+  # satisfies jsPDF's ^3.3.1.
+  dompurify: 3.4.17
+  # brace-expansion GHSA-mh99-v99m-4gvg (high): expand() bounds the number of
+  # results but not their length, so ~7.5 KB of chained brace groups exhausts
+  # memory and kills the process with an uncatchable OOM.
+  #
+  # We carry two copies. glob@11 -> minimatch@10 already resolves the patched
+  # 5.0.8. The flagged one is 2.1.2, reached only through filelist -> minimatch@5,
+  # under vite-plugin-pwa (a devDependency): build-machine code that never ships,
+  # fed only by our own glob patterns from src/lib/offlinePrecache.ts.
+  #
+  # It is still worth closing, but NOT by overriding brace-expansion itself:
+  # there is no patched 2.x (the maintenance-v2 tag is the vulnerable 2.1.2),
+  # and 5.x's CJS entry exports an object, not a function, while minimatch@5
+  # does `const expand = require('brace-expansion')` and calls `expand(...)`.
+  # Forcing 5.0.8 breaks the build with "expand is not a function".
+  #
+  # Overriding minimatch instead collapses this path onto the 5.0.8 copy that is
+  # already installed. filelist is the only minimatch@5 consumer and only ever
+  # calls the static `minimatch.match()`, which minimatch@10 still exports with
+  # identical behavior.
   "filelist>minimatch": "^10"
+  # With the filelist path collapsed, the only remaining brace-expansion copy is
+  # 5.x via minimatch@10 (^5.0.5). 5.0.9 patches the follow-up GHSA-rgw5-rvv9-x895
+  # (DoS via unbounded intermediate arrays bypassing the first fix).
   "brace-expansion@^5.0.0": "^5.0.9"
+  # GHSA-7p8r-x3mc-p8w7 (high): fast-uri host confusion via backslash authority
+  # introducer. Build-time only (vite-plugin-pwa -> workbox-build -> ajv, which
+  # wants ^3.0.1); the patched floor stays in range.
   "fast-uri@^3.0.0": "^3.1.6"
+  # GHSA-2v37-7h3g-55p8 (high): nanoid <3.3.18 custom generators can loop forever
+  # on size zero. Build-time only (vite -> postcss); ^3.3.17 range accepts it.
   "nanoid@^3.0.0": "^3.3.18"
+  # undici GHSA-4cwx-7wf7-3272 (high) plus GHSA-8xcm-r25x-g524, GHSA-jr45-8vmc-qm54,
+  # GHSA-m8rv-5g2x-5cg5, GHSA-v3r7-h72x-cjcm (moderate): dev-only, via
+  # wrangler -> miniflare (local Workers simulator). 7.29.1 also patches GHSA-rfgv-xxqx-mfg5 and GHSA-w293-vg96-wgc3.
   "undici@^7.0.0": "^7.29.1"
+  # Patched floors for transitive image tooling and both compression API lines.
   "sharp@^0.35.0": "^0.35.5"
   "fflate@^0.8.0": "^0.8.3"
   "fflate@^0.6.0": "^0.6.11"
