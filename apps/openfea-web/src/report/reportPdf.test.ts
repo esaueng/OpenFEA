@@ -53,6 +53,23 @@ describe("renderReportPdf", () => {
     writeFileSync(qaOutput.replace(/\.pdf$/, "") + "-nonproduction.pdf", new Uint8Array(await (await render(variant)).arrayBuffer()));
   });
 
+  test("renders the modal mass participation table when present", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline fixture")));
+    const data = fixtureReport();
+    const without = new Uint8Array(await (await renderReportPdf(data)).arrayBuffer());
+    data.massParticipation = {
+      headers: ["Mode", "Frequency", "X mass", "X %", "Y mass", "Y %", "Z mass", "Z %"],
+      rows: [
+        ["1", "59.66 Hz", "0 kg", "0.0%", "0 kg", "0.0%", "6.588 kg", "61.0%"],
+        ["Cumulative", "", "0 kg", "0.0%", "0 kg", "0.0%", "6.588 kg", "61.0%"]
+      ],
+      footnote: "Effective mass per global direction as a percent of the total model mass 10.8 kg."
+    };
+    const withTable = new Uint8Array(await (await renderReportPdf(data)).arrayBuffer());
+    expect(new TextDecoder().decode(withTable.slice(0, 4))).toBe("%PDF");
+    expect(withTable.byteLength).toBeGreaterThan(without.byteLength);
+  });
+
   test("renders an empty-data report with explicit unavailable values", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline fixture")));
     const empty = fixtureReport();
@@ -208,6 +225,12 @@ function fixtureReport(): ReportData {
     },
     mesh: [{ label: "Nodes", value: "42,381" }, { label: "Elements", value: "26,944" }, { label: "Element type", value: "Tet10" }],
     meshConvergence: null,
+    meshQuality: [
+      { label: "Elements checked", value: "26,944 Tet10 elements" },
+      { label: "Scaled Jacobian — worst / worst 5% / median", value: "0.214 / 0.512 / 0.803 (0 < 0.2)" },
+      { label: "Tet10 det J ≤ 0 at a Gauss point", value: "0" },
+      { label: "Elements past any quality threshold", value: "12 of 26,944 (display only; thresholds are OpenFEA warning levels and do not block solving)" }
+    ],
     solver: rows,
     figures: {
       stress: { title: "Von Mises stress", png: ONE_PIXEL_PNG, unavailableLabel: "Not available (--)", legendMin: "0 MPa", legendMax: "142 MPa", caption: "Von Mises stress (MPa). Automatically selected peak von Mises stress frame (frame 17 of 21, 0.0800 s). Deformed shape, ×2,150 exaggeration at ×1.8 emphasis (display only)." },

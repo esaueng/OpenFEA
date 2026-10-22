@@ -369,6 +369,7 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
       elementOrder: actualElementOrder
     },
     solverCoordinateSpace: "solver",
+    ...(meshedPacked.qualityMetrics ? { qualityMetrics: meshedPacked.qualityMetrics } : {}),
     artifacts: {
       actualCoreModel: { model },
       meshConnectivity: { connectedComponents: artifact.metadata.connectedComponentCount },

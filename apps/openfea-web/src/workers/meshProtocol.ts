@@ -17,6 +17,7 @@ import type {
   StepGeometryRepairReport,
   StepSurfacePreview
 } from "@openfea/mesh-intake";
+import type { MeshQualityMetricsSummary } from "@openfea/core";
 
 export type MeshWorkerPhase = MeshPhase | "parse";
 
@@ -87,12 +88,16 @@ export type MeshWorkerResults = {
     packed: PackedCoreVolumeMeshArtifact;
     timings: MeshTimings;
     totalMs: number;
+    /** Display-only element-quality summary of the packed (solved) mesh; absent when it could not be computed. */
+    qualityMetrics?: MeshQualityMetricsSummary;
   };
   meshStepFile: {
     packed: PackedCoreVolumeMeshArtifact;
     timings: MeshTimings;
     totalMs: number;
     algorithm3D: "delaunay" | "frontal";
+    /** Display-only element-quality summary of the packed (solved) mesh; absent when it could not be computed. */
+    qualityMetrics?: MeshQualityMetricsSummary;
     /** Tet10 mid-side node placement: gmsh's curved default, or the straight-edge rescue for thin/bent geometry. */
     elevation?: "curved" | "straight_edge";
     /** Present when gmsh's Netgen optimizer repaired a sliver tail in the linear mesh. */

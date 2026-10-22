@@ -142,6 +142,9 @@ export interface RightPanelProps {
   onConnectionsChange?: (connections: MeshConnection[]) => void;
   onCancelMesh?: () => void;
   meshPhaseProgress?: WasmMeshPhaseProgress | null;
+  /** Mesh view highlights the summary's worst elements (plan 036 R2.1). */
+  showWorstMeshElements?: boolean;
+  onShowWorstMeshElementsChange?: (show: boolean) => void;
   onRunMeshConvergence?: (caseId: string, probe: ConvergenceProbe) => void;
   convergenceBusy?: boolean;
   convergenceProgress?: string;

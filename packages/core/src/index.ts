@@ -85,6 +85,23 @@ export {
   volumeMeshToModelJson
 } from "./mesh-adapter";
 export type { ElementFace, MeshConnectedComponents, MeshQualitySummary, MeshUtilityModel } from "./mesh";
+export type {
+  MeshQualityElementType,
+  MeshQualityMetricKey,
+  MeshQualityMetricStats,
+  MeshQualityMetricsSummary,
+  MeshQualityThresholds,
+  Tet10JacobianQuality,
+  TetShapeQuality
+} from "./mesh-quality";
+export {
+  computeTetMeshQuality,
+  MESH_QUALITY_POLICY,
+  MESH_QUALITY_THRESHOLDS,
+  meshQualityMetricLowerIsWorse,
+  tet10JacobianQuality,
+  tetShapeQuality
+} from "./mesh-quality";
 export * as mesh from "./mesh";
 export {
   elementFaces,
@@ -96,7 +113,9 @@ export {
   surfaceArea,
   surfaceNormalAverage,
   TET10_HRZ_EDGE_MASS_FRACTION,
+  TET10_GAUSS_POINTS,
   TET10_HRZ_VERTEX_MASS_FRACTION,
+  tet10JacobianDeterminant,
   tet4Volume,
   tet10Volume
 } from "./mesh";
@@ -126,6 +145,8 @@ export type {
   CoreResultField,
   CoreResultValidationIssue,
   CoreResultValidationReport,
+  CoreModalMassParticipation,
+  CoreModalMassParticipationMode,
   CoreModalModeSummary,
   CoreModalSolveResult,
   CoreModalSolveSummary,

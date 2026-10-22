@@ -1,4 +1,5 @@
 import type { NormalizedOpenFEAModel } from "@openfea/core";
+import { modalMassParticipation, solverMassUnits } from "./modal-participation";
 import { modalCoreResultFromSolve } from "./results";
 import { boundedStructuralMaxDofs, structuralDofCount, structuralDofLimitError } from "./limits";
 import { getNormalizedModel } from "./solver";
@@ -100,6 +101,15 @@ export function solveModalLinearTet(input: CpuSolverInput, options: ModalCpuOpti
     scaledResidual: mode.scaledResidual,
     shape: normalizedModeShape(model, prepared.system, mode.vector)
   }));
+  const massParticipation = modalMassParticipation({
+    mass: prepared.system.mass,
+    free: prepared.system.free,
+    totalMass: prepared.system.totalMass,
+    massUnits: solverMassUnits(model),
+    computedOnProjectedModel: Boolean(projected.projection),
+    // Report Γ with the same sign as the exported, sign-normalized shape.
+    modes: subspace.modes.map((mode) => ({ modeIndex: mode.modeIndex, vector: signAlignedModeVector(mode.vector) }))
+  });
   const diagnostics: ModalCpuDiagnostics = {
     dofs,
     sourceDofs,
@@ -119,7 +129,7 @@ export function solveModalLinearTet(input: CpuSolverInput, options: ModalCpuOpti
     } : {}),
     solver: "opencae-core-block-shift-invert"
   };
-  const result = { modes };
+  const result = { modes, massParticipation };
   return {
     ok: true,
     result: { ...result, coreResult: modalCoreResultFromSolve(model, result, diagnostics) },
@@ -605,6 +615,15 @@ function normalizedModeShape(
   const scale = maximumVectorMagnitude > 0 ? (signComponent < 0 ? -1 : 1) / maximumVectorMagnitude : 1;
   for (let index = 0; index < full.length; index += 1) full[index] *= scale;
   return full;
+}
+
+/** Mirrors normalizedModeShape's sign rule: the largest-magnitude component is positive. */
+function signAlignedModeVector(reduced: Float64Array): Float64Array {
+  let signComponent = 0;
+  for (const component of reduced) {
+    if (Math.abs(component) > Math.abs(signComponent)) signComponent = component;
+  }
+  return signComponent < 0 ? reduced.map((component) => -component) : reduced;
 }
 
 function massProduct(mass: Float64Array, vector: Float64Array): Float64Array {

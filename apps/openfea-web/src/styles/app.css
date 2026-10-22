@@ -3469,6 +3469,44 @@ img {
   opacity: 0.78;
 }
 
+.modal-participation-table {
+  width: 100%;
+  margin: var(--sp-2) 0;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.modal-participation-table th,
+.modal-participation-table td {
+  padding: 3px var(--sp-2);
+  text-align: right;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-participation-table th:first-child {
+  text-align: left;
+}
+
+.modal-participation-table td {
+  font-family: var(--font-mono);
+}
+
+.modal-participation-table tr[aria-current="true"] {
+  background: var(--color-accent-dim);
+}
+
+.modal-participation-table tfoot th,
+.modal-participation-table tfoot td {
+  font-weight: var(--fw-semibold);
+  border-bottom: 0;
+}
+
+.modal-participation-note {
+  margin: 0 0 14px;
+  font-size: var(--fs-mini);
+  opacity: 0.78;
+}
+
 .segmented.mesh-quality {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -6409,4 +6447,93 @@ input[aria-invalid="true"] {
 
 .theme-light .result-peak-callout-label {
   background: rgba(255, 255, 255, 0.92);
+}
+
+/* Element-quality summary in the Mesh panel (plan 036 R2.1). */
+.mesh-quality-card {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.mesh-quality-head,
+.mesh-quality-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.mesh-quality-head {
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.mesh-quality-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mesh-quality-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name flag"
+    "values values"
+    "histogram histogram";
+  gap: var(--sp-1) var(--sp-2);
+  padding: var(--sp-2) var(--sp-25);
+  background: var(--color-surface-2);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+}
+
+.mesh-quality-name {
+  grid-area: name;
+  display: grid;
+  min-width: 0;
+}
+
+.mesh-quality-name small,
+.mesh-quality-flag {
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.mesh-quality-flag {
+  grid-area: flag;
+  align-self: start;
+  white-space: nowrap;
+}
+
+.mesh-quality-flag.flagged {
+  color: var(--color-warning);
+}
+
+.mesh-quality-values {
+  grid-area: values;
+  font-size: var(--fs-sm);
+}
+
+.mesh-quality-histogram {
+  grid-area: histogram;
+  width: 100%;
+  height: 24px;
+}
+
+.mesh-quality-histogram .bar {
+  fill: var(--color-series-1);
+}
+
+.mesh-quality-histogram .bar.past {
+  fill: var(--color-warning);
+}
+
+.mesh-quality-histogram .threshold {
+  stroke: var(--color-warning);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
 }

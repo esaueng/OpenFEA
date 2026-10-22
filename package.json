@@ -12,6 +12,7 @@
     "verify:perf": "pnpm build:core && pnpm --filter @openfea/web build && node scripts/verify-web-performance.mjs",
     "verify:step-selection-browser": "node scripts/verify-step-selection-browser.mjs",
     "verify:project-results-browser": "node scripts/verify-project-results-browser.mjs",
+    "verify:solve-ladder": "node scripts/verify-solve-ladder.mjs",
     "verify:wasm-mesh-browser": "node scripts/run-wasm-mesh-browser.mjs",
     "verify:offline-pwa": "node scripts/verify-offline-pwa.mjs",
     "verify:cloudflare-config": "node scripts/verify-cloudflare-config.mjs",

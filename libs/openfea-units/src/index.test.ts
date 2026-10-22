@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { meshVolumeM3FromTriangles, stlDimensionsFromBytes, stlVolumeM3FromBytes } from ".";
+import { meshVolumeM3FromTriangles, solverMassToKilograms, stlDimensionsFromBytes, stlVolumeM3FromBytes } from ".";
 
 function binaryStl(vertices: [number, number, number][]): Uint8Array {
   const triangleCount = vertices.length / 3;
@@ -139,5 +139,12 @@ endsolid tetra
 `);
 
     expect(stlVolumeM3FromBytes(bytes)).toBeCloseTo(1 / 6000);
+  });
+});
+
+describe("solver mass units", () => {
+  test("converts mm-N-s-MPa tonnes and m-N-s-Pa kilograms to kilograms", () => {
+    expect(Math.abs(solverMassToKilograms(10.8, "kg") - 10.8)).toBeLessThan(1e-12);
+    expect(Math.abs(solverMassToKilograms(0.0108, "t") - 10.8)).toBeLessThan(1e-12);
   });
 });
