@@ -102,12 +102,7 @@ class PdfReport {
     if (this.data.meshConvergence) {
       this.subheading("Mesh convergence (coarse → medium → fine)");
       this.table(this.data.meshConvergence);
-      if (this.data.meshConvergence.footnote) {
-        const lines = this.splitText(this.data.meshConvergence.footnote, this.contentWidth, REPORT_TYPE.caption);
-        this.ensureSpace(lines.length * 3.5 + 4);
-        this.text(lines, REPORT_LAYOUT.margin, this.y, REPORT_TYPE.caption, REPORT_THEME.inkMuted);
-        this.y += lines.length * 3.5 + 5;
-      }
+      this.footnote(this.data.meshConvergence.footnote);
     }
 
     if (this.data.meshQuality) {
@@ -141,6 +136,11 @@ class PdfReport {
     if (this.data.transientResults.length) {
       this.subheading("Transient results");
       this.keyValueRows(this.data.transientResults);
+    }
+    if (this.data.massParticipation) {
+      this.subheading("Modal mass participation");
+      this.table(this.data.massParticipation, { compact: true });
+      this.footnote(this.data.massParticipation.footnote);
     }
 
     this.sectionHeading(8, "Diagnostics & limitations");
@@ -292,6 +292,14 @@ class PdfReport {
 
   private keyValueRows(rows: ReportRow[]): void {
     this.table({ headers: ["Item", "Value"], rows: rows.map((row) => [row.label, row.value]) });
+  }
+
+  private footnote(note: string | undefined): void {
+    if (!note) return;
+    const lines = this.splitText(note, this.contentWidth, REPORT_TYPE.caption);
+    this.ensureSpace(lines.length * 3.5 + 4);
+    this.text(lines, REPORT_LAYOUT.margin, this.y, REPORT_TYPE.caption, REPORT_THEME.inkMuted);
+    this.y += lines.length * 3.5 + 5;
   }
 
   private table(table: ReportTable, options: { compact?: boolean; keyResults?: boolean; headerless?: boolean } = {}): void {

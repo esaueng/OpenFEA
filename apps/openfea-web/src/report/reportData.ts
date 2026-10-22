@@ -15,6 +15,7 @@ import { meshQualityElementLabel, meshQualityReportRows } from "../meshQualityDi
 import { formatDeformationFactor, type ResolvedDeformation } from "../resultDeformation";
 import { fieldWithOwnValueRange, formatResultValue } from "../resultFields";
 import { unitsForLoadType } from "../loadPreview";
+import { MODAL_DIRECTIONS, PROJECTED_PARTICIPATION_NOTE, cumulativeParticipation, formatMassKg, formatMassPercent, formatMassTripleKg } from "../modalMassParticipation";
 import type { CapturedBoundaryView, CapturedResultView, ResultViewCaptures } from "./captureResultViews";
 import {
   displayModelForUnits,
@@ -107,6 +108,8 @@ export interface ReportData {
   results: ReportRow[];
   loadCapacity: ReportRow[];
   transientResults: ReportRow[];
+  /** Modal effective mass per global direction; absent for other analyses and older modal results. */
+  massParticipation?: ReportTable;
   diagnostics: string[];
   includeSmoothingDisclaimer: boolean;
   footerDisclaimer: string;
@@ -309,6 +312,7 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
       label: `Mode ${mode.modeIndex}`,
       value: `${Number(mode.frequencyHz.toPrecision(6))} Hz · residual ${mode.scaledResidual.toExponential(3)}`
     })),
+    ...(summary.massParticipation ? { massParticipation: massParticipationTable(summary) } : {}),
     diagnostics: [...diagnostics],
     includeSmoothingDisclaimer: false,
     footerDisclaimer: `${FOOTER_DISCLAIMER} Mode-shape amplitude and phase are visualization-only.`
@@ -839,6 +843,34 @@ function elementTypeForMesh(meshSource: ResultSummary["provenance"] extends infe
  * this study. Null when no ladder has run — the Mesh panel remains the only
  * convergence surface. Skipped rungs render as capped markers with reasons.
  */
+export function massParticipationTable(summary: ModalResultSummary): ReportTable | undefined {
+  const participation = summary.massParticipation;
+  if (!participation) return undefined;
+  const units = participation.massUnits;
+  const frequencyByMode = new Map(summary.modes.map((mode) => [mode.modeIndex, mode.frequencyHz]));
+  const directionCells = (masses: readonly number[], ratios: readonly number[]) =>
+    MODAL_DIRECTIONS.flatMap((_direction, index) => [formatMassKg(masses[index]!, units), formatMassPercent(ratios[index]!)]);
+  const cumulativeRatio = cumulativeParticipation(participation);
+  const cumulativeMass = cumulativeRatio.map((ratio) => ratio * participation.totalMass);
+  const frequency = (modeIndex: number) => {
+    const value = frequencyByMode.get(modeIndex);
+    return value === undefined ? MISSING : `${Number(value.toPrecision(6))} Hz`;
+  };
+  return {
+    headers: ["Mode", "Frequency", ...MODAL_DIRECTIONS.flatMap((direction) => [`${direction} mass`, `${direction} %`])],
+    rows: [
+      ...participation.modes.map((mode) => [String(mode.modeIndex), frequency(mode.modeIndex), ...directionCells(mode.effectiveMass, mode.effectiveMassRatio)]),
+      ["Cumulative", "", ...directionCells(cumulativeMass, cumulativeRatio)]
+    ],
+    emptyMessage: "No converged modes.",
+    footnote: [
+      `Effective mass per global direction as a percent of the total model mass ${formatMassKg(participation.totalMass, units)}, from the lumped mass matrix used by the eigen solve.`,
+      `Mass at supported DOFs does not participate: the sum over all modes reaches the unconstrained mass X / Y / Z ${formatMassTripleKg(participation.unconstrainedMass, units)}.`,
+      participation.computedOnProjectedModel ? PROJECTED_PARTICIPATION_NOTE : ""
+    ].filter(Boolean).join(" ")
+  };
+}
+
 export function meshConvergenceTable(records: MeshConvergenceRecord[] | undefined): ReportTable | null {
   const record = records?.filter((candidate) => candidate.rungs?.length === 3).at(-1);
   if (!record) return null;

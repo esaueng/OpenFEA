@@ -18,6 +18,7 @@ registerOfflineCaching();
 // - ?stepSelectionProof=1 is a dev-only regression for real-browser STEP
 //   wall/top picking and support/load identity across display LODs.
 // - ?solveBench=1 runs the 100k-DOF solve benchmark.
+// - ?solveLadder=1&case=... runs one solve-ladder case (no meshing involved).
 // Explicit verification builds exercise production worker packaging; regular
 // release builds still remove these URL-triggered harnesses.
 if ((import.meta.env.DEV || import.meta.env.VITE_BROWSER_PROOF === "1") && import.meta.env.VITE_WASM_MESHING !== "0") {
@@ -25,6 +26,9 @@ if ((import.meta.env.DEV || import.meta.env.VITE_BROWSER_PROOF === "1") && impor
   if (debugParams.has("meshProof")) void import("./workers/meshHarness");
   if (debugParams.has("stepSelectionProof")) void import("./workers/stepSelectionHarness");
   if (debugParams.has("solveBench")) void import("./workers/solveBenchHarness");
+}
+if ((import.meta.env.DEV || import.meta.env.VITE_BROWSER_PROOF === "1") && new URLSearchParams(window.location.search).has("solveLadder")) {
+  void import("./workers/solveLadderHarness");
 }
 
 createRoot(document.getElementById("root")!).render(

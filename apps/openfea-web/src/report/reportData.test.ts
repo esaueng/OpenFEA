@@ -437,6 +437,45 @@ describe("buildReportData", () => {
     expect(data.figures.displacement.caption).toContain("Automatically selected peak displacement magnitude frame (frame 3 of 3, 0.0800 s)");
   });
 
+  test("tabulates modal effective mass in kilograms with a cumulative row", () => {
+    const baseStudy = bracketDemoProject.studies[0]!;
+    const study: Study = { ...baseStudy, type: "modal_analysis", loads: [], solverSettings: { ...baseStudy.solverSettings, modeCount: 2 } };
+    const modalSummary: ResultSummary = {
+      analysisType: "modal_analysis",
+      requestedModeCount: 2,
+      convergedModeCount: 2,
+      modes: [
+        { modeIndex: 1, frequencyHz: 59.66, eigenvalue: 140_520, scaledResidual: 3e-7, fieldId: "mode-1" },
+        { modeIndex: 2, frequencyHz: 96.76, eigenvalue: 369_610, scaledResidual: 4e-7, fieldId: "mode-2" }
+      ],
+      provenance: productionSummary.provenance
+    };
+    const massParticipation = {
+      massUnits: "t" as const,
+      massMatrix: "lumped" as const,
+      totalMass: 0.0108,
+      unconstrainedMass: [0.01058, 0.01058, 0.01058] as [number, number, number],
+      computedOnProjectedModel: false,
+      modes: [
+        { modeIndex: 1, participationFactor: [0, 0, 0.0812], effectiveMass: [0, 0, 0.006588], effectiveMassRatio: [0, 0, 0.61], cumulativeEffectiveMassRatio: [0, 0, 0.61] },
+        { modeIndex: 2, participationFactor: [0, 0.0811, 0], effectiveMass: [0, 0.006577, 0], effectiveMassRatio: [0, 0.609, 0], cumulativeEffectiveMassRatio: [0, 0.609, 0.61] }
+      ] as Array<{ modeIndex: number; participationFactor: [number, number, number]; effectiveMass: [number, number, number]; effectiveMassRatio: [number, number, number]; cumulativeEffectiveMassRatio: [number, number, number] }>
+    };
+    const modeFields: ResultField[] = [];
+
+    expect(report({ study, resultSummary: modalSummary, resultFields: modeFields }).massParticipation).toBeUndefined();
+
+    const table = report({ study, resultSummary: { ...modalSummary, massParticipation }, resultFields: modeFields }).massParticipation!;
+    expect(table.headers).toEqual(["Mode", "Frequency", "X mass", "X %", "Y mass", "Y %", "Z mass", "Z %"]);
+    expect(table.rows[0]).toEqual(["1", "59.66 Hz", "0 kg", "0.0%", "0 kg", "0.0%", "6.588 kg", "61.0%"]);
+    expect(table.rows.at(-1)).toEqual(["Cumulative", "", "0 kg", "0.0%", "6.577 kg", "60.9%", "6.588 kg", "61.0%"]);
+    expect(table.footnote).toContain("total model mass 10.8 kg");
+    expect(table.footnote).not.toContain("projected");
+
+    const projected = report({ study, resultSummary: { ...modalSummary, massParticipation: { ...massParticipation, computedOnProjectedModel: true } }, resultFields: modeFields });
+    expect(projected.massParticipation?.footnote).toContain("projected linear Tet4 model");
+  });
+
   test("omits the convergence section when no ladder has run", () => {
     expect(report().meshConvergence).toBeNull();
   });

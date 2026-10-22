@@ -69,6 +69,7 @@ pnpm --filter @openfea/viewer build
 pnpm --filter "./packages/*" --if-present test
 node scripts/verify-cloudflare-config.mjs
 pnpm typecheck
+pnpm lint
 pnpm test
 pnpm verify:step-selection-browser
 pnpm verify:project-results-browser
@@ -85,7 +86,7 @@ The last three run in CI's separate `browser-proof` job. The proof build include
 
 `verify:project-results-browser` checks history invalidation and portable dynamic cases in Chrome with software WebGL, using local ports 5199 and 9337.
 
-There is no root lint script and CI has no lint job. The five `packages/*` lint scripts are aliases for their typechecks; `pnpm typecheck` is the workspace-wide check.
+`pnpm lint` runs ESLint (`eslint.config.mjs`, type-aware via `typescript-eslint`) over `apps/openfea-web` (src and worker), `packages/*` and `libs/*`. The rule set is deliberately small: `no-floating-promises`, `no-misused-promises`, `eqeqeq` (`== null` allowed), and React hooks rules for the web app (`exhaustive-deps` warns). The `packages/*` lint scripts run ESLint on their own package. `libs/tsconfig.json` and `packages/*/tests/tsconfig.json` exist so the project service can type those files. Lint needs the core packages built, like `pnpm typecheck`.
 
 Do not use `deploy:*` as verification commands. They require credentials and mutate production; run them only when the task explicitly requires that operation.
 

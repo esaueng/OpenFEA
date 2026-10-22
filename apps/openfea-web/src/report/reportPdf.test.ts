@@ -53,6 +53,23 @@ describe("renderReportPdf", () => {
     writeFileSync(qaOutput.replace(/\.pdf$/, "") + "-nonproduction.pdf", new Uint8Array(await (await render(variant)).arrayBuffer()));
   });
 
+  test("renders the modal mass participation table when present", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline fixture")));
+    const data = fixtureReport();
+    const without = new Uint8Array(await (await renderReportPdf(data)).arrayBuffer());
+    data.massParticipation = {
+      headers: ["Mode", "Frequency", "X mass", "X %", "Y mass", "Y %", "Z mass", "Z %"],
+      rows: [
+        ["1", "59.66 Hz", "0 kg", "0.0%", "0 kg", "0.0%", "6.588 kg", "61.0%"],
+        ["Cumulative", "", "0 kg", "0.0%", "0 kg", "0.0%", "6.588 kg", "61.0%"]
+      ],
+      footnote: "Effective mass per global direction as a percent of the total model mass 10.8 kg."
+    };
+    const withTable = new Uint8Array(await (await renderReportPdf(data)).arrayBuffer());
+    expect(new TextDecoder().decode(withTable.slice(0, 4))).toBe("%PDF");
+    expect(withTable.byteLength).toBeGreaterThan(without.byteLength);
+  });
+
   test("renders an empty-data report with explicit unavailable values", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline fixture")));
     const empty = fixtureReport();

@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "openfea-core-adapter/src",
+    "openfea-materials/src",
+    "openfea-mesh-intake/src",
+    "openfea-samples/src",
+    "openfea-schema/src",
+    "openfea-solve-pipeline/src",
+    "openfea-step/src",
+    "openfea-study-core/src",
+    "openfea-units/src"
+  ]
+}
