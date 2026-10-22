@@ -105,6 +105,11 @@ class PdfReport {
       this.footnote(this.data.meshConvergence.footnote);
     }
 
+    if (this.data.meshQuality) {
+      this.subheading("Mesh quality");
+      this.keyValueRows(this.data.meshQuality);
+    }
+
     this.sectionHeading(5, "Solver");
     this.keyValueRows(this.data.solver);
   }

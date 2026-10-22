@@ -294,6 +294,55 @@ export const GeometryFileSchema = z.object({
   metadata: z.record(z.string(), z.unknown())
 });
 
+const MeshQualityMetricStatsSchema = z.object({
+  worst: finiteNumber,
+  p5: finiteNumber,
+  median: finiteNumber,
+  histogram: z.object({
+    min: finiteNumber,
+    max: finiteNumber,
+    // Fixed-size bins (MESH_QUALITY_POLICY.histogramBinCount); the cap only rejects corrupt files.
+    counts: z.array(z.number().int().min(0)).max(256)
+  })
+});
+
+/**
+ * Display-only element-quality summary of the solved volume mesh (plan 036
+ * R2.1); mirrors MeshQualityMetricsSummary in @openfea/core. Per-element
+ * arrays are never persisted, only bounded statistics and the worst few
+ * element indices.
+ */
+export const MeshQualityMetricsSchema = z.object({
+  version: z.literal(1),
+  elementType: z.enum(["Tet4", "Tet10"]),
+  elementCount: z.number().int().min(0),
+  degenerateCount: z.number().int().min(0),
+  metrics: z.object({
+    scaledJacobian: MeshQualityMetricStatsSchema,
+    aspectRatio: MeshQualityMetricStatsSchema.optional(),
+    minDihedralDeg: MeshQualityMetricStatsSchema,
+    maxDihedralDeg: MeshQualityMetricStatsSchema,
+    tet10DetJRatio: MeshQualityMetricStatsSchema.optional()
+  }),
+  flagged: z.object({
+    scaledJacobian: z.number().int().min(0),
+    aspectRatio: z.number().int().min(0),
+    minDihedral: z.number().int().min(0),
+    maxDihedral: z.number().int().min(0),
+    tet10NonPositiveDetJ: z.number().int().min(0).optional(),
+    tet10DetJRatio: z.number().int().min(0).optional(),
+    any: z.number().int().min(0)
+  }),
+  thresholds: z.object({
+    scaledJacobianWarnBelow: finiteNumber,
+    aspectRatioWarnAbove: finiteNumber,
+    minDihedralWarnBelowDeg: finiteNumber,
+    maxDihedralWarnAboveDeg: finiteNumber,
+    tet10DetJRatioWarnBelow: finiteNumber
+  }),
+  worstElements: z.array(z.number().int().min(0)).max(256)
+});
+
 export const MeshSettingsSchema = z.object({
   preset: MeshQualitySchema,
   status: z.enum(["not_started", "ready", "warning", "complete"]),
@@ -310,6 +359,8 @@ export const MeshSettingsSchema = z.object({
       density: z.record(z.string(), z.unknown()).optional(),
       solverCoordinateSpace: z.string().optional(),
       resultSampleCoordinateSpace: z.string().optional(),
+      // Display only: an unreadable summary is dropped instead of failing the project load.
+      qualityMetrics: MeshQualityMetricsSchema.optional().catch(undefined),
       artifacts: z
         .object({
           meshConnectivity: z
@@ -860,6 +911,7 @@ export type ResultField = z.infer<typeof ResultFieldSchema>;
 export type ResultPeakLocation = z.infer<typeof ResultPeakLocationSchema>;
 export type GeometryFile = z.infer<typeof GeometryFileSchema>;
 export type MeshSummary = z.infer<typeof MeshSummarySchema>;
+export type MeshQualityMetrics = z.infer<typeof MeshQualityMetricsSchema>;
 export type StructuralResultSummary = Omit<z.infer<typeof StructuralResultSummarySchema>, "diagnostics"> & { diagnostics?: Diagnostic[] };
 export type ModalMassParticipation = z.infer<typeof ModalMassParticipationSchema>;
 export type ModalResultSummary = Omit<z.infer<typeof ModalResultSummarySchema>, "diagnostics"> & { diagnostics?: Diagnostic[] };

@@ -6381,3 +6381,92 @@ input[aria-invalid="true"] {
 .theme-light .result-peak-callout-label {
   background: rgba(255, 255, 255, 0.92);
 }
+
+/* Element-quality summary in the Mesh panel (plan 036 R2.1). */
+.mesh-quality-card {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.mesh-quality-head,
+.mesh-quality-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.mesh-quality-head {
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.mesh-quality-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mesh-quality-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "name flag"
+    "values values"
+    "histogram histogram";
+  gap: var(--sp-1) var(--sp-2);
+  padding: var(--sp-2) var(--sp-25);
+  background: var(--color-surface-2);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+}
+
+.mesh-quality-name {
+  grid-area: name;
+  display: grid;
+  min-width: 0;
+}
+
+.mesh-quality-name small,
+.mesh-quality-flag {
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.mesh-quality-flag {
+  grid-area: flag;
+  align-self: start;
+  white-space: nowrap;
+}
+
+.mesh-quality-flag.flagged {
+  color: var(--color-warning);
+}
+
+.mesh-quality-values {
+  grid-area: values;
+  font-size: var(--fs-sm);
+}
+
+.mesh-quality-histogram {
+  grid-area: histogram;
+  width: 100%;
+  height: 24px;
+}
+
+.mesh-quality-histogram .bar {
+  fill: var(--color-series-1);
+}
+
+.mesh-quality-histogram .bar.past {
+  fill: var(--color-warning);
+}
+
+.mesh-quality-histogram .threshold {
+  stroke: var(--color-warning);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}

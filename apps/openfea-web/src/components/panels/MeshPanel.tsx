@@ -16,10 +16,11 @@ import { stepGeometryMetadataForProject } from "../../stepGeometryState";
 import { formatDisplayNumber } from "../../unitDisplay";
 
 import type { RightPanelProps } from "./RightPanelProps";
+import { MeshQualityCard } from "./MeshQualityCard";
 import { Panel, meshPresetDescription, seedProbeCoordinate, structuralLoadCasesForPanel } from "./PanelChrome";
 import { MESH_PRESETS } from "./RightPanelProps";
 import { Callout, Collapsible, HelpLabel, Info, SectionTitle, capitalize, selectionLabelForPanel } from "./PanelChrome";
-export function MeshPanel({ project, displayModel, study, viewMode, onViewModeChange, onGenerateMesh, onConnectionsChange, onCancelMesh, meshPhaseProgress, meshError, onRepairModel, isRepairingModel = false, onRunMeshConvergence, convergenceBusy = false, convergenceProgress = "" }: RightPanelProps) {
+export function MeshPanel({ project, displayModel, study, viewMode, onViewModeChange, onGenerateMesh, onConnectionsChange, onCancelMesh, meshPhaseProgress, showWorstMeshElements = false, onShowWorstMeshElementsChange, meshError, onRepairModel, isRepairingModel = false, onRunMeshConvergence, convergenceBusy = false, convergenceProgress = "" }: RightPanelProps) {
   const [preset, setPreset] = useState<MeshQuality>(study.meshSettings.preset);
   const meshing = Boolean(meshPhaseProgress);
   const meshSummary = study.meshSettings.summary;
@@ -185,6 +186,17 @@ export function MeshPanel({ project, displayModel, study, viewMode, onViewModeCh
         >
           <Eye size={16} />{viewMode === "mesh" ? "Hide mesh" : "Show mesh in viewer"}
         </button>
+      )}
+      {meshSummary?.qualityMetrics && hasVerifiedMeshSummary && (
+        <MeshQualityCard
+          quality={meshSummary.qualityMetrics}
+          showWorst={showWorstMeshElements}
+          onShowWorstChange={stepGeometryResolvedByMesh && onShowWorstMeshElementsChange ? (show) => {
+            onShowWorstMeshElementsChange(show);
+            // Highlights are drawn in the mesh view only.
+            if (show && viewMode !== "mesh") onViewModeChange("mesh");
+          } : undefined}
+        />
       )}
       {meshSummary && meshSummary.warnings.length > 0 && (
         <ul className="mesh-warning-list" aria-label="Mesh warnings">
