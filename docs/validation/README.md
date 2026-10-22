@@ -27,6 +27,10 @@ pnpm vitest run libs/openfea-solve-pipeline/src/goldenParity.test.ts apps/openfe
 
 The golden parity suite replays every recorded OpenCAE Core Cloud solve fixture (`apps/openfea-web/src/testdata/core-cloud-golden`) through the browser pipeline and compares the retired production response numerically while requiring local solver and runner provenance. No local estimate fallback is allowed in these tests.
 
+## Browser Solve Envelope
+
+[solve-ladder.md](solve-ladder.md) records the measured browser CPU solver envelope at about 30k, 75k and 150k DOF (`pnpm verify:solve-ladder`, manual, not CI).
+
 ## Historical: Validate Deployed Cloud (retired 2026-07)
 
 The deployed-cloud validation flow (cloud health readiness, run creation through the Worker, runner-version cross-checks) was retired with the cloud infrastructure; the retired routes now return HTTP 410 (see [docs/cloud-retirement.md](../cloud-retirement.md) for the exact route list). The deploy gates that remain are `pnpm verify:cloudflare-config` (asserts the retired bindings stay absent) and the Cloudflare dry run:

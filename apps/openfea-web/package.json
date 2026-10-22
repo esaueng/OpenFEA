@@ -18,6 +18,7 @@
     "@openfea/samples": "workspace:*",
     "@openfea/schema": "workspace:*",
     "@openfea/solve-pipeline": "workspace:*",
+    "@openfea/solver-cpu": "workspace:*",
     "@openfea/step": "workspace:*",
     "@openfea/study-core": "workspace:*",
     "@openfea/units": "workspace:*",

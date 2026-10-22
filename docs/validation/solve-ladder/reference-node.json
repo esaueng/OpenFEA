@@ -1,0 +1,1045 @@
+{
+  "generatedBy": "scripts/solve-ladder-node.ts",
+  "runtime": {
+    "node": "v22.22.0",
+    "v8": "12.4.254.21-node.33",
+    "platform": "linux-x64",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "logicalCpus": 4,
+    "totalMemoryBytes": 16874930176
+  },
+  "cases": {
+    "block-tet4-30k-static": {
+      "ok": true,
+      "caseId": "block-tet4-30k-static",
+      "fixture": {
+        "id": "block-tet4-30k",
+        "shape": "block",
+        "order": "Tet4",
+        "rung": "30k",
+        "grid": {
+          "nx": 33,
+          "ny": 16,
+          "nz": 16,
+          "nodes": 9826,
+          "dofs": 29478
+        },
+        "freeDofs": 28611,
+        "fingerprint": "a904199d",
+        "totalDofs": 29478,
+        "elements": 50688
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 342.55917300000004,
+        "normalizeMs": 109.63955899999996,
+        "assembleMs": 1531.6708010000002,
+        "solveMs": 1892.46169,
+        "recoverMs": 1612.7801209999998,
+        "totalSolveMs": 5146.552171
+      },
+      "solver": {
+        "cgIterations": 213,
+        "finalRelativeResidual": 8.381436782029451e-11,
+        "matrixNonZeros": 1013484,
+        "estimatedMatrixBytes": 12279724
+      },
+      "parity": {
+        "tipMeanUz": -0.018215158169948314,
+        "maxDisplacement": 0.019286903411439425,
+        "reactionZ": 9999.99999998333,
+        "appliedZ": -10000,
+        "reactionBalanceRelError": 1.6669218894094229e-12
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 165169635
+      },
+      "measuredAt": "2026-10-21T16:06:38.174Z"
+    },
+    "block-tet4-30k-modal": {
+      "ok": true,
+      "caseId": "block-tet4-30k-modal",
+      "fixture": {
+        "id": "block-tet4-30k",
+        "shape": "block",
+        "order": "Tet4",
+        "rung": "30k",
+        "grid": {
+          "nx": 33,
+          "ny": 16,
+          "nz": 16,
+          "nodes": 9826,
+          "dofs": 29478
+        },
+        "freeDofs": 28611,
+        "fingerprint": "a904199d",
+        "totalDofs": 29478,
+        "elements": 50688
+      },
+      "analysis": "modal",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "jacobi (modal default)"
+      },
+      "timings": {
+        "generateMs": 306.0363550000002,
+        "assembleMs": 986.7482399999999,
+        "totalSolveMs": 63889.001478000006
+      },
+      "solver": {
+        "subspaceIterations": 12,
+        "convergedModeCount": 3,
+        "frequenciesHz": [
+          1779.801749641491,
+          1787.6954344088983,
+          3655.7501288942376
+        ]
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 165358823
+      },
+      "measuredAt": "2026-10-21T16:07:42.372Z"
+    },
+    "block-tet4-30k-dynamic": {
+      "ok": true,
+      "caseId": "block-tet4-30k-dynamic",
+      "fixture": {
+        "id": "block-tet4-30k",
+        "shape": "block",
+        "order": "Tet4",
+        "rung": "30k",
+        "grid": {
+          "nx": 33,
+          "ny": 16,
+          "nz": 16,
+          "nodes": 9826,
+          "dofs": 29478
+        },
+        "freeDofs": 28611,
+        "fingerprint": "a904199d",
+        "totalDofs": 29478,
+        "elements": 50688
+      },
+      "analysis": "dynamic",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "jacobi (dynamic default)"
+      },
+      "timings": {
+        "generateMs": 293.95389299999806,
+        "assembleMs": 989.9231219999929,
+        "totalSolveMs": 46967.34993
+      },
+      "solver": {
+        "frameCount": 5,
+        "cgIterationsTotal": 2413,
+        "cgIterationsMaxPerStep": 613,
+        "peakDisplacement": 0.01939473541425968,
+        "finalRelativeResidual": 9.904537657022915e-11
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 165938559
+      },
+      "measuredAt": "2026-10-21T16:08:29.637Z"
+    },
+    "block-tet10-30k-static": {
+      "ok": true,
+      "caseId": "block-tet10-30k-static",
+      "fixture": {
+        "id": "block-tet10-30k",
+        "shape": "block",
+        "order": "Tet10",
+        "rung": "30k",
+        "grid": {
+          "nx": 16,
+          "ny": 8,
+          "nz": 8,
+          "nodes": 9537,
+          "dofs": 28611
+        },
+        "freeDofs": 27744,
+        "fingerprint": "c3769bdf",
+        "totalDofs": 28611,
+        "elements": 6144
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 80.54692999999679,
+        "normalizeMs": 44.02119099999254,
+        "assembleMs": 1527.0540509999992,
+        "solveMs": 5301.549801000001,
+        "recoverMs": 1000.7807659999962,
+        "totalSolveMs": 7873.405808999989
+      },
+      "solver": {
+        "cgIterations": 275,
+        "finalRelativeResidual": 8.564535340537953e-11,
+        "matrixNonZeros": 2222375,
+        "estimatedMatrixBytes": 26782948
+      },
+      "parity": {
+        "tipMeanUz": -0.018536377743408626,
+        "maxDisplacement": 0.019651599289440744,
+        "reactionZ": 10000.00000000984,
+        "appliedZ": -10000,
+        "reactionBalanceRelError": 9.840732673183084e-13
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 189370475
+      },
+      "measuredAt": "2026-10-21T16:08:37.597Z"
+    },
+    "block-tet10-30k-modal": {
+      "ok": true,
+      "caseId": "block-tet10-30k-modal",
+      "fixture": {
+        "id": "block-tet10-30k",
+        "shape": "block",
+        "order": "Tet10",
+        "rung": "30k",
+        "grid": {
+          "nx": 16,
+          "ny": 8,
+          "nz": 8,
+          "nodes": 9537,
+          "dofs": 28611
+        },
+        "freeDofs": 27744,
+        "fingerprint": "c3769bdf",
+        "totalDofs": 28611,
+        "elements": 6144
+      },
+      "analysis": "modal",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "jacobi (modal default)"
+      },
+      "timings": {
+        "generateMs": 88.12945800001035,
+        "assembleMs": 565.4706520000036,
+        "totalSolveMs": 111424.492689
+      },
+      "solver": {
+        "subspaceIterations": 10,
+        "convergedModeCount": 3,
+        "frequenciesHz": [
+          1768.0218633294944,
+          1768.3356247775023,
+          3609.4394530854793
+        ]
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 141756751
+      },
+      "measuredAt": "2026-10-21T16:10:29.112Z"
+    },
+    "block-tet10-30k-dynamic": {
+      "ok": true,
+      "caseId": "block-tet10-30k-dynamic",
+      "fixture": {
+        "id": "block-tet10-30k",
+        "shape": "block",
+        "order": "Tet10",
+        "rung": "30k",
+        "grid": {
+          "nx": 16,
+          "ny": 8,
+          "nz": 8,
+          "nodes": 9537,
+          "dofs": 28611
+        },
+        "freeDofs": 27744,
+        "fingerprint": "c3769bdf",
+        "totalDofs": 28611,
+        "elements": 6144
+      },
+      "analysis": "dynamic",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "jacobi (dynamic default)"
+      },
+      "timings": {
+        "generateMs": 55.17859899997711,
+        "assembleMs": 416.6509150000056,
+        "totalSolveMs": 92896.40832699998
+      },
+      "solver": {
+        "frameCount": 5,
+        "cgIterationsTotal": 2853,
+        "cgIterationsMaxPerStep": 723,
+        "peakDisplacement": 0.01976675187416918,
+        "finalRelativeResidual": 9.606003652457812e-11
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 141750671
+      },
+      "measuredAt": "2026-10-21T16:12:02.066Z"
+    },
+    "slender-tet4-30k-static": {
+      "ok": true,
+      "caseId": "slender-tet4-30k-static",
+      "fixture": {
+        "id": "slender-tet4-30k",
+        "shape": "slender",
+        "order": "Tet4",
+        "rung": "30k",
+        "grid": {
+          "nx": 276,
+          "ny": 5,
+          "nz": 5,
+          "nodes": 9972,
+          "dofs": 29916
+        },
+        "freeDofs": 29808,
+        "fingerprint": "2360ce8d",
+        "totalDofs": 29916,
+        "elements": 41400
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 220.9679119999637,
+        "normalizeMs": 108.68753799999831,
+        "assembleMs": 1328.6707129999995,
+        "solveMs": 28301.050202000013,
+        "recoverMs": 1240.7611569999717,
+        "totalSolveMs": 30979.169609999983
+      },
+      "solver": {
+        "cgIterations": 3612,
+        "finalRelativeResidual": 1.8640317398703473e-7,
+        "matrixNonZeros": 928932,
+        "estimatedMatrixBytes": 11266852
+      },
+      "parity": {
+        "tipMeanUz": -10.764300813396384,
+        "maxDisplacement": 10.780274007871597,
+        "reactionZ": 99.99999978423746,
+        "appliedZ": -100,
+        "reactionBalanceRelError": 2.157625402787744e-9
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 192103975
+      },
+      "measuredAt": "2026-10-21T16:12:33.276Z"
+    },
+    "slender-tet4-30k-modal": {
+      "ok": true,
+      "caseId": "slender-tet4-30k-modal",
+      "fixture": {
+        "id": "slender-tet4-30k",
+        "shape": "slender",
+        "order": "Tet4",
+        "rung": "30k",
+        "grid": {
+          "nx": 276,
+          "ny": 5,
+          "nz": 5,
+          "nodes": 9972,
+          "dofs": 29916
+        },
+        "freeDofs": 29808,
+        "fingerprint": "2360ce8d",
+        "totalDofs": 29916,
+        "elements": 41400
+      },
+      "analysis": "modal",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "jacobi (modal default)"
+      },
+      "timings": {
+        "generateMs": 206.3615689999424,
+        "assembleMs": 767.8768900000141,
+        "totalSolveMs": 1448055.4389630002
+      },
+      "solver": {
+        "subspaceIterations": 30,
+        "convergedModeCount": 1,
+        "frequenciesHz": [
+          107.30048297922382
+        ]
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 148706043
+      },
+      "measuredAt": "2026-10-21T16:36:41.541Z"
+    },
+    "slender-tet4-30k-dynamic": {
+      "ok": true,
+      "caseId": "slender-tet4-30k-dynamic",
+      "fixture": {
+        "id": "slender-tet4-30k",
+        "shape": "slender",
+        "order": "Tet4",
+        "rung": "30k",
+        "grid": {
+          "nx": 276,
+          "ny": 5,
+          "nz": 5,
+          "nodes": 9972,
+          "dofs": 29916
+        },
+        "freeDofs": 29808,
+        "fingerprint": "2360ce8d",
+        "totalDofs": 29916,
+        "elements": 41400
+      },
+      "analysis": "dynamic",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "jacobi (dynamic default)"
+      },
+      "timings": {
+        "generateMs": 183.23503200011328,
+        "assembleMs": 709.1940429999959,
+        "totalSolveMs": 352703.33310399996
+      },
+      "solver": {
+        "frameCount": 5,
+        "cgIterationsTotal": 21386,
+        "cgIterationsMaxPerStep": 5596,
+        "peakDisplacement": 2.2774853094130294,
+        "finalRelativeResidual": 9.719422396662176e-11
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 167455367
+      },
+      "measuredAt": "2026-10-21T16:42:34.431Z"
+    },
+    "slender-tet10-30k-static": {
+      "ok": true,
+      "caseId": "slender-tet10-30k-static",
+      "fixture": {
+        "id": "slender-tet10-30k",
+        "shape": "slender",
+        "order": "Tet10",
+        "rung": "30k",
+        "grid": {
+          "nx": 101,
+          "ny": 3,
+          "nz": 3,
+          "nodes": 9947,
+          "dofs": 29841
+        },
+        "freeDofs": 29694,
+        "fingerprint": "22054418",
+        "totalDofs": 29841,
+        "elements": 5454
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 47.95133400009945,
+        "normalizeMs": 45.58028900017962,
+        "assembleMs": 1090.8264830000699,
+        "solveMs": 96282.76003600005,
+        "recoverMs": 1503.7268739999272,
+        "totalSolveMs": 98922.89368200023
+      },
+      "solver": {
+        "cgIterations": 6225,
+        "finalRelativeResidual": 4.050066162633432e-7,
+        "matrixNonZeros": 2105473,
+        "estimatedMatrixBytes": 25385044
+      },
+      "parity": {
+        "tipMeanUz": -12.478205615427118,
+        "maxDisplacement": 12.47962101404264,
+        "reactionZ": 99.9999994760143,
+        "appliedZ": -100,
+        "reactionBalanceRelError": 5.239857046035467e-9
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 177354651
+      },
+      "measuredAt": "2026-10-21T16:44:13.410Z"
+    },
+    "slender-tet10-30k-modal": {
+      "ok": true,
+      "caseId": "slender-tet10-30k-modal",
+      "fixture": {
+        "id": "slender-tet10-30k",
+        "shape": "slender",
+        "order": "Tet10",
+        "rung": "30k",
+        "grid": {
+          "nx": 101,
+          "ny": 3,
+          "nz": 3,
+          "nodes": 9947,
+          "dofs": 29841
+        },
+        "freeDofs": 29694,
+        "fingerprint": "22054418",
+        "totalDofs": 29841,
+        "elements": 5454
+      },
+      "analysis": "modal",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "jacobi (modal default)"
+      },
+      "timings": {
+        "generateMs": 53.33667699992657,
+        "assembleMs": 439.75968400016427,
+        "totalSolveMs": 4106963.6863989998
+      },
+      "solver": {
+        "subspaceIterations": 30,
+        "convergedModeCount": 1,
+        "frequenciesHz": [
+          102.10735018855011
+        ]
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 132580935
+      },
+      "measuredAt": "2026-10-21T17:52:40.431Z"
+    },
+    "slender-tet10-30k-dynamic": {
+      "ok": true,
+      "caseId": "slender-tet10-30k-dynamic",
+      "fixture": {
+        "id": "slender-tet10-30k",
+        "shape": "slender",
+        "order": "Tet10",
+        "rung": "30k",
+        "grid": {
+          "nx": 101,
+          "ny": 3,
+          "nz": 3,
+          "nodes": 9947,
+          "dofs": 29841
+        },
+        "freeDofs": 29694,
+        "fingerprint": "22054418",
+        "totalDofs": 29841,
+        "elements": 5454
+      },
+      "analysis": "dynamic",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "jacobi (dynamic default)"
+      },
+      "timings": {
+        "generateMs": 105.85577999999998,
+        "assembleMs": 526.125137,
+        "totalSolveMs": 857397.4571260001
+      },
+      "solver": {
+        "frameCount": 5,
+        "cgIterationsTotal": 27301,
+        "cgIterationsMaxPerStep": 7164,
+        "peakDisplacement": 2.3594619946221003,
+        "finalRelativeResidual": 9.885365748837616e-11
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 132804275
+      },
+      "measuredAt": "2026-10-21T18:20:58.727Z"
+    },
+    "block-tet4-75k-static": {
+      "ok": true,
+      "caseId": "block-tet4-75k-static",
+      "fixture": {
+        "id": "block-tet4-75k",
+        "shape": "block",
+        "order": "Tet4",
+        "rung": "75k",
+        "grid": {
+          "nx": 46,
+          "ny": 22,
+          "nz": 22,
+          "nodes": 24863,
+          "dofs": 74589
+        },
+        "freeDofs": 73002,
+        "fingerprint": "c22075f3",
+        "totalDofs": 74589,
+        "elements": 133584
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 778.7449570000172,
+        "normalizeMs": 224.90899100003298,
+        "assembleMs": 4129.397129000048,
+        "solveMs": 5101.080628999975,
+        "recoverMs": 4574.3018069999525,
+        "totalSolveMs": 14029.688556000008
+      },
+      "solver": {
+        "cgIterations": 293,
+        "finalRelativeResidual": 8.589873306916258e-11,
+        "matrixNonZeros": 2615607,
+        "estimatedMatrixBytes": 31685644
+      },
+      "parity": {
+        "tipMeanUz": -0.018372456321090882,
+        "maxDisplacement": 0.019466499045466462,
+        "reactionZ": 10000.000000048853,
+        "appliedZ": -10000,
+        "reactionBalanceRelError": 4.885259841103107e-12
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 365161863
+      },
+      "measuredAt": "2026-10-21T18:21:13.571Z"
+    },
+    "block-tet10-75k-static": {
+      "ok": true,
+      "caseId": "block-tet10-75k-static",
+      "fixture": {
+        "id": "block-tet10-75k",
+        "shape": "block",
+        "order": "Tet10",
+        "rung": "75k",
+        "grid": {
+          "nx": 23,
+          "ny": 11,
+          "nz": 11,
+          "nodes": 24863,
+          "dofs": 74589
+        },
+        "freeDofs": 73002,
+        "fingerprint": "05963ebd",
+        "totalDofs": 74589,
+        "elements": 16698
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 154.68487100000493,
+        "normalizeMs": 92.66853400005493,
+        "assembleMs": 3437.6954550000373,
+        "solveMs": 17516.424704000005,
+        "recoverMs": 4673.122512000031,
+        "totalSolveMs": 25719.911205000128
+      },
+      "solver": {
+        "cgIterations": 379,
+        "finalRelativeResidual": 9.388206203482327e-11,
+        "matrixNonZeros": 5952451,
+        "estimatedMatrixBytes": 71727772
+      },
+      "parity": {
+        "tipMeanUz": -0.01855317325642861,
+        "maxDisplacement": 0.019678723957897905,
+        "reactionZ": 9999.999999996005,
+        "appliedZ": -10000,
+        "reactionBalanceRelError": 3.9945007301867006e-13
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 332569579
+      },
+      "measuredAt": "2026-10-21T18:21:39.456Z"
+    },
+    "slender-tet4-75k-static": {
+      "ok": true,
+      "caseId": "slender-tet4-75k-static",
+      "fixture": {
+        "id": "slender-tet4-75k",
+        "shape": "slender",
+        "order": "Tet4",
+        "rung": "75k",
+        "grid": {
+          "nx": 389,
+          "ny": 7,
+          "nz": 7,
+          "nodes": 24960,
+          "dofs": 74880
+        },
+        "freeDofs": 74688,
+        "fingerprint": "b4138b95",
+        "totalDofs": 74880,
+        "elements": 114366
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 846.0023309999378,
+        "normalizeMs": 291.26651999994647,
+        "assembleMs": 3927.234403999988,
+        "solveMs": 80832.22025300004,
+        "recoverMs": 3767.4689810000127,
+        "totalSolveMs": 88818.19015799998
+      },
+      "solver": {
+        "cgIterations": 4678,
+        "finalRelativeResidual": 3.654756638453239e-7,
+        "matrixNonZeros": 2435028,
+        "estimatedMatrixBytes": 29519860
+      },
+      "parity": {
+        "tipMeanUz": -11.534493166566392,
+        "maxDisplacement": 11.540875454710294,
+        "reactionZ": 99.99998806760972,
+        "appliedZ": -100,
+        "reactionBalanceRelError": 1.1932390279412174e-7
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 328591363
+      },
+      "measuredAt": "2026-10-21T18:23:09.138Z"
+    },
+    "slender-tet10-75k-static": {
+      "ok": true,
+      "caseId": "slender-tet10-75k-static",
+      "fixture": {
+        "id": "slender-tet10-75k",
+        "shape": "slender",
+        "order": "Tet10",
+        "rung": "75k",
+        "grid": {
+          "nx": 153,
+          "ny": 4,
+          "nz": 4,
+          "nodes": 24867,
+          "dofs": 74601
+        },
+        "freeDofs": 74358,
+        "fingerprint": "7f95b582",
+        "totalDofs": 74601,
+        "elements": 14688
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 118.56412599992473,
+        "normalizeMs": 66.82498799997848,
+        "assembleMs": 3039.6369519999716,
+        "solveMs": 404603.08623699995,
+        "recoverMs": 4752.140727000078,
+        "totalSolveMs": 412461.688904
+      },
+      "solver": {
+        "cgIterations": 8433,
+        "finalRelativeResidual": 7.259223071133308e-7,
+        "matrixNonZeros": 5509559,
+        "estimatedMatrixBytes": 66413116
+      },
+      "parity": {
+        "tipMeanUz": -12.482404933727844,
+        "maxDisplacement": 12.483818082581363,
+        "reactionZ": 100.00000012902979,
+        "appliedZ": -100,
+        "reactionBalanceRelError": 1.2902978596684989e-9
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 314601059
+      },
+      "measuredAt": "2026-10-21T18:30:01.731Z"
+    },
+    "block-tet4-150k-static": {
+      "ok": true,
+      "caseId": "block-tet4-150k-static",
+      "fixture": {
+        "id": "block-tet4-150k",
+        "shape": "block",
+        "order": "Tet4",
+        "rung": "150k",
+        "grid": {
+          "nx": 58,
+          "ny": 28,
+          "nz": 28,
+          "nodes": 49619,
+          "dofs": 148857
+        },
+        "freeDofs": 146334,
+        "fingerprint": "eae62c97",
+        "totalDofs": 148857,
+        "elements": 272832
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 2014.468022,
+        "normalizeMs": 510.10213099999964,
+        "assembleMs": 9028.622678,
+        "solveMs": 16967.941360999997,
+        "recoverMs": 9094.600874000003,
+        "totalSolveMs": 35601.267044
+      },
+      "solver": {
+        "cgIterations": 369,
+        "finalRelativeResidual": 9.007661082831378e-11,
+        "matrixNonZeros": 5278923,
+        "estimatedMatrixBytes": 63942508
+      },
+      "parity": {
+        "tipMeanUz": -0.018442376241549718,
+        "maxDisplacement": 0.019548555184387886,
+        "reactionZ": 9999.99999997913,
+        "appliedZ": -10000,
+        "reactionBalanceRelError": 2.086926542688161e-12
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 699776711
+      },
+      "measuredAt": "2026-10-21T18:30:51.115Z"
+    },
+    "block-tet10-150k-static": {
+      "ok": true,
+      "caseId": "block-tet10-150k-static",
+      "fixture": {
+        "id": "block-tet10-150k",
+        "shape": "block",
+        "order": "Tet10",
+        "rung": "150k",
+        "grid": {
+          "nx": 29,
+          "ny": 14,
+          "nz": 14,
+          "nodes": 49619,
+          "dofs": 148857
+        },
+        "freeDofs": 146334,
+        "fingerprint": "76418bb4",
+        "totalDofs": 148857,
+        "elements": 34104
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 320.336682000001,
+        "normalizeMs": 134.799755,
+        "assembleMs": 7611.827098000002,
+        "solveMs": 51372.373693,
+        "recoverMs": 10231.883359,
+        "totalSolveMs": 69350.883905
+      },
+      "solver": {
+        "cgIterations": 479,
+        "finalRelativeResidual": 9.494832082450621e-11,
+        "matrixNonZeros": 12071669,
+        "estimatedMatrixBytes": 145455460
+      },
+      "parity": {
+        "tipMeanUz": -0.018560370668565408,
+        "maxDisplacement": 0.01969070658766583,
+        "reactionZ": 10000.000000004837,
+        "appliedZ": -10000,
+        "reactionBalanceRelError": 4.836692824028433e-13
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 666089627
+      },
+      "measuredAt": "2026-10-21T18:32:00.801Z"
+    },
+    "slender-tet4-150k-static": {
+      "ok": true,
+      "caseId": "slender-tet4-150k-static",
+      "fixture": {
+        "id": "slender-tet4-150k",
+        "shape": "slender",
+        "order": "Tet4",
+        "rung": "150k",
+        "grid": {
+          "nx": 499,
+          "ny": 9,
+          "nz": 9,
+          "nodes": 50000,
+          "dofs": 150000
+        },
+        "freeDofs": 149700,
+        "fingerprint": "c48df031",
+        "totalDofs": 150000,
+        "elements": 242514
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 1495.9298980000021,
+        "normalizeMs": 430.5359230000031,
+        "assembleMs": 7707.197986999992,
+        "solveMs": 251838.77404599998,
+        "recoverMs": 8447.746380000026,
+        "totalSolveMs": 268424.254336
+      },
+      "solver": {
+        "cgIterations": 6240,
+        "finalRelativeResidual": 6.402803024264311e-7,
+        "matrixNonZeros": 5010852,
+        "estimatedMatrixBytes": 60730228
+      },
+      "parity": {
+        "tipMeanUz": -11.888070038857341,
+        "maxDisplacement": 11.891632576110753,
+        "reactionZ": 100.00000994819885,
+        "appliedZ": -100,
+        "reactionBalanceRelError": 9.948198851361667e-8
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 641563075
+      },
+      "measuredAt": "2026-10-21T18:36:30.749Z"
+    },
+    "slender-tet10-150k-static": {
+      "ok": true,
+      "caseId": "slender-tet10-150k-static",
+      "fixture": {
+        "id": "slender-tet10-150k",
+        "shape": "slender",
+        "order": "Tet10",
+        "rung": "150k",
+        "grid": {
+          "nx": 206,
+          "ny": 5,
+          "nz": 5,
+          "nodes": 49973,
+          "dofs": 149919
+        },
+        "freeDofs": 149556,
+        "fingerprint": "2fbfced6",
+        "totalDofs": 149919,
+        "elements": 30900
+      },
+      "analysis": "static",
+      "appliedLimitMaxDofs": 150000,
+      "settings": {
+        "maxIterations": 50000,
+        "tolerance": 1e-10,
+        "preconditioner": "ssor"
+      },
+      "timings": {
+        "generateMs": 261.4447879999643,
+        "normalizeMs": 147.78996199998073,
+        "assembleMs": 6781.512031999999,
+        "solveMs": 1159376.4312429999,
+        "recoverMs": 9770.65256600012,
+        "totalSolveMs": 1176076.385803
+      },
+      "solver": {
+        "cgIterations": 11221,
+        "finalRelativeResidual": 0.0000011221727718256147,
+        "matrixNonZeros": 11351583,
+        "estimatedMatrixBytes": 136818676
+      },
+      "parity": {
+        "tipMeanUz": -12.484076457404532,
+        "maxDisplacement": 12.485489173571024,
+        "reactionZ": 100.0000033532412,
+        "appliedZ": -100,
+        "reactionBalanceRelError": 3.353241197601165e-8
+      },
+      "coreResultValid": true,
+      "heap": {
+        "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
+        "peakBytes": 637387707
+      },
+      "measuredAt": "2026-10-21T18:56:07.105Z"
+    }
+  }
+}
