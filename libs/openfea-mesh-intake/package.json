@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@loumalouomega/gmsh-wasm": "0.3.0",
+    "@loumalouomega/gmsh-wasm": "0.4.0",
     "@openfea/core": "workspace:*",
     "@openfea/materials": "workspace:*",
     "@openfea/solve-pipeline": "workspace:*"
