@@ -2,6 +2,7 @@
 // Mirrors performanceWorker.ts conventions. gmsh-wasm (and the whole
 // @openfea/mesh-intake meshing path) is loaded via dynamic import inside the
 // worker so the initial app bundle never pays for the ~44 MB WASM asset.
+import { computeTetMeshQuality, type MeshQualityMetricsSummary } from "@openfea/core";
 import type { MeshAttemptContext } from "@openfea/mesh-intake";
 import {
   normalizeMeshWorkerError,
@@ -79,10 +80,13 @@ async function runOperation(request: MeshWorkerRequest, reportPhase: (phase: Mes
     // First-class wasm-session quality gate (A-M4): reject near-degenerate
     // meshes, record marginal quality onto artifact metadata.
     intake.enforceWasmMeshQualityGate(artifact, meshed.qualityMinSICN, "In-browser meshing");
+    const packed = packCoreVolumeMeshArtifact(artifact);
+    const qualityMetrics = meshQualityMetricsForPacked(packed);
     return {
-      packed: packCoreVolumeMeshArtifact(artifact),
+      packed,
       timings: meshed.timings,
-      totalMs: meshed.totalMs
+      totalMs: meshed.totalMs,
+      ...(qualityMetrics ? { qualityMetrics } : {})
     };
   }
 
@@ -105,6 +109,7 @@ async function runOperation(request: MeshWorkerRequest, reportPhase: (phase: Mes
     meshSizeMm: request.payload.meshSizeMm,
     structuralBodyBounds: request.payload.structuralBodyBounds,
     fuseBodyGroups: request.payload.fuseBodyGroups,
+    bodyIdentities: request.payload.bodyIdentities,
     preservePartIdentity: request.payload.preservePartIdentity,
     onPhase
   });
@@ -120,11 +125,14 @@ async function runOperation(request: MeshWorkerRequest, reportPhase: (phase: Mes
   const attribution = request.payload.attribution
     ? intake.attributeFacetsToStepFaces(artifact, request.payload.attribution)
     : undefined;
+  const packed = packCoreVolumeMeshArtifact(artifact);
+  const qualityMetrics = meshQualityMetricsForPacked(packed);
   return {
-    packed: packCoreVolumeMeshArtifact(artifact),
+    packed,
     timings: meshed.timings,
     totalMs: meshed.totalMs,
     algorithm3D: meshed.algorithm3D,
+    ...(qualityMetrics ? { qualityMetrics } : {}),
     ...(meshed.elevation ? { elevation: meshed.elevation } : {}),
     ...(meshed.optimizer ? { optimizer: meshed.optimizer } : {}),
     ...(meshed.qualityRefinement ? { qualityRefinement: meshed.qualityRefinement } : {}),
@@ -134,4 +142,21 @@ async function runOperation(request: MeshWorkerRequest, reportPhase: (phase: Mes
     ...(meshed.elementOrderFallback ? { elementOrderFallback: meshed.elementOrderFallback } : {}),
     ...(attribution ? { attribution } : {})
   };
+}
+
+/**
+ * Element-quality summary of the final mesh, i.e. exactly the connectivity the
+ * solver receives (plan 036 R2.1). Display only: a failure here must never
+ * fail meshing, so it degrades to "no metrics".
+ */
+function meshQualityMetricsForPacked(packed: ReturnType<typeof packCoreVolumeMeshArtifact>): MeshQualityMetricsSummary | undefined {
+  try {
+    return computeTetMeshQuality({
+      coordinates: packed.coordinates,
+      connectivity: packed.connectivity,
+      elementType: packed.elementType
+    }) ?? undefined;
+  } catch {
+    return undefined;
+  }
 }

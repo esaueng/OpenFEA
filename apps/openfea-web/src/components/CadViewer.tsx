@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ViewerToolbar } from "./ViewerToolbar";
-import type { CSSProperties, ElementRef, MouseEvent as ReactMouseEvent, MutableRefObject, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, ElementRef, MouseEvent as ReactMouseEvent, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { Billboard, Bounds, Edges, GizmoHelper, Html, Line, OrbitControls, Text, useBounds } from "@react-three/drei";
 import { addAfterEffect, Canvas, useFrame, useThree } from "@react-three/fiber";
 import { configureTextBuilder } from "troika-three-text";
@@ -49,6 +49,8 @@ interface CadViewerProps {
   assignedFaceTints?: ViewerFaceTint[];
   payloadObjectSelectionMode: boolean;
   selectedPayloadObject: PayloadObjectSelection | null;
+  /** STEP body (`step-object-<n>`) to highlight, e.g. while its material row is hovered. */
+  highlightedBodyId?: string | null;
   onViewerMiss: () => void;
   onSelectFace: (face: DisplayFace, point?: [number, number, number], payloadObject?: PayloadObjectSelection) => void;
   viewMode: ViewMode;
@@ -67,6 +69,8 @@ interface CadViewerProps {
   surfaceMesh?: SolverSurfaceMesh;
   /** Boundary of the generated volume mesh, drawn in the mesh view (2026-09 review D13). */
   meshPreviewSurface?: SolverSurfaceMesh;
+  /** Overlay hook: solver-space scene content drawn in the mesh preview's footprint (e.g. worst-element highlight). */
+  meshPreviewOverlay?: ReactNode;
   /** True while report figures are captured through this viewer (2026-09 review D15). */
   captureBusy?: boolean;
   /** Results are from before a study edit; drawn read-only with an outdated note (2026-09 review D4). */
@@ -447,6 +451,7 @@ export function CadViewer(props: CadViewerProps) {
             {effectiveViewMode === "mesh" && props.meshPreviewSurface && meshPreviewFootprint && (
               <group scale={meshPreviewFootprint.scale} position={meshPreviewFootprint.position}>
                 <MeshPreviewSurface surfaceMesh={props.meshPreviewSurface} />
+                {props.meshPreviewOverlay}
               </group>
             )}
             {effectiveViewMode === "results" && solverSurfaceResult && (
@@ -1776,6 +1781,7 @@ function BracketModel({
   assignedFaceTints,
   payloadObjectSelectionMode,
   selectedPayloadObject,
+  highlightedBodyId,
   onSelectFace,
   viewMode,
   resultMode,
@@ -1812,7 +1818,8 @@ function BracketModel({
   const placementMode = activeStep === "loads" || activeStep === "supports";
   const hasDraftLoadPreview = activeStep === "loads" && loadMarkers.some((marker) => marker.preview);
   const showModelHitLabel = shouldShowModelHitLabel(viewMode, Boolean(hoveredHit), hasDraftLoadPreview);
-  const activePayloadObjectId = payloadHighlightObjectId(payloadObjectSelectionMode, selectedPayloadObject ?? hoveredHit?.payloadObject ?? null);
+  const activePayloadObjectId = payloadHighlightObjectId(payloadObjectSelectionMode, selectedPayloadObject ?? hoveredHit?.payloadObject ?? null)
+    ?? highlightedBodyId ?? undefined;
   const markerScale = useMemo(() => (
     boundaryMarkerScale(modelKind === "uploaded" && uploadedPreviewBounds ? uploadedPreviewBounds : dimensionBoundsForDisplayModel(displayModel))
   ), [displayModel, modelKind, uploadedPreviewBounds]);

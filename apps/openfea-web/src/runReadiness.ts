@@ -1,4 +1,4 @@
-import { validateStudy } from "@openfea/study-core";
+import { validateStudy, type StudyValidationContext } from "@openfea/study-core";
 import type { CustomMaterial, Diagnostic, Study } from "@openfea/schema";
 
 export interface RunReadinessItem {
@@ -50,10 +50,10 @@ const ALWAYS_SHOWN = new Set(["Material assigned", "Support added", "Load added"
  * knew the rule; nothing called it. Deriving readiness from its diagnostics is
  * what keeps the two from drifting apart again.
  */
-export function readinessForStudy(study: Study | null, customMaterials: readonly CustomMaterial[] = []): RunReadinessItem[] {
+export function readinessForStudy(study: Study | null, customMaterials: readonly CustomMaterial[] = [], context: StudyValidationContext = {}): RunReadinessItem[] {
   if (!study) return READINESS_GROUPS.filter((group) => ALWAYS_SHOWN.has(group.label)).map((group) => ({ label: group.label, done: false, blockers: [] }));
 
-  const diagnostics = validateStudy(study, customMaterials);
+  const diagnostics = validateStudy(study, customMaterials, context);
   const claimed = new Map<string, string[]>();
   const unclaimed: string[] = [];
   for (const diagnostic of diagnostics) {

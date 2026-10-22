@@ -1,5 +1,6 @@
 import type { Study } from "@openfea/schema";
-import type { StepBodyBounds } from "@openfea/mesh-intake";
+import type { StepBodyBounds, StepBodyIdentity } from "@openfea/mesh-intake";
+import { bodyElementBlockName, bodyLabelForId, materialAssignmentForBody } from "@openfea/materials";
 import { payloadObjectForLoad } from "./loadPreview";
 import {
   nearestStepFaceIdOnMeshes,
@@ -29,6 +30,36 @@ export type StepStructuralBodyPlan = {
  * component without touching unrelated bodies.
  */
 export function stepFuseBodyGroups(study: Study, registry: StepFaceRegistry): StepBodyBounds[][] {
+  return stepFuseMeshIndexGroups(study, registry).map((meshIndices) => meshIndices.map((meshIndex) => {
+    const bounds = stepBodyBoundsForMesh(registry, meshIndex);
+    if (!bounds) throw new Error(`Could not determine STEP body bounds for Boolean fuse body ${meshIndex + 1}.`);
+    return bounds;
+  }));
+}
+
+/**
+ * Per-body materials (plan 036 R1.3): one identity per tessellated STEP body,
+ * so the mesher stamps each body's elements with `body:step-object-<n>`.
+ * A Boolean fuse makes its bodies one solid, which can carry one material only.
+ */
+export function stepMaterialBodyIdentities(study: Study, registry: StepFaceRegistry): StepBodyIdentity[] {
+  for (const group of stepFuseMeshIndexGroups(study, registry)) {
+    const bodyIds = group.map((meshIndex) => `step-object-${meshIndex + 1}`);
+    const materialKeys = new Set(bodyIds.map((bodyId) => {
+      const assignment = materialAssignmentForBody(study.materialAssignments, bodyId);
+      return JSON.stringify([assignment?.materialId, assignment?.parameters ?? {}]);
+    }));
+    if (materialKeys.size > 1) {
+      throw new Error(`Boolean fuse joins ${bodyIds.map(bodyLabelForId).join(", ")} into one solid, so they cannot keep different materials. Give them the same material or use a tie instead of the fuse.`);
+    }
+  }
+  return registry.meshes.flatMap((_mesh, meshIndex) => {
+    const bounds = stepBodyBoundsForMesh(registry, meshIndex);
+    return bounds ? [{ name: bodyElementBlockName(`step-object-${meshIndex + 1}`), bounds }] : [];
+  });
+}
+
+function stepFuseMeshIndexGroups(study: Study, registry: StepFaceRegistry): number[][] {
   const parent = new Map<number, number>();
   // Iterative with path compression: a recursive find overflows the stack on
   // long fuse chains that crafted projects can build.
@@ -75,11 +106,7 @@ export function stepFuseBodyGroups(study: Study, registry: StepFaceRegistry): St
     group.push(meshIndex);
     groups.set(root, group);
   }
-  return [...groups.values()].map((meshIndices) => meshIndices.map((meshIndex) => {
-    const bounds = stepBodyBoundsForMesh(registry, meshIndex);
-    if (!bounds) throw new Error(`Could not determine STEP body bounds for Boolean fuse body ${meshIndex + 1}.`);
-    return bounds;
-  }));
+  return [...groups.values()];
 }
 
 /**

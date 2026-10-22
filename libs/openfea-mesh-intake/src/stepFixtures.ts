@@ -249,6 +249,18 @@ export async function generateDisjointBarsStep(): Promise<string> {
   });
 }
 
+/**
+ * Two UNFUSED 20x20 mm bars in series along X that exactly touch at x=60:
+ * a 60 mm bar and a 40 mm bar. Per-body material fixture (plan 036 R1.3).
+ */
+export async function generateSeriesBarsStep(): Promise<string> {
+  return withOccSession((gmsh) => {
+    gmsh.model.occ.addBox(0, 0, 0, 60, 20, 20);
+    gmsh.model.occ.addBox(60, 0, 0, 40, 20, 20);
+    gmsh.model.occ.synchronize();
+  });
+}
+
 async function withOccSession(build: (gmsh: GmshApi) => void): Promise<string> {
   const gmsh = await loadGmshWasm();
   gmsh.initialize();

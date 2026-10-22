@@ -2,7 +2,7 @@ import { finiteExtrema } from "@openfea/core";
 import { MAX_EMBEDDED_MODEL_BYTES, MAX_VISUAL_MESH_BYTES, isStructuralResultSummary } from "@openfea/schema";
 import type { AnalysisMesh, CustomMaterial, DisplayModel, DynamicSolverSettings, MeshConvergenceRecord, MeshQuality, Project, ResultField, ResultRenderBounds, ResultSummary, RunEvent, RunVariantRef, RunVariantResult, Study, StudyRun } from "@openfea/schema";
 import type { StepGeometryInspection, StepGeometryRepairReport } from "@openfea/mesh-intake";
-import { assertCompatibleManufacturingProcess, resolveMaterial } from "@openfea/materials";
+import { assertCompatibleManufacturingProcess, bodyIdFromElementBlockName, bodyLabelForId, resolveMaterial } from "@openfea/materials";
 import { unitsForLoadType, type LoadApplicationPoint, type LoadDirection, type LoadDirectionLabel, type LoadType, type PayloadLoadMetadata } from "../loadPreview";
 import { nextLoadLabel, nextSupportLabel } from "../supportLabels";
 import type { PayloadObjectSelection } from "../workspaceViewTypes";
@@ -572,7 +572,8 @@ export async function assignMaterial(
   materialId: string,
   parameters: Record<string, unknown> = {},
   currentStudy: Study,
-  customMaterials: readonly CustomMaterial[] = []
+  customMaterials: readonly CustomMaterial[] = [],
+  options: { bodyId?: string } = {}
 ): Promise<{ study: Study; message: string }> {
   resolveMaterial(materialId, customMaterials);
   if (parameters.manufacturingProcessId !== undefined) {
@@ -582,6 +583,7 @@ export async function assignMaterial(
   if (!currentStudy) throw new Error("Could not assign material without an open study.");
   const bodySelection = currentStudy.namedSelections.find((selection) => selection.entityType === "body");
   const selectionRef = bodySelection?.id ?? currentStudy.geometryScope[0]?.entityId ?? "selection-body-local";
+  if (options.bodyId) return assignBodyMaterial(currentStudy, options.bodyId, materialId, parameters, selectionRef);
   return {
     study: {
       ...currentStudy,
@@ -595,6 +597,40 @@ export async function assignMaterial(
     },
     message: `Material assigned to ${bodySelection?.name ?? "model"}.`
   };
+}
+
+/**
+ * Per-body materials (plan 036 R1.3): replace one body's assignment and keep
+ * the rest, including a whole-model default that unassigned bodies inherit.
+ * The first per-body assignment needs a mesh whose elements carry body
+ * identity, so a mesh generated without it is discarded.
+ */
+function assignBodyMaterial(
+  currentStudy: Study,
+  bodyId: string,
+  materialId: string,
+  parameters: Record<string, unknown>,
+  selectionRef: string
+): { study: Study; message: string } {
+  const label = bodyLabelForId(bodyId);
+  const materialAssignments = [
+    ...currentStudy.materialAssignments.filter((assignment) => assignment.bodyId !== bodyId),
+    { id: `assign-material-${bodyId}`, materialId, selectionRef, bodyId, parameters, status: "complete" as const }
+  ];
+  const remesh = currentStudy.meshSettings.status === "complete" && !meshCarriesBodyIdentity(currentStudy);
+  return {
+    study: {
+      ...currentStudy,
+      materialAssignments,
+      ...(remesh ? { meshSettings: { ...currentStudy.meshSettings, status: "not_started" as const, meshRef: undefined, summary: undefined } } : {})
+    },
+    message: remesh ? `Material assigned to ${label}. Regenerate the mesh so each body keeps its own material.` : `Material assigned to ${label}.`
+  };
+}
+
+function meshCarriesBodyIdentity(study: Study): boolean {
+  const artifacts = (study.meshSettings.summary as { artifacts?: { actualCoreModel?: { model?: { elementBlocks?: Array<{ name?: unknown }> } } } } | undefined)?.artifacts;
+  return artifacts?.actualCoreModel?.model?.elementBlocks?.some((block) => typeof block.name === "string" && bodyIdFromElementBlockName(block.name) !== undefined) ?? false;
 }
 
 export async function addSupport(studyId: string, selectionRef: string | undefined, currentStudy: Study): Promise<{ study: Study; message: string }> {

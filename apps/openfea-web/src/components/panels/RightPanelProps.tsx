@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect } from "react";
 
 import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, LoadCase, LoadCombination, MeshConnection, MeshQuality, ModalSolverSettings, Project, ResultField, ResultSummary, RunTimingEstimate, RunVariantRef, Study } from "@openfea/schema";
 
+import type { ModelBody } from "../../modelBodies";
 import type { RunReadinessItem } from "../../runReadiness";
 
 import type { StepId } from "../StepNav";
@@ -111,7 +112,13 @@ export interface RightPanelProps {
   onToggleDimensions: () => void;
   onSectionPlaneChange?: (state: SectionPlaneState) => void;
   onStressExaggerationChange: (value: number) => void;
-  onAssignMaterial: (materialId: string, parameters?: Record<string, unknown>) => void;
+  /** `bodyId` scopes the assignment to one body of a multi-body model; omitted means the whole model. */
+  onAssignMaterial: (materialId: string, parameters?: Record<string, unknown>, options?: { bodyId?: string }) => void;
+  /** Solid bodies of a multi-body model; empty or one body keeps the single-material panel. */
+  modelBodies?: ModelBody[];
+  /** Body picked in the viewer, when the pick resolves to one. */
+  selectedBodyId?: string | null;
+  onHighlightBody?: (bodyId: string | null) => void;
   onSaveCustomMaterial?: (material: CustomMaterial) => void;
   onDeleteCustomMaterial?: (materialId: string) => void;
   /** null suppresses the preview while editing; undefined clears the preview so the assigned orientation shows again. */
@@ -135,6 +142,9 @@ export interface RightPanelProps {
   onConnectionsChange?: (connections: MeshConnection[]) => void;
   onCancelMesh?: () => void;
   meshPhaseProgress?: WasmMeshPhaseProgress | null;
+  /** Mesh view highlights the summary's worst elements (plan 036 R2.1). */
+  showWorstMeshElements?: boolean;
+  onShowWorstMeshElementsChange?: (show: boolean) => void;
   onRunMeshConvergence?: (caseId: string, probe: ConvergenceProbe) => void;
   convergenceBusy?: boolean;
   convergenceProgress?: string;

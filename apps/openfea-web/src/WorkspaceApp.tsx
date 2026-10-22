@@ -15,6 +15,7 @@ import { StartScreen } from "./components/StartScreen";
 import { StepNav, type StepId } from "./components/StepNav";
 import { ProjectMenu } from "./components/ProjectMenu";
 import { readinessForStudy } from "./runReadiness";
+import { bodyIdForFace, useModelBodies } from "./modelBodies";
 import { CreateSimulationScreen } from "./components/SimulationWorkflow";
 import {
   createViewerLoadMarkers,
@@ -79,9 +80,12 @@ import { resolvedDeformation } from "./resultDeformation";
 import { DEFAULT_SECTION_PLANE, type PayloadObjectSelection, type PrintLayerOrientation, type ProjectionMode, type ResultMode, type ResultPlaybackFrameController, type SectionPlaneState, type StressComponent, type ThemeMode, type ViewerLoadMarker, type ViewerSupportMarker, type ViewMode } from "./workspaceViewTypes";
 import { defaultRecentProjectService, isRecentProjectsSupported } from "./recentProjects";
 import { useFocusTrap } from "./hooks/useFocusTrap";
+import { worstElementOverlayGeometry } from "./meshQualityOverlay";
 
 const lazyCadViewerImport = () => import("./components/CadViewer").then((module) => ({ default: module.CadViewer }));
 const CadViewer = lazy(lazyCadViewerImport);
+// Viewer-only (three.js); loaded with the first "Show worst elements" toggle.
+const WorstElementsOverlay = lazy(() => import("./components/viewer/WorstElementsOverlay"));
 const ValidationGallery = lazy(() => import("./components/ValidationGallery").then((module) => ({ default: module.ValidationGallery })));
 const DEBUG_RESULT_PARAMS = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
 const DEBUG_RESULTS = import.meta.env.DEV && DEBUG_RESULT_PARAMS.get("debugResults") === "1";
@@ -554,7 +558,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const solverRunning = Boolean(processingRunId) || (runProgress > 0 && runProgress < 100);
   const runButtonProgress = Math.min(100, Math.max(0, Math.round(runProgress)));
   reportStateRef.current = { viewMode, resultMode, stressComponent, resultSummary, completedRunId, resultPlaybackPlaying };
-  const runReadiness = useMemo(() => readinessForStudy(study, project?.customMaterials), [project?.customMaterials, study]);
+  const modelBodies = useModelBodies(displayModel);
+  const modelBodyIds = useMemo(() => (modelBodies.length > 1 ? modelBodies.map((body) => body.id) : undefined), [modelBodies]);
+  const [highlightedBodyId, setHighlightedBodyId] = useState<string | null>(null);
+  const runReadiness = useMemo(() => readinessForStudy(study, project?.customMaterials, { bodyIds: modelBodyIds }), [modelBodyIds, project?.customMaterials, study]);
   const canRunSimulation = runReadiness.every((item) => item.done) && !solverRunning && !convergenceBusy;
   const missingRunItems = runReadiness.filter((item) => !item.done).map((item) => item.label);
   const hasActualVolumeMesh = Boolean(study?.meshSettings.summary?.artifacts?.actualCoreModel);
@@ -598,6 +605,18 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
       return undefined;
     }
   }, [meshArtifactModel]);
+
+  const [showWorstMeshElements, setShowWorstMeshElements] = useState(false);
+  const worstMeshElements = study?.meshSettings.summary?.qualityMetrics?.worstElements;
+  const worstElementsOverlay = useMemo(() => {
+    if (!showWorstMeshElements || !meshArtifactModel || !worstMeshElements?.length) return null;
+    try {
+      const geometry = worstElementOverlayGeometry(meshArtifactModel as Parameters<typeof worstElementOverlayGeometry>[0], worstMeshElements);
+      return geometry ? <Suspense fallback={null}><WorstElementsOverlay geometry={geometry} /></Suspense> : null;
+    } catch {
+      return null;
+    }
+  }, [meshArtifactModel, showWorstMeshElements, worstMeshElements]);
 
   useEffect(() => {
     setResultMode((currentMode) => compatibleResultModeForSummary(resultSummary, currentMode));
@@ -1856,6 +1875,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         project,
         study,
         displayModel,
+        bodyIds: modelBodyIds,
         resultSummary: sourceSummary,
         resultFields,
         solverMeshSummary,
@@ -2763,6 +2783,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
               selectedFaceId={selectedFaceId}
               payloadObjectSelectionMode={Boolean(study && activeStep === "loads" && draftLoadType === "gravity")}
               selectedPayloadObject={selectedPayloadObject}
+              highlightedBodyId={activeStep === "material" ? highlightedBodyId : null}
               onViewerMiss={handleViewerMiss}
               onSelectFace={handleViewportFaceSelect}
               viewMode={captureViewMode ?? viewMode}
@@ -2783,6 +2804,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
               onAddResultProbe={handleAddResultProbe}
               surfaceMesh={resultSurfaceMesh}
               meshPreviewSurface={meshPreviewSurface}
+              meshPreviewOverlay={worstElementsOverlay}
               captureBusy={reportCaptureBusy}
               resultsStale={Boolean(resultsOutdatedBy)}
               resultPeaks={resultPeaks}
@@ -2886,8 +2908,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           onToggleDimensions={() => setShowDimensions((value) => !value)}
           onSectionPlaneChange={setSectionPlane}
           onStressExaggerationChange={setStressExaggeration}
-          onAssignMaterial={(materialId, parameters) =>
-            void updateStudy(assignMaterial(study.id, materialId, parameters, study, project?.customMaterials), shouldAutoAdvanceAfterMaterialAssignment() ? "supports" : undefined)
+          modelBodies={modelBodies}
+          selectedBodyId={bodyIdForFace(modelBodies, selectedFaceId) ?? null}
+          onHighlightBody={setHighlightedBodyId}
+          onAssignMaterial={(materialId, parameters, options) =>
+            void updateStudy(assignMaterial(study.id, materialId, parameters, study, project?.customMaterials, options), shouldAutoAdvanceAfterMaterialAssignment() && modelBodies.length <= 1 ? "supports" : undefined)
           }
           onSaveCustomMaterial={handleSaveCustomMaterial}
           onDeleteCustomMaterial={handleDeleteCustomMaterial}
@@ -3038,6 +3063,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           onConnectionsChange={(contacts) => void updateStudy(saveStudyPatch(study.id, { contacts, meshSettings: { ...study.meshSettings, status: "not_started", meshRef: undefined, summary: undefined } }, "Assembly connections updated. Regenerate the mesh.", study))}
           onCancelMesh={handleCancelMesh}
           meshPhaseProgress={meshPhaseProgress}
+          showWorstMeshElements={showWorstMeshElements}
+          onShowWorstMeshElementsChange={setShowWorstMeshElements}
           meshError={meshError}
           onRunMeshConvergence={(caseId, probe) => void handleRunMeshConvergence(caseId, probe)}
           convergenceBusy={convergenceBusy}

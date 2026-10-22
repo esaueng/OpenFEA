@@ -11,11 +11,13 @@ import type {
   MeshTimings,
   SourceSelectionMetadata,
   StepBodyBounds,
+  StepBodyIdentity,
   StepAttributionTessellation,
   StepGeometryInspection,
   StepGeometryRepairReport,
   StepSurfacePreview
 } from "@openfea/mesh-intake";
+import type { MeshQualityMetricsSummary } from "@openfea/core";
 
 export type MeshWorkerPhase = MeshPhase | "parse";
 
@@ -37,6 +39,8 @@ export type MeshWorkerPayloads = {
     /** Exact connected groups selected by pairwise Boolean-fuse assembly connections. */
     fuseBodyGroups?: StepBodyBounds[][];
     preservePartIdentity?: boolean;
+    /** Per-body materials (plan 036 R1.3): name each meshed volume after its source body. */
+    bodyIdentities?: StepBodyIdentity[];
     /**
      * STEP display tessellation + faceIds (plan A-M3): when present, the
      * worker stamps every boundary facet's sourceFaceId per surface set so
@@ -84,12 +88,16 @@ export type MeshWorkerResults = {
     packed: PackedCoreVolumeMeshArtifact;
     timings: MeshTimings;
     totalMs: number;
+    /** Display-only element-quality summary of the packed (solved) mesh; absent when it could not be computed. */
+    qualityMetrics?: MeshQualityMetricsSummary;
   };
   meshStepFile: {
     packed: PackedCoreVolumeMeshArtifact;
     timings: MeshTimings;
     totalMs: number;
     algorithm3D: "delaunay" | "frontal";
+    /** Display-only element-quality summary of the packed (solved) mesh; absent when it could not be computed. */
+    qualityMetrics?: MeshQualityMetricsSummary;
     /** Tet10 mid-side node placement: gmsh's curved default, or the straight-edge rescue for thin/bent geometry. */
     elevation?: "curved" | "straight_edge";
     /** Present when gmsh's Netgen optimizer repaired a sliver tail in the linear mesh. */

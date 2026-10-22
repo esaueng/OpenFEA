@@ -597,6 +597,31 @@ describe("RightPanel payload mass controls", () => {
     expect(html).not.toContain("bracket · all bodies");
   });
 
+  test("lists bodies with a material picker each only when the model has more than one body", () => {
+    const bodies = [1, 2].map((index) => ({ id: `step-object-${index}`, label: `Body ${index}`, meshIndex: index - 1, faceIds: new Set<string>() }));
+    const perBody = {
+      ...study,
+      materialAssignments: [
+        { id: "default", materialId: "mat-steel", selectionRef: "selection-body", parameters: {}, status: "complete" as const },
+        { id: "b2", materialId: "mat-aluminum-6061", selectionRef: "selection-body", bodyId: "step-object-2", parameters: {}, status: "complete" as const }
+      ]
+    };
+    const html = renderPanel("material", { study: perBody, modelBodies: bodies });
+    expect(html).toContain('aria-label="Body materials"');
+    expect(html).toContain('aria-label="Material for Body 1"');
+    expect(html).toContain('aria-label="Material for Body 2"');
+    expect(html).toContain("Steel · model material");
+    expect(html).toContain("Body 1 material");
+    expect(html).toContain("Use Steel for all bodies");
+
+    // One body (or none known) keeps the single-material panel unchanged.
+    for (const modelBodies of [[], bodies.slice(0, 1)]) {
+      const single = renderPanel("material", { modelBodies });
+      expect(single).toBe(renderPanel("material"));
+      expect(single).not.toContain("Body materials");
+    }
+  });
+
   test("turns the run simulation button into the only stop action while running", () => {
     const markup = renderPanel("run", { runProgress: 42 });
 
@@ -2470,7 +2495,7 @@ describe("select-then-act and re-targeting (2026-09 review F1, D3, F3)", () => {
   });
 
   test("the in-panel Next commits a previewed material selection", () => {
-    expect(rightPanelSource).toContain("registerBeforeNext?.(selectionMatchesAssignment ? null : () => onAssignMaterial(selectedMaterialId, pendingParameters))");
+    expect(rightPanelSource).toContain("registerBeforeNext?.(selectionMatchesAssignment ? null : () => onAssignMaterial(selectedMaterialId, pendingParameters, assignTarget))");
     expect(rightPanelSource).toContain("beforeNextRef.current?.();");
   });
 

@@ -23,7 +23,15 @@ import {
   solveStudyModelWithCorePipeline,
   type SolverHooks
 } from "@openfea/solve-pipeline";
-import { effectiveMaterialProperties, resolveMaterial } from "@openfea/materials";
+import {
+  addDistinctMaterial,
+  bodyIdFromElementBlockName,
+  bodyLabelForId,
+  effectiveMaterialProperties,
+  hasPerBodyMaterialAssignments,
+  materialAssignmentForBody,
+  resolveMaterial
+} from "@openfea/materials";
 import {
   type CustomMaterial,
   type DisplayModel,
@@ -326,13 +334,19 @@ export function openFeaCoreEligibility(
   }
   if (!study.materialAssignments.length) return { ok: false, reason: "OpenFEA Core requires an assigned material." };
   let material: MaterialStudyResolution;
+  let assignedMaterials: MaterialStudyResolution[];
   try {
     material = materialForStudy(study, customMaterials);
+    assignedMaterials = study.materialAssignments.map((assignment) => materialResolutionForAssignment(assignment, customMaterials));
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "OpenFEA Core could not resolve the assigned material." };
   }
+  // Without a stored mesh the run meshes first, with body identity.
+  const storedModel = actualCoreVolumeMeshArtifact(study)?.model;
+  const perBodyMeshReason = storedModel ? perBodyMaterialMeshMismatch(study, storedModel) : undefined;
+  if (perBodyMeshReason) return { ok: false, reason: perBodyMeshReason };
   if (study.type === "steady_state_thermal") {
-    if (!material.material.thermalConductivity) return { ok: false, reason: "Steady thermal analysis requires material thermal conductivity." };
+    if (assignedMaterials.some((assigned) => !assigned.material.thermalConductivity)) return { ok: false, reason: "Steady thermal analysis requires material thermal conductivity." };
     if (!study.constraints.some((constraint) => constraint.type === "prescribed_temperature")) return { ok: false, reason: "Steady thermal analysis requires a prescribed temperature." };
     if (study.loads.some((load) => load.type !== "heat_flux" && load.type !== "heat_generation")) return { ok: false, reason: "Steady thermal studies accept heat flux and heat generation only." };
     return { ok: true };
@@ -712,18 +726,21 @@ export function buildOpenFeaCoreModelForStudy(
     center: face.center,
     ...(face.area ? { areaM2: face.area * 1e-6 } : {})
   })), displayModel);
-  const effective = effectiveMaterialProperties(material.material, material.parameters, {
-    criticalLayerAxis
-  });
-  const coreMaterial = {
-    name: effective.id,
-    type: "isotropicLinearElastic" as const,
-    youngModulus: effective.youngsModulus,
-    poissonRatio: effective.poissonRatio,
-    yieldStrength: effective.yieldStrength ?? material.material.yieldStrength,
-    density: effective.density ?? material.material.density,
-    thermalConductivity: effective.thermalConductivity ?? material.material.thermalConductivity
+  const coreMaterialFor = (resolution: MaterialStudyResolution) => {
+    const effective = effectiveMaterialProperties(resolution.material, resolution.parameters, {
+      criticalLayerAxis
+    });
+    return {
+      name: effective.id,
+      type: "isotropicLinearElastic" as const,
+      youngModulus: effective.youngsModulus,
+      poissonRatio: effective.poissonRatio,
+      yieldStrength: effective.yieldStrength ?? resolution.material.yieldStrength,
+      density: effective.density ?? resolution.material.density,
+      thermalConductivity: effective.thermalConductivity ?? resolution.material.thermalConductivity
+    };
   };
+  const coreMaterial = coreMaterialFor(material);
 
   let model: OpenFEAModelJson;
   let renderNodePoints: Vec3[];
@@ -771,16 +788,29 @@ export function buildOpenFeaCoreModelForStudy(
     meshSource = "structured_block_core";
   }
 
+  const perBodyMeshReason = perBodyMaterialMeshMismatch(study, model);
+  if (perBodyMeshReason) throw new Error(perBodyMeshReason);
+  // Stored mesh artifacts carry the materials resolved at mesh time; the run
+  // applies the study's current assignments, so every block must follow them
+  // or model validation rejects the dangling mesh-time reference. A `body:<id>`
+  // block takes its body's own assignment (plan 036 R1.3); any other block
+  // takes the whole-model material.
+  const materials: Array<ReturnType<typeof coreMaterialFor>> = [];
+  const elementBlocks = model.elementBlocks.map((block) => {
+    const bodyId = bodyIdFromElementBlockName(block.name);
+    const assignment = bodyId === undefined ? undefined : materialAssignmentForBody(study.materialAssignments, bodyId);
+    if (bodyId !== undefined && !assignment) throw new Error(`${bodyLabelForId(bodyId)} has no material assigned. Choose a material for every body.`);
+    const blockMaterial = addDistinctMaterial(
+      materials,
+      assignment ? coreMaterialFor(materialResolutionForAssignment(assignment, customMaterials)) : coreMaterial
+    );
+    return block.material === blockMaterial.name ? block : { ...block, material: blockMaterial.name };
+  });
   model = {
     ...model,
     schemaVersion: OPENFEA_MODEL_SCHEMA_VERSION,
-    materials: [coreMaterial],
-    // Stored mesh artifacts carry the material resolved at mesh time; the run
-    // applies the study's current material, so every block must follow it or
-    // model validation rejects the dangling mesh-time reference.
-    elementBlocks: model.elementBlocks.map((block) => (
-      block.material === coreMaterial.name ? block : { ...block, material: coreMaterial.name }
-    )),
+    materials: materials.map((entry) => materialInModelUnits(entry, model.coordinateSystem?.solverUnits)),
+    elementBlocks,
     meshProvenance: {
       kind: "opencae_core_fea",
       solver: "opencae-core-local",
@@ -1474,14 +1504,55 @@ type MaterialStudyResolution = {
   parameters: Record<string, unknown>;
 };
 
-function materialForStudy(study: Study, customMaterials: readonly CustomMaterial[] = []): MaterialStudyResolution {
-  const assignment = study.materialAssignments[0];
-  if (!assignment) throw new Error("OpenFEA Core requires an assigned material.");
-  const material = resolveMaterial(assignment.materialId, customMaterials);
+/**
+ * Catalog properties are SI (Pa, kg/m^3, W/(m K)). A stored mm-N-s-MPa model
+ * needs MPa, tonne/mm^3 and W/(mm K), the same conversion mesh intake applies.
+ */
+function materialInModelUnits<T extends { youngModulus: number; yieldStrength?: number; density?: number; thermalConductivity?: number }>(
+  material: T,
+  solverUnits: string | undefined
+): T {
+  if (solverUnits !== "mm-N-s-MPa") return material;
   return {
-    material,
-    parameters: assignment?.parameters ?? {}
+    ...material,
+    youngModulus: material.youngModulus / 1_000_000,
+    ...(material.yieldStrength !== undefined ? { yieldStrength: material.yieldStrength / 1_000_000 } : {}),
+    ...(material.density !== undefined ? { density: material.density / 1e12 } : {}),
+    ...(material.thermalConductivity !== undefined ? { thermalConductivity: material.thermalConductivity / 1000 } : {})
   };
+}
+
+/** The whole-model material: the assignment without a body scope, else the first one. */
+function materialForStudy(study: Study, customMaterials: readonly CustomMaterial[] = []): MaterialStudyResolution {
+  const assignment = materialAssignmentForBody(study.materialAssignments, undefined) ?? study.materialAssignments[0];
+  if (!assignment) throw new Error("OpenFEA Core requires an assigned material.");
+  return materialResolutionForAssignment(assignment, customMaterials);
+}
+
+function materialResolutionForAssignment(
+  assignment: Study["materialAssignments"][number],
+  customMaterials: readonly CustomMaterial[]
+): MaterialStudyResolution {
+  return {
+    material: resolveMaterial(assignment.materialId, customMaterials),
+    parameters: assignment.parameters ?? {}
+  };
+}
+
+/**
+ * Per-body assignments that differ need a mesh whose element blocks carry body
+ * identity. A mesh generated before the study switched to per-body materials
+ * has one block, which would silently give every body the same material.
+ */
+function perBodyMaterialMeshMismatch(study: Study, model: OpenFEAModelJson): string | undefined {
+  if (!hasPerBodyMaterialAssignments(study.materialAssignments)) return undefined;
+  const distinct = new Set(study.materialAssignments.map((assignment) => JSON.stringify([
+    assignment.materialId,
+    Object.entries(assignment.parameters ?? {}).filter(([, value]) => value !== undefined).sort(([a], [b]) => a.localeCompare(b))
+  ])));
+  if (distinct.size <= 1) return undefined;
+  if (model.elementBlocks.some((block) => bodyIdFromElementBlockName(block.name) !== undefined)) return undefined;
+  return "The mesh was generated before the bodies had their own materials. Generate the mesh again so each body carries its material.";
 }
 
 function forceVectorForLoad(load: Study["loads"][number], displayModel: DisplayModel, densityKgM3: number): Vec3 {

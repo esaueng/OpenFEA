@@ -14,6 +14,7 @@
 //      miss the floor: try one adjacent coarser size and two finer sizes.
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { computeTetMeshQuality } from "@openfea/core";
 import { meshStepToMshV2 } from "./wasmMesher";
 import { generateBentShellStandStep, generateThinClipStandStep, generateThinSheetStandStep } from "./stepFixtures";
 import { MESH_QUALITY_REJECT_MIN_SICN, MESH_QUALITY_WARN_MIN_SICN } from "./meshQualityGate";
@@ -52,6 +53,16 @@ describe("STEP Tet10 elevation rescue", () => {
     expect(artifact.metadata.meshQuality.invertedElementCount).toBe(0);
     expect(artifact.metadata.meshQuality.minTetVolume).toBeGreaterThan(0);
     expect(artifact.metadata.connectedComponentCount).toBe(1);
+    // The Mesh panel's det J check (solver Gauss rule) agrees with gmsh's
+    // quality gate on a valid curved mesh: no element would be rejected.
+    const quality = computeTetMeshQuality({
+      coordinates: artifact.nodes.coordinates,
+      connectivity: artifact.elements.flatMap((element) => element.connectivity),
+      elementType: "Tet10"
+    });
+    expect(quality?.elementCount).toBe(artifact.elements.length);
+    expect(quality?.flagged.tet10NonPositiveDetJ).toBe(0);
+    expect(quality?.metrics.tet10DetJRatio?.worst).toBeGreaterThan(0);
 
     // The analytic boundary is the 3 mm offset of [3,57]x[3,37]x[3,17].
     // Verify actual boundary coordinates, not just the elevation label: a
