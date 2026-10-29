@@ -132,8 +132,8 @@ export async function projectNameFromFile(file: File): Promise<string> {
   const candidate = isRecord(payload) && "project" in payload ? payload.project : payload;
   // Keep the schema package out of the start-screen bootstrap chunk; full
   // validation is needed only after a user selects a file.
-  const { ProjectSchema } = await import("@openfea/schema");
-  const parsed = ProjectSchema.safeParse(candidate);
+  const { safeParseLocalProject } = await import("@openfea/schema");
+  const parsed = safeParseLocalProject(candidate);
   if (!parsed.success) throw new Error("The selected file is not a valid OpenFEA project file.");
   return parsed.data.name;
 }

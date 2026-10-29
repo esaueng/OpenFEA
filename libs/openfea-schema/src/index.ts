@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { boundedLocalInput, firstIssueOnly, safeParseLocalPayload } from "./localPayloadValidation";
+export { safeParseLocalPayload } from "./localPayloadValidation";
 
 export const MAX_PROJECT_NAME_LENGTH = 128;
 export const MAX_LOAD_CASES = 64;
@@ -360,7 +362,7 @@ export const MeshSettingsSchema = z.object({
       solverCoordinateSpace: z.string().optional(),
       resultSampleCoordinateSpace: z.string().optional(),
       // Display only: an unreadable summary is dropped instead of failing the project load.
-      qualityMetrics: MeshQualityMetricsSchema.optional().catch(undefined),
+      qualityMetrics: boundedLocalInput(MeshQualityMetricsSchema).optional().catch(undefined),
       artifacts: z
         .object({
           meshConnectivity: z
@@ -445,18 +447,20 @@ const StructuralVariantSchema = z.object({
   loadCombinations: z.array(LoadCombinationSchema).max(MAX_LOAD_COMBINATIONS).optional()
 });
 
-export const StaticStudySchema = StudyBaseSchema.merge(StructuralVariantSchema).extend({
+const StaticStudyBaseSchema = StudyBaseSchema.merge(StructuralVariantSchema).extend({
   type: z.literal("static_stress"),
   solverSettings: z.object({
     backend: SolverBackendSchema.optional(),
     fidelity: SimulationFidelitySchema.optional()
   }).passthrough()
-}).superRefine((study, context) => validateStructuralVariants(study, context, true));
+});
+export const StaticStudySchema = StaticStudyBaseSchema.superRefine((study, context) => validateStructuralVariants(study, context, true));
 
-export const DynamicStudySchema = StudyBaseSchema.merge(StructuralVariantSchema).extend({
+const DynamicStudyBaseSchema = StudyBaseSchema.merge(StructuralVariantSchema).extend({
   type: z.literal("dynamic_structural"),
   solverSettings: DynamicSolverSettingsSchema
-}).superRefine((study, context) => validateStructuralVariants(study, context, false));
+});
+export const DynamicStudySchema = DynamicStudyBaseSchema.superRefine((study, context) => validateStructuralVariants(study, context, false));
 
 export const ModalStudySchema = StudyBaseSchema.extend({
   type: z.literal("modal_analysis"),
@@ -724,6 +728,19 @@ export const ProjectSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string()
 });
+
+// Keep the public schemas' full diagnostic contract. At the untrusted local
+// boundary the same constraints stop after the first cross-reference issue.
+const LocalStudySchema = z.preprocess(migrateLegacyStructuralVariants, z.union([
+  StaticStudyBaseSchema.superRefine(firstIssueOnly((study, context) => validateStructuralVariants(study, context, true))),
+  DynamicStudyBaseSchema.superRefine(firstIssueOnly((study, context) => validateStructuralVariants(study, context, false))),
+  ModalStudySchema,
+  ThermalStudySchema
+]));
+const LocalProjectSchema = ProjectSchema.extend({ studies: z.array(LocalStudySchema) });
+export function safeParseLocalProject(value: unknown) {
+  return safeParseLocalPayload(LocalProjectSchema, value);
+}
 
 export const MeshSummarySchema = z.object({
   nodes: z.number(),

@@ -2,7 +2,8 @@ import {
   DisplayModelSchema,
   MAX_RESULT_FIELDS,
   MAX_RESULT_VARIANTS,
-  ProjectSchema,
+  safeParseLocalProject,
+  safeParseLocalPayload,
   ResultFieldSchema,
   RunVariantRefSchema,
   RunVariantResultSchema,
@@ -357,7 +358,7 @@ function parseAutosavedWorkspaceUiSnapshot(value: unknown): AutosavedWorkspaceUi
 
 function parseProjectFile(value: unknown): LocalProjectFile | null {
   if (!isRecord(value) || (value.format !== "openfea-local-project" && value.format !== "opencae-local-project") || value.version !== 2 || typeof value.savedAt !== "string") return null;
-  const project = ProjectSchema.safeParse(value.project);
+  const project = safeParseLocalProject(value.project);
   const displayModel = parseDisplayModel(value.displayModel);
   if (!project.success || !displayModel) return null;
   // This is the browser's own autosave, not a foreign file: the results were
@@ -387,13 +388,13 @@ export interface ParseResultBundleOptions {
 export function parseResultBundle(value: unknown, options: ParseResultBundleOptions = {}): LocalResultBundle | undefined {
   if (!isRecord(value)) return undefined;
   const normalizeSummary = options.provenance === "keep" ? (summary: ResultSummary) => summary : normalizeImportedResultSummary;
-  const summary = ResultSummarySchema.safeParse(value.summary);
-  const fields = ResultFieldSchema.array().max(MAX_RESULT_FIELDS).safeParse(value.fields);
+  const summary = safeParseLocalPayload(ResultSummarySchema, value.summary);
+  const fields = safeParseLocalPayload(ResultFieldSchema.array().max(MAX_RESULT_FIELDS), value.fields);
   const surfaceMesh = parseSolverSurfaceMesh(value.surfaceMesh);
   const solverMeshSummary = parseSolverMeshSummary(value.solverMeshSummary);
   const reportCaptures = parseResultViewCaptures(value.reportCaptures);
-  const variants = RunVariantResultSchema.array().max(MAX_RESULT_VARIANTS).safeParse(value.variants);
-  const variantRefs = RunVariantRefSchema.array().max(MAX_RESULT_VARIANTS).safeParse(value.variantRefs);
+  const variants = safeParseLocalPayload(RunVariantResultSchema.array().max(MAX_RESULT_VARIANTS), value.variants);
+  const variantRefs = safeParseLocalPayload(RunVariantRefSchema.array().max(MAX_RESULT_VARIANTS), value.variantRefs);
   if (!summary.success || !fields.success || fields.data.length === 0) return undefined;
   const normalizedFields = fields.data.map(normalizeImportedResultField);
   const parsedVariants = variants.success
@@ -679,7 +680,7 @@ function normalizeUiRunState(ui: WorkspaceUiSnapshot): WorkspaceUiSnapshot {
 }
 
 export function parseDisplayModel(value: unknown): DisplayModel | null {
-  const parsed = DisplayModelSchema.safeParse(value);
+  const parsed = safeParseLocalPayload(DisplayModelSchema, value);
   return parsed.success ? parsed.data : null;
 }
 
@@ -697,7 +698,7 @@ function parseLogEntries(value: unknown): WorkspaceLogEntry[] {
 function parseProjectArray(value: unknown): Project[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
-    const parsed = ProjectSchema.safeParse(item);
+    const parsed = safeParseLocalProject(item);
     return parsed.success ? [parsed.data] : [];
   }).slice(-30);
 }
