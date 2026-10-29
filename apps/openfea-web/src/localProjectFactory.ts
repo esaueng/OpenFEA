@@ -1,5 +1,5 @@
 import type { Constraint, DisplayModel, Load, Project } from "@openfea/schema";
-import { ProjectSchema } from "@openfea/schema";
+import { safeParseLocalProject } from "@openfea/schema";
 import { bracketDemoProject, bracketDisplayModel } from "@openfea/samples";
 import { stlDimensionsFromBase64 } from "@openfea/units";
 import { parseDisplayModel, parseResultBundle } from "./appPersistence";
@@ -345,7 +345,7 @@ export function createLocalThermalStudy(project: Project, displayModel: DisplayM
 
 export function openLocalProjectPayload(payload: unknown): SampleProjectResponse {
   const candidate = hasObjectKey(payload, "project") ? payload.project : payload;
-  const parsed = ProjectSchema.safeParse(candidate);
+  const parsed = safeParseLocalProject(candidate);
   if (!parsed.success) throw new Error("The selected file is not a valid OpenFEA project JSON.");
 
   const displayModel = (hasObjectKey(payload, "displayModel") ? parseDisplayModel(payload.displayModel) : null)

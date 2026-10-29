@@ -92,6 +92,11 @@ endsolid tray
 const apiSource = readFileSync(resolve(__dirname, "api.ts"), "utf8");
 
 describe("api", () => {
+  test("rejects a compact batch of invalid studies through the File import boundary", async () => {
+    const payload = JSON.stringify({ project: { ...project, geometryFiles: [], studies: Array.from({ length: 10_000 }, () => ({})) } });
+    await expect(importLocalProject(new TestFile([payload], "invalid.openfea.json"))).rejects.toThrow("not a valid OpenFEA project JSON");
+  });
+
   test("stamps completed fields with their owning run instead of preserving stale ids", () => {
     const results = withFieldRunIds("run-current", {
       summary: {} as never,
