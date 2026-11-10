@@ -1,13 +1,14 @@
 import * as THREE from "three";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { stlVolumeM3FromBytes } from "@openfea/units";
+import { parseAsciiStlPreview, parseBinaryStlPreview } from "./stlPreviewParser";
 
 const NORMALIZED_MODEL_SIZE = 2.4;
 export const MAX_PREVIEW_POSITION_COUNT = 1_000_000;
 
 export function normalizedStlGeometryFromBuffer(buffer: ArrayBuffer): THREE.BufferGeometry {
   const volumeM3 = stlVolumeM3FromBytes(new Uint8Array(buffer));
-  const geometry = new STLLoader().parse(stlLoaderInputFor(buffer));
+  const input = stlLoaderInputFor(buffer);
+  const geometry = typeof input === "string" ? parseAsciiStlPreview(input) : parseBinaryStlPreview(input);
   const position = geometry.getAttribute("position");
   if (position && position.count > MAX_PREVIEW_POSITION_COUNT) {
     geometry.dispose();
@@ -63,12 +64,20 @@ function stlLoaderInputFor(buffer: ArrayBuffer): ArrayBuffer | string {
     return new TextDecoder().decode(buffer).replace(/^\uFEFF/, "").trimStart();
   }
 
-  // The buffer is neither an exact-fit binary STL nor ASCII, so STLLoader will
-  // take its binary path, which trusts the declared face count at offset 80 and
+  // A buffer not recognized above can take STLLoader's binary path, which
+  // trusts the declared face count at offset 80 and
   // sizes its typed arrays from it before any bounds check. A truncated or
   // crafted file can declare far more faces than fit in the buffer and force
   // gigabyte-scale allocations. Reject impossible declarations up front.
   rejectImpossibleBinaryStl(buffer);
+  // Three also recognizes ASCII after a non-whitespace encoding prefix at
+  // offsets 0..4. Cover that route without reclassifying exact-fit binaries.
+  const prefix = new Uint8Array(buffer, 0, Math.min(buffer.byteLength, 9));
+  for (let offset = 0; offset < 5 && offset + 5 <= prefix.length; offset++) {
+    if (prefix[offset] === 115 && prefix[offset + 1] === 111 && prefix[offset + 2] === 108 && prefix[offset + 3] === 105 && prefix[offset + 4] === 100) {
+      return new TextDecoder().decode(buffer);
+    }
+  }
   return buffer;
 }
 
