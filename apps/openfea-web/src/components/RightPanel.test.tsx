@@ -14,6 +14,7 @@ import { readinessForStudy } from "../runReadiness";
 import { StudySchema } from "@openfea/schema";
 import { SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../geometryFormats";
 import type { StepGeometryMetadata } from "../lib/api";
+import { createLocalSampleProject } from "../localProjectFactory";
 
 const workspaceAppSource = readFileSync(resolve(__dirname, "../WorkspaceApp.tsx"), "utf8").replace(/\r\n/g, "\n");
 const rightPanelSource = [
@@ -202,8 +203,13 @@ test("keeps sample model and analysis choices as drafts until confirmation", () 
   expect(rightPanelSource).toContain("const [pendingAnalysisType, setPendingAnalysisType]");
   expect(rightPanelSource).toContain("onLoadSample(pendingSampleModel, pendingAnalysisType)");
   expect(rightPanelSource).toContain("onClick={() => handleAnalysisSelect(option.id)}");
-  expect(rightPanelSource).toContain("setConfirmSampleLoad(true);");
   expect(rightPanelSource).not.toContain("onLoadSample(sample, sampleAnalysisType)");
+  // A second click on the same button is not a confirmation: a double-click
+  // would pass it. Loading routes through the geometry-replacement dialog,
+  // which names the setup it clears and opens focused on keeping the model.
+  expect(rightPanelSource).not.toContain("Click again to load sample");
+  expect(rightPanelSource).not.toContain("setConfirmSampleLoad");
+  expect(workspaceAppSource).toContain("requestGeometryReplacement(`Loading the ${sampleOptionFor(nextSample).title} sample`");
 });
 
 test("shows tensor-backed stress measures and hides them for legacy fields", () => {
@@ -325,6 +331,12 @@ describe("RightPanel view tools", () => {
     expect(html).not.toContain("Section plane axis");
     // Orientation stays in the panel.
     expect(html).toContain('aria-label="Axis view"');
+    // The axis buttons only move the camera, so an unrotated model gets no
+    // permanently disabled Reset; a project saved rotated still can reset.
+    expect(html).not.toContain("Reset model orientation");
+    const rotatedHtml = renderPanel("model", { displayModel: { ...displayModel, orientation: { x: 0, y: 0, z: 90 } } });
+    expect(rotatedHtml).toContain('title="Reset model orientation"');
+    expect(rotatedHtml).not.toContain('title="Reset model orientation" disabled=""');
     // The measured dimensions still read in the panel when they are switched on.
     expect(renderPanel("model", { showDimensions: true })).toContain("Overall dimensions");
   });
@@ -2205,48 +2217,56 @@ describe("RightPanel payload mass controls", () => {
         }]
       }
     });
-    const sampleHtml = renderPanel("model", {
-      project: {
-        ...project,
-        geometryFiles: [{
-          id: "geom-sample",
-          projectId: project.id,
-          filename: "bracket-demo.step",
-          localPath: "examples/bracket-demo/bracket-demo.step",
-          artifactKey: "project-1/geometry/bracket-display.json",
-          status: "ready",
-          metadata: { source: "sample", sampleModel: "bracket" }
-        }]
-      }
-    });
-
     expect(blankHtml).not.toContain("<span>Volume</span>");
     expect(blankHtml).not.toContain("<span>Mass</span>");
     expect(uploadedHtml).not.toContain("<span>Volume</span>");
     expect(uploadedHtml).not.toContain("<span>Mass</span>");
-    expect(sampleHtml).toContain("<span>Volume</span>");
-    expect(sampleHtml).toContain("<span>Mass</span>");
   });
 
-  test("reports beam structural mass separately from the payload mass", () => {
-    const beamHtml = renderPanel("model", {
-      sampleModel: "plate",
-      project: {
-        ...project,
-        geometryFiles: [{
-          id: "geom-beam",
-          projectId: project.id,
-          filename: "end-loaded-beam.step",
-          localPath: "examples/beam/end-loaded-beam.step",
-          artifactKey: "project-1/geometry/beam-display.json",
-          status: "ready",
-          metadata: { source: "sample", sampleModel: "plate" }
-        }]
-      }
+  async function renderSampleModelPanel(sample: "bracket" | "plate" | "cantilever", materialId?: string) {
+    const opened = await createLocalSampleProject(sample, "static_stress", "2026-01-01T00:00:00.000Z");
+    const sampleStudy = opened.project.studies[0]!;
+    return renderPanel("model", {
+      project: opened.project,
+      displayModel: opened.displayModel,
+      sampleModel: sample,
+      study: materialId
+        ? { ...sampleStudy, materialAssignments: sampleStudy.materialAssignments.map((assignment) => ({ ...assignment, materialId, parameters: {} })) }
+        : sampleStudy
     });
+  }
 
-    expect(beamHtml).toContain("28,590 mm");
-    expect(beamHtml).toContain("77 g");
+  test("derives sample volume from the solver block and mass from the assigned material", async () => {
+    // Cantilever: 180 x 24 x 24 mm structured block = 103,680 mm^3.
+    const aluminumHtml = await renderSampleModelPanel("cantilever", "mat-aluminum-6061");
+    const steelHtml = await renderSampleModelPanel("cantilever", "mat-steel");
+    expect(aluminumHtml).toContain("<span>Solved geometry</span><strong>Structured block</strong>");
+    expect(aluminumHtml).not.toContain("simplified procedural bracket");
+    expect(aluminumHtml).toContain("103,680 mm");
+    expect(aluminumHtml).toContain("279.9 g");
+    expect(steelHtml).toContain("103,680 mm");
+    expect(steelHtml).toContain("813.9 g");
+  });
+
+  test("reports the bracket's volume and mass from the procedural solid that is solved", async () => {
+    // The Bracket Demo solves a procedural bracket, not a STEP file: 93,203.7 mm^3,
+    // so 251.6 g of 6061 aluminum (the old hard-coded figure was 111 g). Modal
+    // total mass on the meshed solid reads 0.254 kg because faceted bores remove
+    // about 0.9% less material than true cylinders.
+    const bracketHtml = await renderSampleModelPanel("bracket", "mat-aluminum-6061");
+    expect(bracketHtml).toContain("<span>Solved geometry</span><strong>Procedural sample (simplified)</strong>");
+    expect(bracketHtml).toContain("93,203.7 mm");
+    expect(bracketHtml).toContain("251.6 g");
+    expect(bracketHtml).not.toContain("111 g");
+    expect(bracketHtml).toContain("simplified procedural bracket");
+  });
+
+  test("reports beam structural mass separately from the payload mass", async () => {
+    const beamHtml = await renderSampleModelPanel("plate", "mat-aluminum-6061");
+
+    // 160 x 11.79 x 15.16 mm structural beam at 2700 kg/m^3; the 0.498 kg payload is a load.
+    expect(beamHtml).toContain("28,592.6 mm");
+    expect(beamHtml).toContain("77.2 g");
     expect(beamHtml).toContain("Payload mass · 0.498 kg");
   });
 
