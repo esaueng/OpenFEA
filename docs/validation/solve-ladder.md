@@ -84,6 +84,8 @@ Full table. *Solve* is CG only for static, and the whole `solveCore*` call for m
    The answers are still physically sound. Reactions balance the load to 1.2e-7 or better, and slender Tet10 tip deflection is within 0.16–0.21% of Timoshenko beam theory at every rung.
 
    From 30k to 150k the iteration count grows about 1.7–1.8× for both variants. Slender needs 17–23× more iterations at every rung (6,240 and 11,221 at 150k, against 369 and 479 for block). That absolute gap is what R5.2 (preconditioner evaluation) should close. The diagnostics' `converged: true` does not reflect the true residual.
+
+   *Follow-up:* CPU sparse CG now recomputes the true residual after convergence, restarts from it a bounded number of times, and reports `trueRelativeResidual` and `recursiveRelativeResidual`. `converged` is now gated on the true residual; a solve that stays above tolerance is returned with `converged: false` and a `partialConvergenceWarning` rather than failing. The numbers above predate this change and have not been re-measured.
 4. **Slender modal drops the fundamental modes at 30k.** Requested 3 modes, converged 1 after hitting the 30-iteration subspace cap.
 
    The solver labels it correctly as **mode 3** (Tet4 107.3 Hz, Tet10 102.1 Hz) and sets `partialConvergenceWarning`. Modes 1 and 2 stalled at scaled residuals of 2.5e-6 and 2.0e-6, just above the 1e-6 tolerance, so they were dropped from the result. These are the near-degenerate first bending pair (y and z), about 16.3 Hz by beam theory, and the second bending mode is about 102 Hz.

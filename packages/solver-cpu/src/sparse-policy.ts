@@ -10,7 +10,28 @@ export const SPARSE_ALGEBRA_POLICY = Object.freeze({
   /** Machine-precision multiplier for deciding whether a scaled diagonal is usable. */
   diagonalEpsilonMultiplier: 64,
   /** SSOR relaxation is restricted to the mathematically open interval (0, 2). */
-  relaxationEndpointEpsilonMultiplier: 1
+  relaxationEndpointEpsilonMultiplier: 1,
+  /**
+   * CG's recursively updated residual drifts from the true residual b - Ax in
+   * long ill-conditioned runs. When the recursive residual meets tolerance but
+   * the recomputed true residual does not, CG restarts from the current x with
+   * the true residual at most this many times before reporting partial
+   * convergence.
+   */
+  trueResidualRestartCycles: 2,
+  /**
+   * A restart cycle may use at most this fraction of the first cycle's
+   * iterations (and never more than the remaining maxIterations budget), so
+   * drift recovery adds at most half the first cycle's iterations to a long
+   * slender solve.
+   */
+  trueResidualRestartIterationFraction: 0.25,
+  /**
+   * Dimensionless: a restart cycle must shrink the true residual to at most
+   * this fraction of its previous value, otherwise the floating-point floor
+   * has been reached and further restarts are skipped.
+   */
+  trueResidualRestartMinimumReduction: 0.5
 });
 
 /**

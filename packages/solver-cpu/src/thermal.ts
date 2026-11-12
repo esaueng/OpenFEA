@@ -10,7 +10,18 @@ import {
 } from "./element-tet10";
 import { boundedThermalMaxDofs } from "./limits";
 import { collectElementCoordinates, elementNodeCountForBlock } from "./solver";
-import { addSparseEntry, createSparseMatrixBuilder, csrMatVec, estimateCsrMemoryBytes, reduceCsrSystem, solveConjugateGradient, toCsrMatrix } from "./sparse";
+import {
+  addSparseEntry,
+  conjugateGradientConvergenceDiagnostics,
+  createSparseMatrixBuilder,
+  csrMatVec,
+  estimateCsrMemoryBytes,
+  reduceCsrSystem,
+  solveConjugateGradient,
+  toCsrMatrix,
+  type ConjugateGradientConvergenceDiagnostics
+} from "./sparse";
+import { SPARSE_ALGEBRA_POLICY } from "./sparse-policy";
 import type { CpuSolverError, CpuSolverInput, CpuSolverOptions } from "./types";
 
 export type SteadyStateThermalResult = {
@@ -30,6 +41,7 @@ export type SteadyStateThermalDiagnostics = {
   freeDofs: number;
   constrainedDofs: number;
   iterations: number;
+  /** True relative residual ‖b − Ax‖/‖b‖ of the reduced CG system, recomputed after CG. */
   relativeResidual: number;
   matrixNonZeros: number;
   estimatedMatrixBytes: number;
@@ -39,7 +51,7 @@ export type SteadyStateThermalDiagnostics = {
   reactionHeatW: number;
   energyBalanceRelativeError: number;
   solver: "opencae-core-steady-thermal-cg";
-};
+} & ConjugateGradientConvergenceDiagnostics;
 
 export type SteadyStateThermalSolveResult =
   | { ok: true; result: SteadyStateThermalResult; diagnostics: SteadyStateThermalDiagnostics }
@@ -70,7 +82,7 @@ export function solveSteadyStateThermal(
   const reduced = reduceCsrSystem(assembled.matrix, loads.vector, free, constraints.values);
   const preconditioner = options.preconditioner === "none" || options.preconditioner === "jacobi" ? options.preconditioner : "ssor";
   const solved = solveConjugateGradient(reduced.matrix, reduced.rhs, {
-    tolerance: options.tolerance ?? 1e-10,
+    tolerance: options.tolerance ?? SPARSE_ALGEBRA_POLICY.defaultRelativeResidualTolerance,
     maxIterations: options.maxIterations,
     preconditioner,
     ssorOmega: options.ssorOmega,
@@ -119,7 +131,8 @@ export function solveSteadyStateThermal(
       generatedHeatW: loads.generatedHeatW,
       reactionHeatW,
       energyBalanceRelativeError: Math.abs(reactionHeatW + appliedHeatW) / balanceDenominator,
-      solver: "opencae-core-steady-thermal-cg"
+      solver: "opencae-core-steady-thermal-cg",
+      ...conjugateGradientConvergenceDiagnostics([solved], "Steady thermal CG")
     }
   };
 }
