@@ -51,16 +51,16 @@ function meshStats(mesh: OcctMeshLike): MeshStats {
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   for (let offset = 0; offset < positions.length; offset += 3) {
     for (let axis = 0; axis < 3; axis += 1) {
-      min[axis] = Math.min(min[axis], positions[offset + axis]);
-      max[axis] = Math.max(max[axis], positions[offset + axis]);
+      min[axis] = Math.min(min[axis]!, positions[offset + axis]!);
+      max[axis] = Math.max(max[axis]!, positions[offset + axis]!);
     }
   }
-  const vertex = (index: number): [number, number, number] => [positions[3 * index], positions[3 * index + 1], positions[3 * index + 2]];
+  const vertex = (index: number): [number, number, number] => [positions[3 * index]!, positions[3 * index + 1]!, positions[3 * index + 2]!];
   const triangleCount = indices ? indices.length / 3 : positions.length / 9;
   let volume = 0;
   for (let triangle = 0; triangle < triangleCount; triangle += 1) {
     const [a, b, c] = indices
-      ? [indices[3 * triangle], indices[3 * triangle + 1], indices[3 * triangle + 2]]
+      ? [indices[3 * triangle]!, indices[3 * triangle + 1]!, indices[3 * triangle + 2]!]
       : [3 * triangle, 3 * triangle + 1, 3 * triangle + 2];
     const [pa, pb, pc] = [vertex(a), vertex(b), vertex(c)];
     volume +=
@@ -79,7 +79,7 @@ function expectClose(actual: number, expected: number, relativeTolerance: number
 
 describe("generated STEP files round-trip through Open CASCADE", () => {
   it("imports the cylinder as a watertight solid with the exact analytic volume", () => {
-    const [cylinder] = importPart("cylinder", { diameter: 34, height: 36 });
+    const cylinder = importPart("cylinder", { diameter: 34, height: 36 })[0]!;
     expectClose(cylinder.volume, Math.PI * 17 ** 2 * 36, 0.01, "cylinder volume");
     expect(cylinder.min[2]).toBeCloseTo(0, 1);
     expect(cylinder.max[2]).toBeCloseTo(36, 1);
@@ -87,7 +87,7 @@ describe("generated STEP files round-trip through Open CASCADE", () => {
   });
 
   it("imports the ring as a single smooth torus with the exact analytic volume", () => {
-    const [ring] = importPart("ring", { ringOuterDiameter: 64, ringTubeDiameter: 16 });
+    const ring = importPart("ring", { ringOuterDiameter: 64, ringTubeDiameter: 16 })[0]!;
     // Torus volume 2*pi^2*R*r^2 with R = (64-16)/2 = 24 and r = 8.
     expectClose(ring.volume, 2 * Math.PI ** 2 * 24 * 8 ** 2, 0.01, "ring volume");
     expect(ring.min[2]).toBeCloseTo(0, 1);
@@ -100,7 +100,8 @@ describe("generated STEP files round-trip through Open CASCADE", () => {
     // occt-import-js does not surface MANIFOLD_SOLID_BREP names, so identify
     // the bodies by their footprint: the ring is the wider of the two.
     const sorted = [...meshes].sort((a, b) => b.max[0] - a.max[0]);
-    const [ring, boss] = sorted;
+    const ring = sorted[0]!;
+    const boss = sorted[1]!;
     expectClose(ring.volume, 2 * Math.PI ** 2 * 24 * 8 ** 2, 0.01, "ring volume");
     expectClose(boss.volume, Math.PI * 17 ** 2 * 36, 0.01, "boss volume");
     // The default boss (diameter 34) overlaps the ring's 32 mm centre hole.
@@ -109,14 +110,14 @@ describe("generated STEP files round-trip through Open CASCADE", () => {
   });
 
   it("imports the plate with the exact box volume", () => {
-    const [plate] = importPart("plate", { width: 120, depth: 80, thickness: 8 });
+    const plate = importPart("plate", { width: 120, depth: 80, thickness: 8 })[0]!;
     expectClose(plate.volume, 120 * 80 * 8, 0.001, "plate volume");
     expect(plate.min).toEqual([-60, -40, 0]);
     expect(plate.max).toEqual([60, 40, 8]);
   });
 
   it("imports custom dimensions, allowing diameters to be tuned per print", () => {
-    const [cylinder] = importPart("cylinder", { diameter: 20, height: 50 });
+    const cylinder = importPart("cylinder", { diameter: 20, height: 50 })[0]!;
     expectClose(cylinder.volume, Math.PI * 10 ** 2 * 50, 0.01, "custom cylinder volume");
     expect(cylinder.max[0]).toBeCloseTo(10, 1);
   });

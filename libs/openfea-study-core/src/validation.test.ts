@@ -358,7 +358,7 @@ describe("validateStaticStressStudy", () => {
   });
 
   it("round-trips model and global build axes for sample and uploaded frames", () => {
-    const sample = { id: "sample-bracket", bodyCount: 1, faces: [], orientation: { x: 0, y: 0, z: 0 } } as DisplayModel;
+    const sample: DisplayModel = { id: "sample-bracket", name: "Sample bracket", bodyCount: 1, faces: [], orientation: { x: 0, y: 0, z: 0 } };
     expect(modelAxisToGlobalBuildAxis("x", sample)).toBe("x");
     expect(modelAxisToGlobalBuildAxis("y", sample)).toBe("z");
     expect(modelAxisToGlobalBuildAxis("z", sample)).toBe("y");
@@ -417,7 +417,8 @@ describe("validateStaticStressStudy", () => {
         timeStep: 0,
         outputInterval: 0,
         dampingRatio: -0.1,
-        integrationMethod: "newmark_average_acceleration"
+        integrationMethod: "newmark_average_acceleration",
+        loadProfile: "ramp"
       }
     };
 
@@ -445,7 +446,8 @@ describe("validateStaticStressStudy", () => {
         timeStep: 0.01,
         outputInterval: 0.01,
         dampingRatio: 0.02,
-        integrationMethod: "newmark_average_acceleration"
+        integrationMethod: "newmark_average_acceleration",
+        loadProfile: "ramp"
       }
     };
 
@@ -463,7 +465,8 @@ describe("validateStaticStressStudy", () => {
         timeStep: 0.005,
         outputInterval: 0.005,
         dampingRatio: 0.02,
-        integrationMethod: "newmark_average_acceleration"
+        integrationMethod: "newmark_average_acceleration",
+        loadProfile: "ramp"
       }
     };
 
@@ -485,6 +488,7 @@ describe("validateStaticStressStudy", () => {
         outputInterval: 0.005,
         dampingRatio: 0.02,
         integrationMethod: "newmark_average_acceleration",
+        loadProfile: "ramp",
         allowFreeMotion: true
       }
     };

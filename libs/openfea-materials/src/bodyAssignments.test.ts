@@ -8,9 +8,11 @@ import {
   materialAssignmentForBody
 } from "./bodyAssignments";
 
+type TestAssignment = { id: string; materialId: string; bodyId?: string };
+
 describe("per-body material assignments", () => {
-  const legacy = [{ id: "a", materialId: "mat-steel" }];
-  const mixed = [
+  const legacy: TestAssignment[] = [{ id: "a", materialId: "mat-steel" }];
+  const mixed: TestAssignment[] = [
     { id: "default", materialId: "mat-steel" },
     { id: "b2", materialId: "mat-aluminum-6061", bodyId: "step-object-2" }
   ];

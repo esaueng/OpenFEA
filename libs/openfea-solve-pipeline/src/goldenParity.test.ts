@@ -204,7 +204,7 @@ function responseWithPhysicalDynamicReactions(fixture: GoldenFixture, model: Ope
   for (let node = 0; node < nodalMass.length; node += 1) {
     for (let axis = 0; axis < 3; axis += 1) {
       const dof = node * 3 + axis;
-      reaction[axis] += nodalMass[node]! * (frame.acceleration.values[dof]! + solved.diagnostics.rayleighAlpha * frame.velocity.values[dof]!);
+      reaction[axis]! += nodalMass[node]! * (frame.acceleration.values[dof]! + solved.diagnostics.rayleighAlpha * frame.velocity.values[dof]!);
     }
   }
   const magnitude = Math.hypot(...reaction);
