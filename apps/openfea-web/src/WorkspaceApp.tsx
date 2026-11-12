@@ -1016,9 +1016,9 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     }
     if (event.metaKey || event.ctrlKey || event.altKey || editableTarget) return;
     // Single-key shortcuts: honor the user's off-switch (WCAG 2.1.4) and stay
-    // inert while a modal/menu overlay is open.
+    // inert while a modal dialog is open.
     if (!singleKeyShortcutsEnabled) return;
-    if (document.querySelector('[role="dialog"], .condition-menu')) return;
+    if (document.querySelector('[role="dialog"]')) return;
     if (key === "h") {
       event.preventDefault();
       handleFitDefaultView();

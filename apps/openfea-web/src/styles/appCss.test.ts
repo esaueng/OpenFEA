@@ -88,7 +88,7 @@ describe("app CSS", () => {
     // readable in one place. Bare z-index values are still allowed for ordering
     // siblings inside a single component's stacking context.
     const scale = ["--z-base", "--z-viewer-overlay", "--z-log-drawer", "--z-viewer-import-overlay",
-      "--z-modal-backdrop", "--z-condition-menu", "--z-popover", "--z-gallery-backdrop",
+      "--z-modal-backdrop", "--z-popover", "--z-gallery-backdrop",
       "--z-tooltip", "--z-skip-link"];
     const depths = scale.map((name) => {
       const match = tokens.match(new RegExp(`${name}:\\s*(\\d+);`));

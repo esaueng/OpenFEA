@@ -8,7 +8,7 @@ import { MeshQualityMetricsSchema, ProjectSchema, type Project, type ResultSumma
 import { buildAutosavedWorkspace, parseAutosavedWorkspacePayload, type WorkspaceUiSnapshot } from "./appPersistence";
 import { MeshQualityCard } from "./components/panels/MeshQualityCard";
 import { openLocalProjectPayload } from "./localProjectFactory";
-import { meshQualityMetricRows, meshQualityReportRows } from "./meshQualityDisplay";
+import { formatMeshQualityValue, meshQualityMetricRows, meshQualityReportRows } from "./meshQualityDisplay";
 import { worstElementOverlayGeometry } from "./meshQualityOverlay";
 import { buildReportData } from "./report/reportData";
 
@@ -88,6 +88,11 @@ describe("mesh quality persistence", () => {
 });
 
 describe("mesh quality display", () => {
+  test("a missing value uses the app-wide -- placeholder", () => {
+    expect(formatMeshQualityValue(Number.NaN, "")).toBe("--");
+    expect(formatMeshQualityValue(Number.POSITIVE_INFINITY, "°")).toBe("--");
+  });
+
   test("rows label the worst side and count elements past each threshold", () => {
     const rows = meshQualityMetricRows(QUALITY);
     expect(rows.map((row) => row.key)).toEqual(["scaledJacobian", "aspectRatio", "minDihedralDeg", "maxDihedralDeg"]);

@@ -90,7 +90,7 @@ export function meshQualityMetricRows(quality: MeshQualityMetrics): MeshQualityM
 }
 
 export function formatMeshQualityValue(value: number, unit: "" | "°"): string {
-  if (!Number.isFinite(value)) return "—";
+  if (!Number.isFinite(value)) return "--";
   if (unit === "°") return `${value.toFixed(1)}°`;
   return Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(Math.abs(value) >= 10 ? 1 : 3);
 }

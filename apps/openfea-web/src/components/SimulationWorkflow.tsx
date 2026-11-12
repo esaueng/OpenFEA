@@ -7,41 +7,21 @@ import { KG_PER_M3_PER_LB_PER_IN3, displayUnitText, formatDensity, formatMateria
 import dynamicAnalysisImage from "../assets/simulation-showcase/dynamic-analysis.webp";
 import staticAnalysisImage from "../assets/simulation-showcase/static-analysis.webp";
 
-interface CreateSimulationModalProps {
-  open: boolean;
+interface CreateSimulationProps {
   onCreateStatic: () => void;
   onCreateDynamic: () => void;
   onCreateModal: () => void;
   onCreateThermal: () => void;
-  onClose: () => void;
 }
 
-export function CreateSimulationModal({ open, onCreateStatic, onCreateDynamic, onCreateModal, onCreateThermal, onClose }: CreateSimulationModalProps) {
-  const dialogRef = useFocusTrap<HTMLElement>(open, onClose);
-  if (!open) return null;
-  return (
-    <div className="workflow-modal-backdrop" role="presentation">
-      <section ref={dialogRef} className="workflow-modal create-simulation-dialog" role="dialog" aria-modal="true" aria-labelledby="create-simulation-title">
-        <header className="workflow-modal-header">
-          <h2 id="create-simulation-title">Create Simulation</h2>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Close create simulation">
-            <X size={18} />
-          </button>
-        </header>
-        <SimulationTypePicker onCreateStatic={onCreateStatic} onCreateDynamic={onCreateDynamic} onCreateModal={onCreateModal} onCreateThermal={onCreateThermal} />
-      </section>
-    </div>
-  );
-}
-
-export function CreateSimulationScreen({ onCreateStatic, onCreateDynamic, onCreateModal, onCreateThermal }: Omit<CreateSimulationModalProps, "open" | "onClose">) {
+export function CreateSimulationScreen({ onCreateStatic, onCreateDynamic, onCreateModal, onCreateThermal }: CreateSimulationProps) {
   return (
     <main className="simulation-type-screen" aria-labelledby="simulation-type-title">
       <section className="workflow-modal create-simulation-dialog simulation-type-card">
         <header className="workflow-modal-header simulation-type-header">
           <span>
             <small>New project</small>
-            <h2 id="simulation-type-title">Choose Simulation Type</h2>
+            <h2 id="simulation-type-title">Choose simulation type</h2>
           </span>
         </header>
         <SimulationTypePicker onCreateStatic={onCreateStatic} onCreateDynamic={onCreateDynamic} onCreateModal={onCreateModal} onCreateThermal={onCreateThermal} />
@@ -52,7 +32,7 @@ export function CreateSimulationScreen({ onCreateStatic, onCreateDynamic, onCrea
 
 type AnalysisChoice = "static" | "dynamic" | "modal" | "thermal";
 
-function SimulationTypePicker({ onCreateStatic, onCreateDynamic, onCreateModal, onCreateThermal }: Omit<CreateSimulationModalProps, "open" | "onClose">) {
+function SimulationTypePicker({ onCreateStatic, onCreateDynamic, onCreateModal, onCreateThermal }: CreateSimulationProps) {
   const [selectedType, setSelectedType] = useState<AnalysisChoice>("static");
   const options = ANALYSIS_OPTIONS;
   const selectedAnalysis = options.find((option) => option.type === selectedType) ?? staticAnalysisOption;
@@ -95,8 +75,8 @@ function SimulationTypePicker({ onCreateStatic, onCreateDynamic, onCreateModal, 
         </article>
       </div>
       <footer className="workflow-modal-footer">
-        <span><strong>Need Help?</strong> Static handles steady loads, Dynamic handles transient loads, Modal finds natural frequencies, and Thermal solves steady conduction.</span>
-        <button className="primary" type="button" onClick={handleCreate}>Create Simulation</button>
+        <span><strong>Need help?</strong> Static handles steady loads, Dynamic handles transient loads, Modal finds natural frequencies, and Thermal solves steady conduction.</span>
+        <button className="primary" type="button" onClick={handleCreate}>Create simulation</button>
       </footer>
     </>
   );

@@ -149,7 +149,7 @@
 
      Known inconsistency, left alone deliberately: the two modal backdrops sit
      at different depths (--z-modal-backdrop 30 vs --z-gallery-backdrop 120)
-     with the condition menu and popover between them, so a popover floats over
+     with the popover between them, so a popover floats over
      the workflow modal's backdrop but under the gallery's. Aligning them is a
      visible stacking change and needs its own review. */
   --z-base: 0;
@@ -157,7 +157,6 @@
   --z-log-drawer: 5;
   --z-viewer-import-overlay: 20;
   --z-modal-backdrop: 30;
-  --z-condition-menu: 35;
   --z-popover: 40;
   --z-gallery-backdrop: 120;
   --z-tooltip: 1000;
