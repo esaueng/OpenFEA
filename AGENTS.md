@@ -74,6 +74,7 @@ pnpm test
 pnpm verify:step-selection-browser
 pnpm verify:project-results-browser
 pnpm build:cloudflare
+pnpm exec vitest run scripts/cloud-retirement-guard.test.mjs
 pnpm --filter @openfea/web check:bundle
 VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build
 pnpm verify:wasm-mesh-browser
@@ -82,11 +83,11 @@ pnpm verify:offline-pwa
 
 The last three run in CI's separate `browser-proof` job. The proof build includes the URL mesh harness, so rebuild normally (`pnpm build:cloudflare`) before any deploy or bundle check.
 
-`verify:step-selection-browser` requires Chrome or Chromium and free local ports 5198 and 9336; set `CHROME_BIN` when auto-detection cannot find the browser. The bundle check reads `apps/openfea-web/dist`, so it must follow `build:cloudflare`.
+`verify:step-selection-browser` requires Chrome or Chromium and free local ports 5198 and 9336; set `CHROME_BIN` when auto-detection cannot find the browser. The cloud-retirement guard re-run and the bundle check read `apps/openfea-web/dist`, so they must follow `build:cloudflare` (`pnpm test` skips the guard's bundle scan when `dist` is absent).
 
-`verify:project-results-browser` checks history invalidation and portable dynamic cases in Chrome with software WebGL, using local ports 5199 and 9337.
+`verify:project-results-browser` checks history invalidation and portable dynamic cases in Chrome with software WebGL, using local ports 5199 and 9337. The browser-proof job uses 5196 and 9333 for `verify:wasm-mesh-browser` and 5200 and 9334 for `verify:offline-pwa`; every verifier accepts `PORT` and `CDP_PORT` overrides.
 
-`pnpm lint` runs ESLint (`eslint.config.mjs`, type-aware via `typescript-eslint`) over `apps/openfea-web` (src and worker), `packages/*` and `libs/*`. The rule set is deliberately small: `no-floating-promises`, `no-misused-promises`, `eqeqeq` (`== null` allowed), and React hooks rules for the web app (`exhaustive-deps` warns). The `packages/*` lint scripts run ESLint on their own package. `libs/tsconfig.json` and `packages/*/tests/tsconfig.json` exist so the project service can type those files. Lint needs the core packages built, like `pnpm typecheck`.
+`pnpm lint` runs ESLint (`eslint.config.mjs`, type-aware via `typescript-eslint`) over `apps/openfea-web` (src and worker), `packages/*` and `libs/*`. The rule set is deliberately small: `no-floating-promises`, `no-misused-promises`, `eqeqeq` (`== null` allowed), and React hooks rules for the web app (`exhaustive-deps` warns). The `packages/*` lint scripts run ESLint on their own package. `libs/tsconfig.json` and `packages/*/tests/tsconfig.json` exist so the project service can type those files. `pnpm typecheck` also runs `tsc -p libs/tsconfig.typecheck.json`, which extends `libs/tsconfig.json` and excludes only the lib test files listed there with known type drift. Lint needs the core packages built, like `pnpm typecheck`.
 
 Do not use `deploy:*` as verification commands. They require credentials and mutate production; run them only when the task explicitly requires that operation.
 
