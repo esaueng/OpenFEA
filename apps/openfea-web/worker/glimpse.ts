@@ -29,7 +29,10 @@ export async function handleGlimpseUsage(request: Request, env: GlimpseEnv): Pro
   if (request.headers.get('Origin') !== new URL(request.url).origin || request.headers.get('Sec-Fetch-Site') === 'cross-site') return reply(403);
   const collector = glimpseBinding(env.GLIMPSE);
   if (!collector || env.GLIMPSE_USAGE_ENABLED !== 'true') return reply(204);
-  if (!env.GLIMPSE_USAGE_LIMITER || !(await env.GLIMPSE_USAGE_LIMITER.limit({key:'aggregate-usage'})).success) return reply(429);
+  // Keyed per client (like the backup limiter) so one noisy client cannot exhaust
+  // everyone else's budget. The IP only keys the limiter; it never reaches the collector.
+  const actor = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+  if (!env.GLIMPSE_USAGE_LIMITER || !(await env.GLIMPSE_USAGE_LIMITER.limit({key:actor})).success) return reply(429);
   if (request.headers.get('Content-Type') !== 'application/json') return reply(415);
   if (Number(request.headers.get('Content-Length')) > 256) return reply(413);
   const reader = request.body?.getReader();
