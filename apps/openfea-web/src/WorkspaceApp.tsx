@@ -12,10 +12,11 @@ import { OpenFeaLogoMark } from "./components/OpenFeaLogoMark";
 import { ProjectStorageNotice } from "./components/ProjectStorageNotice";
 import { RightPanel } from "./components/RightPanel";
 import { WorkspaceNoticeBanner } from "./components/panels/PanelChrome";
+import { SolveProgressOverlay } from "./components/SolveProgressOverlay";
 import { StartScreen } from "./components/StartScreen";
 import { StepNav, type StepId } from "./components/StepNav";
 import { ProjectMenu } from "./components/ProjectMenu";
-import { readinessForStudy } from "./runReadiness";
+import { blockingReadinessItems, readinessForStudy, readinessItemText } from "./runReadiness";
 import { bodyIdForFace, useModelBodies } from "./modelBodies";
 import { CreateSimulationScreen } from "./components/SimulationWorkflow";
 import {
@@ -49,6 +50,7 @@ import { readCloudBackupPreference, requestPersistentBrowserStorage, restoreEncr
 import { hasAnalyticsConsent, isAnalyticsEnabled, setAnalyticsEnabled, trackUsage, trackDetail, trackSize, trackParts, durationBucket } from "./analytics";
 import {
   canNavigateToStep,
+  resultsOutdatedAfterHistoryStep,
   isEditableShortcutTarget,
   printLayerOrientationForViewer,
   shouldAutoAdvanceAfterMaterialAssignment,
@@ -196,6 +198,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const [convergenceProgress, setConvergenceProgress] = useState("");
   const convergenceAbortRef = useRef<AbortController | null>(null);
   const [runTiming, setRunTiming] = useState<RunTimingEstimate | null>(null);
+  /** The active run's latest phase message, for the progress overlay over the viewer. */
+  const [runPhaseMessage, setRunPhaseMessage] = useState("");
   // runTiming carries live estimates and is cleared the moment a run completes, which is
   // exactly when the elapsed time stops being an estimate and becomes a fact. Keep that
   // fact separately so the Run panel and the report can state it; it is cleared alongside
@@ -564,8 +568,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const modelBodyIds = useMemo(() => (modelBodies.length > 1 ? modelBodies.map((body) => body.id) : undefined), [modelBodies]);
   const [highlightedBodyId, setHighlightedBodyId] = useState<string | null>(null);
   const runReadiness = useMemo(() => readinessForStudy(study, project?.customMaterials, { bodyIds: modelBodyIds }), [modelBodyIds, project?.customMaterials, study]);
-  const canRunSimulation = runReadiness.every((item) => item.done) && !solverRunning && !convergenceBusy;
-  const missingRunItems = runReadiness.filter((item) => !item.done).map((item) => item.label);
+  // A pending row (a mesh the run builds on demand) is shown unticked but does not block.
+  const blockingRunItems = blockingReadinessItems(runReadiness);
+  const canRunSimulation = blockingRunItems.length === 0 && !solverRunning && !convergenceBusy;
+  const missingRunItems = blockingRunItems.map(readinessItemText);
   const hasActualVolumeMesh = Boolean(study?.meshSettings.summary?.artifacts?.actualCoreModel);
   const openStepNeedsRepair = stepGeometryNeedsRepair(project) && !hasActualVolumeMesh;
   // STL/OBJ previews cannot be volume-meshed; before this gate a placeholder
@@ -583,7 +589,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   // One notice for the whole workspace (2026-09 review D7): a failed mesh or
   // run, or results cleared by an edit, used to be visible only on the panel
   // where it happened and as a footer pill.
-  const workspaceNotice = workspaceNoticeFor({ importError: modelImportError, meshError, meshing: meshPhaseProgress !== null, runError, solverRunning, resultsOutdatedBy, resultsOutdatedSequence, openNote, dismissedKey: dismissedNoticeKey });
+  const workspaceNotice = workspaceNoticeFor({ importError: modelImportError, meshError, meshing: meshPhaseProgress !== null, runError, solverRunning, resultsOutdatedBy, resultsOutdatedSequence, meshReady: study?.meshSettings.status === "complete", openNote, dismissedKey: dismissedNoticeKey });
   const stepNotices: Partial<Record<StepId, WorkspaceNoticeTone>> = workspaceNotice?.step ? { [workspaceNotice.step]: workspaceNotice.tone } : {};
   // The generated volume mesh's boundary, for the Mesh step's viewer. "Toggle
   // mesh" used to draw nothing for uploads and a decorative box for samples
@@ -1939,15 +1945,17 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     // The previous results stay viewable but are marked outdated (rail,
     // legend, pill, notice) and are refused by report and export until the
     // next run; they used to be destroyed on the spot (2026-09 review D4).
-    if (resultFields.length && !resultsOutdatedBy) {
-      pushMessage("Results are now outdated: the study changed since the last run.");
-    }
-    if (resultFields.length) {
-      setResultsOutdatedBy(response.message);
-      setResultsOutdatedSequence((sequence) => sequence + 1);
-    }
+    markResultsOutdated(response.message);
     pushMessage(response.message);
     if (nextStep) navigateToStep(nextStep);
+  }
+
+  /** Keeps the previous results viewable but flags them as not matching the project. */
+  function markResultsOutdated(reason: string) {
+    if (!resultFields.length) return;
+    if (!resultsOutdatedBy) pushMessage("Results are now outdated: the study changed since the last run.");
+    setResultsOutdatedBy(reason);
+    setResultsOutdatedSequence((sequence) => sequence + 1);
   }
 
   function handleSaveCustomMaterial(material: CustomMaterial) {
@@ -2148,7 +2156,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   function navigateToStep(step: StepId) {
     if (step === activeStep) return;
     if (!canNavigateToStep(step, { meshStatus: study?.meshSettings.status ?? "not_started" })) {
-      pushMessage("Generate the mesh before going to Run.");
+      pushMessage("That step is not available yet.");
       return;
     }
     // A face picked for one step is not a target for the next: the last face
@@ -2351,13 +2359,28 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   // also called `saveStudyPatch` without the current study it requires at
   // runtime, so every undo threw, logged a failure, and left "Needs attention"
   // over a change that had in fact applied.
+  //
+  // Like an edit, they mark the last results outdated instead of destroying
+  // them; they used to call invalidateCompletedRunState(), so Ctrl+Z after a
+  // run threw the whole solve away. Results are only dropped when the restored
+  // project no longer holds the study they were computed for.
+  function applyHistoryResultState(action: "undo" | "redo", restored: Project) {
+    const restoredStudy = restored.studies[0];
+    if (!restoredStudy || !study || restoredStudy.id !== study.id || restoredStudy.type !== study.type || restored.id !== project?.id) {
+      invalidateCompletedRunState();
+      return;
+    }
+    const outdated = resultsOutdatedAfterHistoryStep(action, { hasResults: resultFields.length > 0, resultsOutdatedBy });
+    if (outdated) markResultsOutdated(outdated.outdatedBy);
+  }
+
   function handleUndoAction() {
     if (!project || !canUndoAction || processingRunIdRef.current) return;
     const previous = undoStack[undoStack.length - 1];
     if (!previous) return;
     setUndoStack(undoStack.slice(0, -1));
     setRedoStack([...redoStack, cloneProjectSharingEmbeddedModels(project)]);
-    invalidateCompletedRunState();
+    applyHistoryResultState("undo", previous);
     projectRef.current = cloneProjectSharingEmbeddedModels(previous);
     setProject(projectRef.current);
     pushMessage("Undo applied.");
@@ -2369,7 +2392,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     if (!next) return;
     setRedoStack(redoStack.slice(0, -1));
     setUndoStack([...undoStack, cloneProjectSharingEmbeddedModels(project)].slice(-30));
-    invalidateCompletedRunState();
+    applyHistoryResultState("redo", next);
     projectRef.current = cloneProjectSharingEmbeddedModels(next);
     setProject(projectRef.current);
     pushMessage("Redo applied.");
@@ -2428,6 +2451,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     const analyticsStarted = isAnalyticsEnabled() ? performance.now() : null;
     trackDetail("feature_category", "solve");
     pushMessage("Starting simulation run.");
+    setRunPhaseMessage("Starting simulation run.");
     pushMessage(runDiagnosticsMessage(study, displayModel ?? undefined));
     let response: Awaited<ReturnType<typeof runSimulation>>;
     try {
@@ -2469,6 +2493,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     const handleRunEvent = async (event: RunEvent) => {
       if (typeof event.progress === "number") setRunProgress(event.progress);
       setRunTiming(timingFromRunEvent(event));
+      if (event.message) setRunPhaseMessage(event.message);
       pushMessage(messageWithEta(event));
       if (event.type === "complete") {
         trackUsage("solver_completed");
@@ -2693,11 +2718,17 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             disabled={solverRunning ? false : !effectiveCanRunSimulation}
             title={solverRunning ? "Stop the running simulation" : effectiveMissingRunItems.length ? `Complete before running: ${effectiveMissingRunItems.join(", ")}` : "Run simulation"}
             aria-label={solverRunning ? `Stop simulation: ${runButtonProgress}% complete` : "Run simulation"}
+            // The reason a disabled Run is blocked used to live only in `title`, which
+            // assistive tech does not reliably read once aria-label names the button.
+            aria-describedby={!solverRunning && effectiveMissingRunItems.length ? "topbar-run-blocked-reason" : undefined}
             aria-busy={solverRunning}
             style={{ "--run-progress": `${runButtonProgress}%` } as CSSProperties}
           >
             <span aria-hidden="true">{solverRunning ? "■" : "▶"}</span><span className="topbar-action-label">{solverRunning ? `Stop ${runButtonProgress}%` : "Run simulation"}</span>
           </button>
+        ) : null}
+        {showRunButton && !solverRunning && effectiveMissingRunItems.length ? (
+          <span className="visually-hidden" id="topbar-run-blocked-reason">{`Run is blocked. Complete before running: ${effectiveMissingRunItems.join(", ")}.`}</span>
         ) : null}
       </header>
     );
@@ -2773,6 +2804,9 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             side panel, so showing or dismissing it never shifts the panel's controls. */}
         <div className="viewer-column">
           {workspaceNotice && <WorkspaceNoticeBanner notice={workspaceNotice} activeStep={activeStep} onDismiss={() => setDismissedNoticeKey(workspaceNotice.key)} onGoToStep={(step) => navigateToStep(step)} />}
+          {solverRunning && (
+            <SolveProgressOverlay progress={runProgress} phase={runPhaseMessage} estimatedRemainingMs={runTiming?.estimatedRemainingMs} onStop={() => void handleCancelSimulation()} />
+          )}
           <Suspense fallback={(
             <section className="viewer-shell viewer-loading" aria-label="3D CAD viewer loading">
               <div className="viewer-import-card" role="status" aria-live="polite">
@@ -2843,6 +2877,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         <RightPanel
           activeStep={activeStep}
           resultControlsBusy={reportCaptureBusy}
+          resultsOutdated={Boolean(resultsOutdatedBy)}
           project={project}
           displayModel={displayModelForUi}
           study={study}

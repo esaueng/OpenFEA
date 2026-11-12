@@ -317,6 +317,15 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
             <Info label="Effective density" value={formatDensity(effectiveMaterial.density, "kg/m^3", project.unitSystem)} />
             <Info label="Effective yield" value={formatMaterialStress(effectiveMaterial.yieldStrength, project.unitSystem)} />
           </div>
+          {/* The homogenization caveat used to live only in the help tooltip. */}
+          <p className="material-approximation-note">
+            <span className="result-tier-chip approximation">Homogenized (approximation)</span>
+            <span>
+              {fdmFactors
+                ? "Infill, walls and build direction are averaged into one uniform solid. Individual layers, infill cells and bond lines are not modelled."
+                : "The process adjustment is applied uniformly to the whole part. Local porosity, layers and surface effects are not modelled."}
+            </span>
+          </p>
         </>
       )}
 

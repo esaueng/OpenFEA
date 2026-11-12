@@ -211,6 +211,24 @@ describe("App workflow layout", () => {
     expect(appSource).toContain("onClick={() => { setShortcutGuideOpen(false); setStorageRecoveryNoticeOpen((open) => !open); }}");
   });
 
+  test("undo and redo mark results outdated like an edit instead of destroying them", () => {
+    // Both used to call invalidateCompletedRunState(), so Ctrl+Z after a run dropped
+    // every result field while an ordinary edit only marked them outdated.
+    for (const name of ["handleUndoAction", "handleRedoAction"]) {
+      const body = appSource.match(new RegExp(`function ${name}\\(\\) \\{[\\s\\S]*?\\n  \\}`))?.[0] ?? "";
+      expect(body).not.toBe("");
+      expect(body).not.toContain("invalidateCompletedRunState()");
+      expect(body).toContain(`applyHistoryResultState("${name === "handleUndoAction" ? "undo" : "redo"}",`);
+    }
+    const history = appSource.match(/function applyHistoryResultState\([\s\S]*?\n  \}/)?.[0] ?? "";
+    expect(history).toContain("resultsOutdatedAfterHistoryStep(action, { hasResults: resultFields.length > 0, resultsOutdatedBy })");
+    expect(history).toContain("markResultsOutdated(outdated.outdatedBy)");
+    // Results are only dropped when the restored project no longer holds the study they belong to.
+    expect(history).toMatch(/restoredStudy\.id !== study\.id[\s\S]*?invalidateCompletedRunState\(\);/);
+    // Edits and history steps share one way of marking results outdated.
+    expect(appSource).toMatch(/async function updateStudy[\s\S]*?markResultsOutdated\(response\.message\);/);
+  });
+
   test("clears progress when a completed run's results are thrown away", () => {
     // Without this the abandoned run leaves runProgress at 100, so solverStatus stays
     // "Complete" and the status pill reads "Results ready" for results it just discarded.

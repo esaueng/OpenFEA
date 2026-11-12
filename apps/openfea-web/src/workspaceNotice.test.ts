@@ -20,6 +20,14 @@ describe("workspaceNoticeFor", () => {
     expect(notice?.message).toBe("Load updated. The results shown are from before this change and cannot be reported or exported. Re-run to update them.");
   });
 
+  test("points the outdated-results notice at Mesh when the edit also cleared the mesh", () => {
+    // "Go to Run" dead-ended here: there was nothing to re-run until the mesh was regenerated.
+    const notice = workspaceNoticeFor({ ...quiet, resultsOutdatedBy: "Mesh settings updated.", meshReady: false });
+    expect(notice).toMatchObject({ tone: "warning", title: "Results outdated", step: "mesh", stepLabel: "Mesh" });
+    expect(notice?.message).toBe("Mesh settings updated. The results shown are from before this change and cannot be reported or exported. Regenerate the mesh, then re-run to update them.");
+    expect(workspaceNoticeFor({ ...quiet, resultsOutdatedBy: "Load updated.", meshReady: true })).toMatchObject({ step: "run", stepLabel: "Run" });
+  });
+
   test("surfaces a failed run everywhere, but not while a new run is in flight", () => {
     expect(workspaceNoticeFor({ ...quiet, runError: "Solve diverged." })).toMatchObject({ tone: "error", step: "run", message: "Solve diverged." });
     expect(workspaceNoticeFor({ ...quiet, runError: "Solve diverged.", solverRunning: true })).toBeNull();

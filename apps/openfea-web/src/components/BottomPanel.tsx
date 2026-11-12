@@ -50,6 +50,18 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, studySumma
   const copyFeedbackTimeoutRef = useRef(0);
   const expanded = tab !== null;
   const displayStatus = statusForDisplay(status, solverStatus);
+  // A solve that ends while the user is elsewhere must still be heard: remember the
+  // outcome of the last transition out of Running and prefix it to the message that
+  // was current at that moment, until a newer message replaces it. Derived during
+  // render (not in an effect) so the region never flashes the bare message first.
+  const [trackedSolverStatus, setTrackedSolverStatus] = useState(solverStatus);
+  const [solveOutcome, setSolveOutcome] = useState<{ text: string; status: string } | null>(null);
+  if (trackedSolverStatus !== solverStatus) {
+    setTrackedSolverStatus(solverStatus);
+    const text = solveOutcomeAnnouncement(trackedSolverStatus, solverStatus);
+    setSolveOutcome(text ? { text, status } : null);
+  }
+  const liveStatus = liveStatusMessage(status, solverStatus, solveOutcome);
   const healthy = solverStatus === "Running" ? "running" : displayStatus === "Solve failed" || displayStatus === "Needs attention" || displayStatus === "Results outdated" ? "warning" : meshStatus === "Ready" ? "ready" : "warning";
   const formattedLogs = logs.map(formatLogEntry);
   // 43 guides is more than anyone scans. Filter across title and body so a user who knows
@@ -237,6 +249,9 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, studySumma
         <div className="status-primary">
           <div className="status-groups" aria-label="Simulation status">
             <span className={`status-state ${healthy}`}><i /><span className="status-state-label">{displayStatus}</span></span>
+            {/* The latest message, not just the derived state word beside it. A polite live
+                region; during a solve it holds one line instead of reading every ETA tick. */}
+            <span className="status-message" role="status" aria-live="polite" aria-atomic="true" title={liveStatus || undefined}>{liveStatus}</span>
             {studySummary ? <span className="status-summary">{studySummary}</span> : null}
           </div>
         </div>
@@ -325,6 +340,29 @@ export function statusForDisplay(status: string, solverStatus: string) {
   // leaves the working mesh and results untouched) and "Completed results were ignored".
   if (solverStatus === "Complete") return "Results ready";
   return "Ready";
+}
+
+/**
+ * What to announce when a solve settles. Only a transition out of "Running" says
+ * anything; every other change is carried by the latest message alone.
+ */
+export function solveOutcomeAnnouncement(previousSolverStatus: string, solverStatus: string): string | null {
+  if (previousSolverStatus !== "Running" || solverStatus === "Running") return null;
+  if (solverStatus === "Complete") return "Simulation complete. Results are ready.";
+  if (solverStatus === "Error") return "Simulation failed.";
+  return "Simulation stopped.";
+}
+
+/**
+ * The text of the status bar's live region: the latest message, held at one line
+ * while a solve runs (progress messages arrive every tick and would flood a screen
+ * reader), and prefixed with the solve outcome while the message that was current
+ * when the solve ended is still the latest one.
+ */
+export function liveStatusMessage(status: string, solverStatus: string, solveOutcome: { text: string; status: string } | null): string {
+  if (solverStatus === "Running") return "Simulation running.";
+  if (solveOutcome && solveOutcome.status === status) return status ? `${solveOutcome.text} ${status}` : solveOutcome.text;
+  return status;
 }
 
 /**

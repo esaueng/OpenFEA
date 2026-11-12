@@ -57,11 +57,12 @@ describe("StepNav", () => {
     expect(html.match(/class="step-nav-item"/g) ?? []).toHaveLength(6);
   });
 
-  test("disables steps the study cannot reach yet", () => {
+  test("keeps Run reachable before the mesh exists so its readiness checklist can explain the block", () => {
+    // Run used to be disabled until the mesh was complete (canNavigateToStep), which hid
+    // the panel that says what still blocks the run. The Run button itself stays disabled.
     const html = renderToStaticMarkup(<StepNav {...baseProps} study={study} />);
-    // Run needs a completed mesh before it can be opened (canNavigateToStep).
-    expect(html).toMatch(/<button type="button" class="step-nav-step" disabled=""[^>]*title="Run"/);
-    expect(html.match(/disabled=""/g) ?? []).toHaveLength(1);
+    expect(html).toMatch(/<button type="button" class="step-nav-step"[^>]*title="Run"/);
+    expect(html).not.toContain('disabled=""');
     const meshed = renderToStaticMarkup(<StepNav {...baseProps} study={{ ...study, meshSettings: { preset: "medium", status: "complete" } }} />);
     expect(meshed).not.toContain('disabled=""');
   });

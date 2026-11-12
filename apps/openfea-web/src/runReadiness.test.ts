@@ -1,7 +1,19 @@
 import { describe, expect, test } from "vitest";
 import { validateStudy } from "@openfea/study-core";
 import type { Study } from "@openfea/schema";
-import { readinessForStudy } from "./runReadiness";
+import { MESH_BUILT_ON_RUN_NOTE, blockingReadinessItems, readinessForStudy, readinessItemStep, readinessItemText, studyHasGeneratedMesh } from "./runReadiness";
+
+describe("readinessItemStep", () => {
+  test("links each fixable readiness row to the step that resolves it", () => {
+    expect(readinessItemStep("Material assigned")).toEqual({ step: "material", stepLabel: "Material" });
+    expect(readinessItemStep("Support added")).toEqual({ step: "supports", stepLabel: "Supports" });
+    expect(readinessItemStep("Load added")).toEqual({ step: "loads", stepLabel: "Loads" });
+    expect(readinessItemStep("Mesh generated")).toEqual({ step: "mesh", stepLabel: "Mesh" });
+    // Resolved on the Run step itself: no link.
+    expect(readinessItemStep("Run settings valid")).toBeNull();
+    expect(readinessItemStep("Study valid")).toBeNull();
+  });
+});
 
 const readyStaticStudy: Study = {
   id: "study-1",
@@ -23,7 +35,7 @@ const readyStaticStudy: Study = {
     parameters: { value: 500, units: "N", direction: [0, -1, 0] },
     status: "complete"
   }],
-  meshSettings: { preset: "medium", status: "complete" },
+  meshSettings: { preset: "medium", status: "complete", summary: { nodes: 10, elements: 4, warnings: [], source: "core_solver" } },
   solverSettings: {},
   validation: [],
   runs: []
@@ -32,6 +44,52 @@ const readyStaticStudy: Study = {
 function itemFor(study: Study | null, label: string) {
   return readinessForStudy(study).find((item) => item.label === label);
 }
+
+describe("mesh readiness reflects a mesh that actually exists", () => {
+  test("does not tick Mesh generated for a seeded or estimated summary with no mesher counts", () => {
+    // Regression: the Bracket Demo opens with status "complete" and a seeded summary
+    // (Nodes/Elements read "--"), and the checklist ticked "Mesh generated".
+    for (const meshSettings of [
+      { preset: "medium", status: "complete", summary: { nodes: 42381, elements: 26944, warnings: [] } },
+      { preset: "medium", status: "complete", summary: { nodes: 42381, elements: 26944, warnings: [], source: "preset_estimate" } },
+      { preset: "medium", status: "complete" }
+    ] as Study["meshSettings"][]) {
+      const mesh = readinessForStudy({ ...readyStaticStudy, meshSettings }).find((item) => item.label === "Mesh generated");
+      expect(mesh?.done).toBe(false);
+      // The run builds the mesh it needs, so the row is pending, not a blocker.
+      expect(mesh?.pending).toBe(MESH_BUILT_ON_RUN_NOTE);
+      expect(mesh?.blockers).toEqual([]);
+      expect(blockingReadinessItems(readinessForStudy({ ...readyStaticStudy, meshSettings }))).toEqual([]);
+    }
+  });
+
+  test("ticks Mesh generated for mesher-produced summaries and stored volume meshes", () => {
+    expect(studyHasGeneratedMesh(readyStaticStudy)).toBe(true);
+    expect(studyHasGeneratedMesh({ meshSettings: { preset: "medium", status: "complete", summary: { nodes: 1, elements: 1, warnings: [], source: "wasm_gmsh" } } })).toBe(true);
+    expect(studyHasGeneratedMesh({ meshSettings: { preset: "medium", status: "complete", summary: { nodes: 1, elements: 1, warnings: [], artifacts: { actualCoreModel: { model: {} } } } } as Study["meshSettings"] })).toBe(true);
+    expect(studyHasGeneratedMesh({ meshSettings: { preset: "medium", status: "not_started", summary: { nodes: 1, elements: 1, warnings: [], source: "core_solver" } } })).toBe(false);
+  });
+
+  test("an ungenerated mesh still blocks the run", () => {
+    const study = { ...readyStaticStudy, meshSettings: { preset: "medium", status: "not_started" } } as Study;
+    const mesh = readinessForStudy(study).find((item) => item.label === "Mesh generated");
+    expect(mesh).toMatchObject({ done: false, blockers: ["Generate the mesh before running."] });
+    expect(mesh?.pending).toBeUndefined();
+    expect(blockingReadinessItems(readinessForStudy(study)).map((item) => item.label)).toEqual(["Mesh generated"]);
+  });
+});
+
+describe("thermal readiness wording", () => {
+  test("names thermal boundary conditions in thermal terms while keeping the stable row keys", () => {
+    const thermal = { ...readyStaticStudy, type: "steady_state_thermal", constraints: [], loads: [] } as unknown as Study;
+    const items = readinessForStudy(thermal);
+    expect(items.find((item) => item.label === "Support added")?.displayLabel).toBe("Fixed temperature added");
+    expect(items.find((item) => item.label === "Load added")?.displayLabel).toBe("Heat load added");
+    expect(items.map(readinessItemText)).not.toContain("Support added");
+    expect(items.map(readinessItemText)).not.toContain("Load added");
+    expect(readinessForStudy(readyStaticStudy).map(readinessItemText)).toEqual(["Material assigned", "Support added", "Load added", "Mesh generated"]);
+  });
+});
 
 describe("run readiness", () => {
   test("a fully configured study is ready to run", () => {

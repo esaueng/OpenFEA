@@ -1,6 +1,6 @@
 /* Step panel extracted from RightPanel.tsx: file move only, no behavior change.
    Shared contracts live in ./RightPanelProps; panels never import each other. */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Boxes, ChevronDown, ChevronLeft, ChevronRight, FileCode2, FileDown, FileImage, FolderDown, Pause, Play, ShieldCheck, Table2, X } from "lucide-react";
 
@@ -18,7 +18,7 @@ import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { dynamicPlaybackFrames } from "../../resultFields";
 import { MODAL_DIRECTIONS, PROJECTED_PARTICIPATION_NOTE, cumulativeParticipation, formatMassKg, formatMassPercent, formatMassTripleKg } from "../../modalMassParticipation";
 import { resultScaleCssGradient, validManualResultRange, type ResultColorScaleSetting } from "../../resultColorScale";
-import { INVALID_REACTION_WARNING, PREVIEW_GEOMETRY_WARNING, canShowReverseLoadCapacity, hasInvalidReactionForce, hasUnavailableReactionDiagnostic, shouldBlockPreviewResultsForDisplayModel } from "../../resultProvenance";
+import { INVALID_REACTION_WARNING, PREVIEW_GEOMETRY_WARNING, canShowReverseLoadCapacity, hasInvalidReactionForce, hasUnavailableReactionDiagnostic, resultTierChip, shouldBlockPreviewResultsForDisplayModel } from "../../resultProvenance";
 import {
   frameIndexForRoundedPlaybackOrdinal,
   playbackOrdinalForSolverFramePosition
@@ -52,6 +52,8 @@ export function ThermalResultsPanelContent({
   study,
   resultSummary,
   resultMode,
+  resultControlsBusy = false,
+  resultsOutdated = false,
   onResultModeChange,
   onGenerateReport,
   onExportResultPng,
@@ -70,16 +72,19 @@ export function ThermalResultsPanelContent({
 }: RightPanelProps & { resultSummary: ThermalResultSummary }) {
   return (
     <Panel title="Thermal results" step="results" helper="Inspect steady temperature and conductive heat-flux fields on the solved mesh." study={study}>
+      <ResultAnswer outdated={resultsOutdated}>
+      <ResultTierBadge summary={resultSummary} />
       <Headline items={[
         { label: "Min temperature", value: formatResultMetric(resultSummary.minTemperature, resultSummary.temperatureUnits) },
         { label: "Max temperature", value: formatResultMetric(resultSummary.maxTemperature, resultSummary.temperatureUnits) },
         { label: "Peak heat flux", value: formatResultMetric(resultSummary.maxHeatFlux, resultSummary.heatFluxUnits) }
       ]} />
+      </ResultAnswer>
       {/* Answer first, then what to colour the model by (plan 035, increment 4). */}
       <SectionTitle>Show on model</SectionTitle>
-      <div className="segmented" role="group" aria-label="Thermal result field">
-        <button type="button" className={resultMode === "temperature" ? "active" : ""} aria-pressed={resultMode === "temperature"} onClick={() => onResultModeChange("temperature")}>Temperature</button>
-        <button type="button" className={resultMode === "heat_flux" ? "active" : ""} aria-pressed={resultMode === "heat_flux"} onClick={() => onResultModeChange("heat_flux")}>Heat flux</button>
+      <div className="segmented" role="group" aria-label="Thermal result field" aria-busy={resultControlsBusy || undefined} title={resultControlsBusy ? REPORT_CAPTURE_BUSY_TITLE : undefined}>
+        <button type="button" className={resultMode === "temperature" ? "active" : ""} aria-pressed={resultMode === "temperature"} disabled={resultControlsBusy} onClick={() => onResultModeChange("temperature")}>Temperature</button>
+        <button type="button" className={resultMode === "heat_flux" ? "active" : ""} aria-pressed={resultMode === "heat_flux"} disabled={resultControlsBusy} onClick={() => onResultModeChange("heat_flux")}>Heat flux</button>
       </div>
       {project.unitSystem === "US" && (
         <p className="muted">Imperial display converts temperatures only. Heat flux and heat rates stay in {resultSummary.heatFluxUnits} and W.</p>
@@ -100,9 +105,9 @@ export function ThermalResultsPanelContent({
         )}
         <ResultExportMenu items={resultExportMenuItems({ onExportResultPng, onExportResultHtml, onExportResultData, onSaveProject, pngExportBusy, htmlExportBusy, dataExportBusy, reportDisabled }, "state")} />
       </div>
-      {reportError && <p className="panel-warning">{reportError}</p>}
-      {pngExportError && <p className="panel-warning">{pngExportError}</p>}
-      {htmlExportError && <p className="panel-warning">{htmlExportError}</p>}
+      {reportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{reportError}</p>}
+      {pngExportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{pngExportError}</p>}
+      {htmlExportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{htmlExportError}</p>}
       {dataExportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{dataExportError}</p>}
       </ResultActionsSlot>
     </Panel>
@@ -113,8 +118,11 @@ export function ThermalResultsPanelContent({
 const MODE_SHAPE_LEGEND_GRADIENT = resultScaleCssGradient({ type: "displacement", min: 0, max: 1, bands: "continuous" });
 
 export function ModalResultsPanelContent({
+  footerSlot,
   study,
   resultSummary,
+  resultControlsBusy = false,
+  resultsOutdated = false,
   resultFields = [],
   selectedModeIndex = resultSummary.modes[0]?.modeIndex ?? 1,
   showDeformed,
@@ -133,8 +141,11 @@ export function ModalResultsPanelContent({
   onResultPlaybackReverseLoopChange,
   onToggleDeformed,
   onStressExaggerationChange,
+  onGenerateReport,
   onExportResultData,
   onSaveProject,
+  reportBusy = false,
+  reportError,
   dataExportBusy = null,
   dataExportError,
   reportDisabled = false
@@ -153,16 +164,19 @@ export function ModalResultsPanelContent({
   return (
     <Panel title="Results" step="results" helper="Inspect converged natural frequencies and normalized mode shapes." study={study}>
       {resultSummary.warning && <p className="panel-warning" role="status"><AlertTriangle size={16} />{resultSummary.warning}</p>}
+      <ResultAnswer outdated={resultsOutdated}>
+      <ResultTierBadge summary={resultSummary} />
       <Headline items={[
         { label: "Converged modes", value: `${resultSummary.convergedModeCount} / ${resultSummary.requestedModeCount}` }
       ]} />
+      </ResultAnswer>
       <div className="summary-box">
         <Info label="Solver method" value="Block shift-invert" />
         <Info label="Result source" value={resultSourceLabelForPanel(resultSummary)} />
         <Info label="Runner" value={solverRunnerLabelForResult(resultProvenance)} />
       </div>
       <SectionTitle helpId="modalModes">Modes</SectionTitle>
-      <div className="modal-mode-table" role="group" aria-label="Converged modes">
+      <div className="modal-mode-table" role="group" aria-label="Converged modes" aria-busy={resultControlsBusy || undefined} title={resultControlsBusy ? REPORT_CAPTURE_BUSY_TITLE : undefined}>
         {resultSummary.modes.map((mode) => (
           <button
             key={mode.modeIndex}
@@ -170,6 +184,7 @@ export function ModalResultsPanelContent({
             aria-pressed={mode.modeIndex === selectedModeIndex}
             aria-label={`Mode ${mode.modeIndex}, ${formatDisplayNumber(mode.frequencyHz)} Hz`}
             className="secondary mode-option"
+            disabled={resultControlsBusy}
             onClick={() => onSelectedModeIndexChange?.(mode.modeIndex)}
           >
             <strong>{`Mode ${mode.modeIndex}`}</strong>
@@ -254,10 +269,18 @@ export function ModalResultsPanelContent({
         <input type="range" min="0.5" max="4" step="0.1" value={stressExaggeration} style={{ "--range-progress": `${rangeProgressPercent(stressExaggeration, 0.5, 4)}%` } as CSSProperties} onChange={(event) => onStressExaggerationChange(Number(event.currentTarget.value))} />
       </label>
       <p className="panel-copy">Amplitude and phase are visualization-only. Normalized mode shapes are not physical displacements.</p>
+      <ResultActionsSlot slot={footerSlot}>
       <div className="result-actions">
+        {/* The report generator has a modal layout (frequencies, mass participation,
+            mode-shape figure); the panel just never offered it. */}
+        {onGenerateReport && (
+          <button className="primary wide" type="button" disabled={reportBusy || reportDisabled} onClick={() => void onGenerateReport()}><FileDown size={18} />{reportBusy ? "Generating…" : "Download report"}</button>
+        )}
         <ResultExportMenu items={resultExportMenuItems({ onExportResultData, onSaveProject, dataExportBusy, reportDisabled }, "mode")} />
       </div>
+      {reportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{reportError}</p>}
       {dataExportError && <p className="panel-warning" role="alert"><AlertTriangle size={16} />{dataExportError}</p>}
+      </ResultActionsSlot>
       {/* The bar was an empty span: the row read "Node … Antinode" with nothing between. */}
       <div className="legend"><small>Node</small><span style={{ background: MODE_SHAPE_LEGEND_GRADIENT }} /><small>Antinode</small></div>
     </Panel>
@@ -343,11 +366,40 @@ export function resultExportMenuItems(source: ResultExportMenuSource, scope: "st
 
 const EXPORT_MENU_MIN_WIDTH = 240;
 
+/**
+ * Arrow-key movement inside the Export menu (WAI-ARIA menu pattern): Up/Down wrap
+ * through the enabled items, Home/End jump to the ends. Returns the index to focus,
+ * or null when the key is not a menu navigation key or nothing is focusable.
+ */
+export function exportMenuFocusIndex(key: string, currentIndex: number, itemCount: number): number | null {
+  if (itemCount <= 0) return null;
+  if (key === "Home") return 0;
+  if (key === "End") return itemCount - 1;
+  if (key === "ArrowDown") return currentIndex < 0 ? 0 : (currentIndex + 1) % itemCount;
+  if (key === "ArrowUp") return currentIndex < 0 ? itemCount - 1 : (currentIndex - 1 + itemCount) % itemCount;
+  return null;
+}
+
 function ResultExportMenu({ items }: { items: ResultExportItem[] }) {
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useFocusTrap<HTMLDivElement>(open, () => setOpen(false));
+
+  function handleMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+      return;
+    }
+    const enabled = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+    const next = exportMenuFocusIndex(event.key, enabled.indexOf(document.activeElement as HTMLButtonElement), enabled.length);
+    if (next === null) return;
+    event.preventDefault();
+    enabled[next]?.focus();
+  }
   const busyItem = items.find((item) => item.busy) ?? null;
   const allDisabled = items.every((item) => item.disabled);
 
@@ -403,6 +455,7 @@ function ResultExportMenu({ items }: { items: ResultExportItem[] }) {
   return (
     <div className="export-menu" ref={containerRef}>
       <button
+        ref={triggerRef}
         className="secondary wide export-menu-trigger"
         type="button"
         aria-haspopup="menu"
@@ -421,6 +474,7 @@ function ResultExportMenu({ items }: { items: ResultExportItem[] }) {
           aria-label="Export formats"
           ref={menuRef}
           style={menuStyle}
+          onKeyDown={handleMenuKeyDown}
         >
           {items.map((item) => (
             <button
@@ -449,6 +503,7 @@ export function ResultsPanelContent({
   footerSlot,
   displayModel,
   resultControlsBusy = false,
+  resultsOutdated = false,
   resultMode,
   stressComponent = "von_mises",
   showDeformed,
@@ -603,6 +658,9 @@ export function ResultsPanelContent({
           </select>
         </label>
       )}
+      <ResultAnswer outdated={resultsOutdated}>
+      {/* The verdict below reads the same for every tier; the chip says which tier it is. */}
+      <ResultTierBadge summary={resultSummary} />
       <div className={`failure-assessment ${assessment.status}`}>
         <span className="assessment-icon"><AssessmentIcon size={26} strokeWidth={1.8} aria-hidden="true" /></span>
         <span>
@@ -616,6 +674,7 @@ export function ResultsPanelContent({
         { label: "Safety factor", value: formatResultNumber(resultSummary.safetyFactor) },
         { label: "Reaction force", value: formatResultMetric(resultSummary.reactionForce, resultSummary.reactionForceUnits) }
       ]} />
+      </ResultAnswer>
       {/* Where the numbers came from, one line under them. The full run details fold away
           below; preview, estimate and legacy results keep their warnings in view. */}
       <p className="result-provenance">{resultSourceLabelForPanel(resultSummary)} · {formatMeshSourceLabel(resultProvenance?.meshSource, displayModel)}</p>
@@ -686,12 +745,12 @@ export function ResultsPanelContent({
         </div>
       )}
       <SectionTitle helpId="resultMode">Show on model</SectionTitle>
-      <div className="segmented result-mode" role="group" aria-label="Result mode" aria-busy={resultControlsBusy || undefined} title={resultControlsBusy ? "Preparing report figures; the view switches briefly." : undefined}>
+      <div className="segmented result-mode" role="group" aria-label="Result mode" aria-busy={resultControlsBusy || undefined} title={resultControlsBusy ? REPORT_CAPTURE_BUSY_TITLE : undefined}>
         <button type="button" className={resultMode === "stress" ? "active" : ""} aria-pressed={resultMode === "stress"} disabled={resultControlsBusy} onClick={() => onResultModeChange("stress")}>Stress</button>
         <button type="button" className={resultMode === "displacement" ? "active" : ""} aria-pressed={resultMode === "displacement"} disabled={resultControlsBusy} onClick={() => onResultModeChange("displacement")}>Displacement</button>
-        {resultFields.some((field) => field.type === "velocity") && <button type="button" className={resultMode === "velocity" ? "active" : ""} aria-pressed={resultMode === "velocity"} onClick={() => onResultModeChange("velocity")}>Velocity</button>}
-        {resultFields.some((field) => field.type === "acceleration") && <button type="button" className={resultMode === "acceleration" ? "active" : ""} aria-pressed={resultMode === "acceleration"} onClick={() => onResultModeChange("acceleration")}>Acceleration</button>}
-        <button type="button" className={resultMode === "safety_factor" ? "active" : ""} aria-pressed={resultMode === "safety_factor"} onClick={() => onResultModeChange("safety_factor")}>Safety factor</button>
+        {resultFields.some((field) => field.type === "velocity") && <button type="button" className={resultMode === "velocity" ? "active" : ""} aria-pressed={resultMode === "velocity"} disabled={resultControlsBusy} onClick={() => onResultModeChange("velocity")}>Velocity</button>}
+        {resultFields.some((field) => field.type === "acceleration") && <button type="button" className={resultMode === "acceleration" ? "active" : ""} aria-pressed={resultMode === "acceleration"} disabled={resultControlsBusy} onClick={() => onResultModeChange("acceleration")}>Acceleration</button>}
+        <button type="button" className={resultMode === "safety_factor" ? "active" : ""} aria-pressed={resultMode === "safety_factor"} disabled={resultControlsBusy} onClick={() => onResultModeChange("safety_factor")}>Safety factor</button>
       </div>
       <p className="panel-copy">{resultModeExplanation(resultMode)}</p>
       {blockPreviewResults && <p className="panel-warning">{PREVIEW_GEOMETRY_WARNING}</p>}
@@ -725,13 +784,14 @@ export function ResultsPanelContent({
       {resultMode === "stress" && stressComponents.length > 0 && (
         <div className="field">
           <SectionTitle helpId="stressMeasure">Stress measure</SectionTitle>
-          <div className="segmented stress-measure" role="group" aria-label="Stress measure">
+          <div className="segmented stress-measure" role="group" aria-label="Stress measure" aria-busy={resultControlsBusy || undefined}>
             {stressComponents.map((component) => (
               <button
                 key={component}
                 className={stressComponent === component ? "active" : ""}
                 type="button"
                 aria-pressed={stressComponent === component}
+                disabled={resultControlsBusy}
                 onClick={() => onStressComponentChange?.(component)}
               >{stressComponentLabel(component)}</button>
             ))}
@@ -861,6 +921,43 @@ export function ResultsPanelContent({
  */
 function ResultActionsSlot({ slot, children }: { slot?: HTMLElement | null; children: ReactNode }) {
   return slot ? createPortal(<div className="result-actions-footer">{children}</div>, slot) : <>{children}</>;
+}
+
+const REPORT_CAPTURE_BUSY_TITLE = "Preparing report figures; the view switches briefly.";
+
+/**
+ * The verdict, tier and headline numbers. When the study changed after the run, a
+ * green "Unlikely to yield" card used to stay exactly as confident as a current one
+ * (only the banner and legend said otherwise); it now reads as outdated in place.
+ */
+function ResultAnswer({ outdated, children }: { outdated: boolean; children: ReactNode }) {
+  return (
+    <div className={outdated ? "result-answer outdated" : "result-answer"}>
+      {outdated && (
+        <p className="result-outdated-label">
+          <AlertTriangle size={14} aria-hidden="true" />
+          <strong>Outdated</strong>
+          <span>The study changed after this run. Re-run to update these values.</span>
+        </p>
+      )}
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The visible provenance tier, beside the verdict and headline it qualifies. A
+ * preview or estimate used to share the computed result's verdict card with only
+ * a muted source line below it to tell them apart.
+ */
+function ResultTierBadge({ summary }: { summary: ResultSummary }) {
+  const chip = resultTierChip(summary.provenance);
+  return (
+    <p className="result-tier">
+      <span className={`result-tier-chip ${chip.tone}`}>{chip.label}</span>
+      {chip.tone !== "computed" && <span className="result-tier-note">{chip.description}</span>}
+    </p>
+  );
 }
 
 function resultSourceLabelForPanel(resultSummary: ResultSummary): string {

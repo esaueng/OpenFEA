@@ -6319,6 +6319,144 @@ input[aria-invalid="true"] {
   line-height: var(--lh-snug);
 }
 
+/* Run opens before setup is complete; each unmet readiness row links to its step. */
+.check-go-to {
+  justify-self: start;
+  padding: 0;
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The status bar's latest message; it gives way before the state word does. */
+.status-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+}
+
+/* Provenance tier beside the result verdict, and the homogenization caveat beside
+   effective material properties. Tiers are labels, never restyled verdicts. */
+.result-tier,
+.material-approximation-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-15) var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+
+.result-tier-chip {
+  flex: none;
+  padding: 1px var(--sp-2);
+  color: var(--color-text);
+  background: var(--color-surface-2);
+  border: var(--border-thin);
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.result-tier-chip.computed {
+  border-color: var(--color-success);
+}
+
+.result-tier-chip.approximation,
+.result-tier-chip.historical,
+.result-tier-chip.unknown {
+  border-color: var(--color-warning);
+}
+
+/* A readiness row the run itself completes (a mesh built on demand): unticked, not blocking. */
+.check-pending {
+  color: var(--color-text-subtle);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+
+/* Results computed before the latest study change: the verdict and headline stay
+   readable but lose their pass/fail colour, and say they are outdated. */
+.result-outdated-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-15);
+  margin: 0 0 var(--sp-2);
+  color: var(--color-warning);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+
+.result-outdated-label span {
+  color: var(--color-text-muted);
+}
+
+.result-answer.outdated .failure-assessment,
+.result-answer.outdated .result-headline {
+  opacity: 0.6;
+  filter: grayscale(1);
+}
+
+/* Solve progress over the viewer on every step; the notice keeps the top-right corner. */
+.solve-progress-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: var(--sp-3);
+  z-index: var(--z-viewer-overlay);
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 2 * var(--sp-3)));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-2) var(--sp-25);
+  align-items: center;
+  padding: var(--sp-2) var(--sp-25);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-panel);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+}
+
+.solve-progress-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.solve-progress-copy > span,
+.solve-progress-copy > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.solve-progress-overlay .progress {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin: 0;
+}
+
+.solve-progress-overlay > button {
+  grid-column: 2;
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.validation-metric-grid article .validation-metric-tolerance.outside {
+  color: var(--color-error);
+}
+
 /* 2026-09 review D5: confirm before geometry replacement clears the setup. */
 .geometry-replace-dialog {
   max-width: 480px;
