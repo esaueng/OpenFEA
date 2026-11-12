@@ -4,6 +4,7 @@ import {
   classifyConvergenceRungs,
   convergenceStudyForCase,
   defaultConvergenceProbe,
+  isConvergenceCancelled,
   mapPointToNearestSurfaceTriangle,
   runStaticMeshConvergence,
   type ConvergenceMeshStatistics
@@ -162,6 +163,51 @@ describe("static mesh convergence", () => {
     expect(solved).toEqual(["coarse", "fine"]);
     expect(record.rungs[1]).toMatchObject({ status: "failed", skipReason: "gmsh failed" });
     expect(record.classification).toBe("inconclusive");
+  });
+
+  test("stops the ladder on cancel instead of recording the cancelled rung as a failure", async () => {
+    const controller = new AbortController();
+    const prepared: string[] = [];
+    const solved: string[] = [];
+    const run = runStaticMeshConvergence({
+      study,
+      caseId: "case-a",
+      probe: { point: [250, 250, 0], source: "explicit" },
+      signal: controller.signal,
+      prepareMesh: async (preset, isolatedStudy) => {
+        prepared.push(preset);
+        return { study: isolatedStudy, statistics: statistics(preset === "coarse" ? 0 : preset === "medium" ? 1 : 2) };
+      },
+      solve: async (_isolated, preset) => {
+        solved.push(preset);
+        if (preset === "medium") {
+          // The worker rejects once the caller's abort listener cancels it.
+          controller.abort();
+          throw new Error("OpenFEA Core solve cancelled.");
+        }
+        return solveResult(1, 10);
+      }
+    });
+
+    const error = await run.then(() => null, (reason: unknown) => reason);
+    expect(isConvergenceCancelled(error)).toBe(true);
+    expect(prepared).toEqual(["coarse", "medium"]);
+    expect(solved).toEqual(["coarse", "medium"]);
+  });
+
+  test("does not start a ladder whose signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const prepareMesh = vi.fn();
+    await expect(runStaticMeshConvergence({
+      study,
+      caseId: "case-a",
+      probe: { point: [250, 250, 0], source: "explicit" },
+      signal: controller.signal,
+      prepareMesh,
+      solve: vi.fn()
+    })).rejects.toMatchObject({ name: "AbortError" });
+    expect(prepareMesh).not.toHaveBeenCalled();
   });
 
   test("treats non-monotonic DOF as inconclusive and threshold misses as unconverged", () => {

@@ -378,8 +378,8 @@ export function ConceptCard({ icon, title, detail, tone = "accent" }: { icon: Re
   );
 }
 
-export function PlacementReadout({ selectedRef, fallbackLabel, detail, helpId }: { selectedRef: ReturnType<typeof selectionForFace> | undefined; fallbackLabel?: string; detail?: string; helpId?: SettingHelpId }) {
-  const label = selectedRef?.geometryRefs[0]?.label ?? fallbackLabel;
+export function PlacementReadout({ selectedRef, label: labelOverride, fallbackLabel, detail, helpId }: { selectedRef: ReturnType<typeof selectionForFace> | undefined; /** Display form of the selection's label (e.g. in project units); wins over the stored one. */ label?: string; fallbackLabel?: string; detail?: string; helpId?: SettingHelpId }) {
+  const label = labelOverride ?? selectedRef?.geometryRefs[0]?.label ?? fallbackLabel;
   const chip = (
     <div className={label ? "placement-chip ready" : "placement-chip"}>
       {label ? `Selected ${label}${detail ? ` · ${detail}` : ""}` : "Select a face in the model viewport"}

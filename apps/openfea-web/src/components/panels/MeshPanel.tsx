@@ -13,14 +13,15 @@ import { meshTargetSizeMmForPreset } from "../../lib/api";
 import { defaultConvergenceProbe } from "../../meshConvergence";
 import { stepGeometryMetadataForProject } from "../../stepGeometryState";
 
-import { formatDisplayNumber } from "../../unitDisplay";
+import { formatLength, lengthForUnits, stressForUnits, type UnitSystem } from "../../unitDisplay";
 
 import type { RightPanelProps } from "./RightPanelProps";
 import { MeshQualityCard } from "./MeshQualityCard";
 import { Panel, meshPresetDescription, seedProbeCoordinate, structuralLoadCasesForPanel } from "./PanelChrome";
 import { MESH_PRESETS } from "./RightPanelProps";
 import { Callout, Collapsible, HelpLabel, Info, SectionTitle, capitalize, selectionLabelForPanel } from "./PanelChrome";
-export function MeshPanel({ project, displayModel, study, viewMode, onViewModeChange, onGenerateMesh, onConnectionsChange, onCancelMesh, meshPhaseProgress, showWorstMeshElements = false, onShowWorstMeshElementsChange, meshError, onRepairModel, isRepairingModel = false, onRunMeshConvergence, convergenceBusy = false, convergenceProgress = "" }: RightPanelProps) {
+export function MeshPanel({ project, displayModel, study, viewMode, onViewModeChange, onGenerateMesh, onConnectionsChange, onCancelMesh, meshPhaseProgress, showWorstMeshElements = false, onShowWorstMeshElementsChange, meshError, onRepairModel, isRepairingModel = false, onRunMeshConvergence, onCancelMeshConvergence, convergenceBusy = false, convergenceProgress = "" }: RightPanelProps) {
+  const unitSystem = project.unitSystem;
   const [preset, setPreset] = useState<MeshQuality>(study.meshSettings.preset);
   const meshing = Boolean(meshPhaseProgress);
   const meshSummary = study.meshSettings.summary;
@@ -153,7 +154,7 @@ export function MeshPanel({ project, displayModel, study, viewMode, onViewModeCh
           <p className="panel-copy mesh-progress-message" aria-live="polite">{meshPhaseProgress.message}</p>
         </>
       )}
-      <Callout>{capitalize(preset)} creates {meshPresetDescription(preset)} (target element size {formatDisplayNumber(meshTargetSizeMmForPreset(preset))} mm).</Callout>
+      <Callout>{capitalize(preset)} creates {meshPresetDescription(preset)} (target element size {formatLength(meshTargetSizeMmForPreset(preset), "mm", unitSystem)}).</Callout>
       {meshSummary && (
         <div className="summary-box">
           {hasVerifiedMeshSummary ? (
@@ -170,9 +171,9 @@ export function MeshPanel({ project, displayModel, study, viewMode, onViewModeCh
             </>
           )}
           {/* "Analysis samples" meant nothing to a user; the element size does (2026-09 review F5). */}
-          <Info label="Target element size" value={`${formatDisplayNumber(typeof meshSummary.density?.requestedMeshSizeMm === "number" ? meshSummary.density.requestedMeshSizeMm : meshTargetSizeMmForPreset(preset))} mm`} />
+          <Info label="Target element size" value={formatLength(typeof meshSummary.density?.requestedMeshSizeMm === "number" ? meshSummary.density.requestedMeshSizeMm : meshTargetSizeMmForPreset(preset), "mm", unitSystem)} />
           {typeof meshSummary.density?.actualMeshSizeMm === "number" && meshSummary.density.actualMeshSizeMm !== meshSummary.density.requestedMeshSizeMm && (
-            <Info label="Meshed at" value={`${formatDisplayNumber(meshSummary.density.actualMeshSizeMm)} mm`} />
+            <Info label="Meshed at" value={formatLength(meshSummary.density.actualMeshSizeMm, "mm", unitSystem)} />
           )}
           <Info label="Warnings" value={String(meshSummary.warnings.length)} />
         </div>
@@ -236,11 +237,19 @@ export function MeshPanel({ project, displayModel, study, viewMode, onViewModeCh
             </div>
           </div>
           {!validProbe && <p className="panel-warning"><AlertTriangle size={16} />Choose a finite displacement probe point before running convergence.</p>}
-          <button className="secondary wide" type="button" disabled={!onRunMeshConvergence || convergenceBusy || meshing || !validProbe || !convergenceCaseId} onClick={runConvergence}>
-            <ScanLine size={16} />{convergenceBusy ? "Running convergence…" : "Run coarse → medium → fine"}
-          </button>
+          {convergenceBusy && onCancelMeshConvergence ? (
+            // Three meshes and three solves can take minutes; the ladder stops the
+            // in-flight mesh or solve worker and saves no record.
+            <button className="secondary wide" type="button" aria-label="Stop mesh-convergence study" onClick={onCancelMeshConvergence}>
+              <X size={16} />Stop convergence
+            </button>
+          ) : (
+            <button className="secondary wide" type="button" disabled={!onRunMeshConvergence || convergenceBusy || meshing || !validProbe || !convergenceCaseId} onClick={runConvergence}>
+              <ScanLine size={16} />{convergenceBusy ? "Running convergence…" : "Run coarse → medium → fine"}
+            </button>
+          )}
           {convergenceBusy && <p className="panel-copy" aria-live="polite">{convergenceProgress || "Running convergence study."}</p>}
-          {latestRecord && <ConvergenceRecordCard record={latestRecord} />}
+          {latestRecord && <ConvergenceRecordCard record={latestRecord} unitSystem={unitSystem} />}
         </section>
         </Collapsible>
       ) : (
@@ -250,7 +259,7 @@ export function MeshPanel({ project, displayModel, study, viewMode, onViewModeCh
   );
 }
 
-function ConvergenceRecordCard({ record }: { record: MeshConvergenceRecord }) {
+function ConvergenceRecordCard({ record, unitSystem }: { record: MeshConvergenceRecord; unitSystem: UnitSystem }) {
   const classification = record.classification === "apparent_convergence"
     ? "Apparent convergence"
     : record.classification === "unconverged"
@@ -268,9 +277,9 @@ function ConvergenceRecordCard({ record }: { record: MeshConvergenceRecord }) {
           <div key={rung.requestedPreset} className={`convergence-rung ${rung.status}`}>
             <span>{capitalize(rung.requestedPreset)}</span>
             <small>{rung.totalDofs?.toLocaleString() ?? "—"} total · {rung.freeDofs?.toLocaleString() ?? "—"} free DOF</small>
-            <small>{rung.actualNodeCount?.toLocaleString() ?? "—"} nodes · {rung.actualElementCount?.toLocaleString() ?? "—"} elements · {formatCompact(rung.actualMeshSizeMm)} mm</small>
+            <small>{rung.actualNodeCount?.toLocaleString() ?? "—"} nodes · {rung.actualElementCount?.toLocaleString() ?? "—"} elements · {formatCompactQuantity(rung.actualMeshSizeMm, "mm", unitSystem, lengthForUnits)}</small>
             <small>{rung.status === "complete"
-              ? `${formatCompact(rung.probeDisplacement)} ${rung.displacementUnits} · ${formatCompact(rung.rawElementPeakVonMises)} ${rung.stressUnits}`
+              ? `${formatCompactQuantity(rung.probeDisplacement, rung.displacementUnits, unitSystem, lengthForUnits)} · ${formatCompactQuantity(rung.rawElementPeakVonMises, rung.stressUnits, unitSystem, stressForUnits)}`
               : rung.skipReason ?? capitalize(rung.status)}</small>
           </div>
         ))}
@@ -298,16 +307,19 @@ function ConvergenceChart({ record }: { record: MeshConvergenceRecord }) {
   const displacementPoints = complete.map((rung) => `${x(rung.totalDofs!)},${normalizedY(rung.probeDisplacement!, displacementValues)}`).join(" ");
   const stressPoints = complete.map((rung) => `${x(rung.totalDofs!)},${normalizedY(rung.rawElementPeakVonMises!, stressValues)}`).join(" ");
   return (
-    <svg className="convergence-chart" viewBox="0 0 240 112" role="img" aria-label="Probe displacement and raw element peak stress versus actual degrees of freedom">
+    <svg className="convergence-chart" viewBox="0 0 240 112" role="img" aria-label="Probe displacement and raw element peak stress versus actual degrees of freedom. Displacement: solid line, round markers. Stress: dashed line, square markers.">
       <title>Convergence metrics versus actual degrees of freedom</title>
       <line x1="18" y1="86" x2="222" y2="86" className="chart-axis" />
       <line x1="18" y1="18" x2="18" y2="86" className="chart-axis" />
-      {displacementPoints && <polyline points={displacementPoints} className="chart-displacement" />}
-      {stressPoints && <polyline points={stressPoints} className="chart-stress" />}
+      {/* The two series differ by more than colour: displacement is a solid line
+          with round markers, stress a dashed line with square markers, and the
+          legend below repeats both encodings. */}
+      {displacementPoints && <polyline points={displacementPoints} className="chart-displacement" data-series="displacement" />}
+      {stressPoints && <polyline points={stressPoints} className="chart-stress" data-series="stress" strokeDasharray={STRESS_DASH} />}
       {complete.map((rung) => (
         <g key={`point-${rung.requestedPreset}`}>
-          <circle cx={x(rung.totalDofs!)} cy={normalizedY(rung.probeDisplacement!, displacementValues)} r="3" className="chart-displacement" />
-          <circle cx={x(rung.totalDofs!)} cy={normalizedY(rung.rawElementPeakVonMises!, stressValues)} r="3" className="chart-stress" />
+          <ConvergenceMarker series="displacement" cx={x(rung.totalDofs!)} cy={normalizedY(rung.probeDisplacement!, displacementValues)} />
+          <ConvergenceMarker series="stress" cx={x(rung.totalDofs!)} cy={normalizedY(rung.rawElementPeakVonMises!, stressValues)} />
         </g>
       ))}
       {plottable.filter((rung) => rung.status !== "complete").map((rung) => (
@@ -316,11 +328,38 @@ function ConvergenceChart({ record }: { record: MeshConvergenceRecord }) {
           <line x1={x(rung.totalDofs!) + 4} y1="78" x2={x(rung.totalDofs!) - 4} y2="86" />
         </g>
       ))}
-      <text x="22" y="104" className="chart-displacement-label">Displacement</text>
-      <text x="100" y="104" className="chart-stress-label">Stress</text>
+      <g className="chart-legend" aria-hidden="true">
+        <line x1="18" y1="101" x2="34" y2="101" className="chart-displacement" strokeWidth="2" />
+        <ConvergenceMarker series="displacement" cx={26} cy={101} />
+        <text x="38" y="104" className="chart-displacement-label">Displacement</text>
+        <line x1="100" y1="101" x2="116" y2="101" className="chart-stress" strokeWidth="2" strokeDasharray={STRESS_DASH} />
+        <ConvergenceMarker series="stress" cx={108} cy={101} />
+        <text x="120" y="104" className="chart-stress-label">Stress</text>
+      </g>
       <text x="190" y="104" className="chart-axis-label">DOF</text>
     </svg>
   );
+}
+
+const STRESS_DASH = "5 3";
+
+/** Round markers for displacement, square markers for stress. */
+function ConvergenceMarker({ series, cx, cy }: { series: "displacement" | "stress"; cx: number; cy: number }) {
+  return series === "displacement"
+    ? <circle cx={cx} cy={cy} r="3" className="chart-displacement" data-marker="circle" />
+    : <rect x={cx - 3} y={cy - 3} width="6" height="6" className="chart-stress" strokeWidth="1.5" data-marker="square" />;
+}
+
+/** Converts a stored rung quantity into the project's units, then formats it compactly. */
+function formatCompactQuantity(
+  value: number | undefined,
+  units: string | undefined,
+  unitSystem: UnitSystem,
+  convert: (value: number, units: string, unitSystem: UnitSystem) => { value: number; units: string }
+): string {
+  if (value === undefined || !Number.isFinite(value)) return "—";
+  const converted = units ? convert(value, units, unitSystem) : { value, units: "" };
+  return `${formatCompact(converted.value)} ${converted.units}`.trim();
 }
 
 function formatCompact(value: number | undefined): string {

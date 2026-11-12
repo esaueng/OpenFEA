@@ -6,6 +6,7 @@ import { addLoad, addSupport, assignMaterial, cancelRun, createProject, generate
 import { cancelWasmMeshing, type WasmMeshPhaseProgress } from "./lib/wasmMeshing";
 import { buildOpenFeaCoreModelForStudy, resolveSolverBackend } from "./workers/openfeaCoreSolve";
 import { manufacturingProcessForId, normalizeManufacturingParameters, resolveMaterial } from "@openfea/materials";
+import { assignedFaceTintsForStudy } from "./assignedFaceTints";
 import { BottomPanel, studySummaryLine, KeyboardShortcutGuide, type WorkspaceLogEntry } from "./components/BottomPanel";
 import { OpenFeaLogoMark } from "./components/OpenFeaLogoMark";
 import { ProjectStorageNotice } from "./components/ProjectStorageNotice";
@@ -193,6 +194,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const [meshError, setMeshError] = useState<string | null>(null);
   const [convergenceBusy, setConvergenceBusy] = useState(false);
   const [convergenceProgress, setConvergenceProgress] = useState("");
+  const convergenceAbortRef = useRef<AbortController | null>(null);
   const [runTiming, setRunTiming] = useState<RunTimingEstimate | null>(null);
   // runTiming carries live estimates and is cleared the moment a run completes, which is
   // exactly when the elapsed time stops being an estimate and becomes a fact. Keep that
@@ -588,14 +590,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   // (2026-09 review D13).
   // Faces carrying a support (teal) or a load (amber), tinted on the model so
   // an assignment is visible where it lives, not only as a callout (2026-09 review F2).
-  const assignedFaceTints = useMemo<ViewerFaceTint[]>(() => {
-    if (!study) return [];
-    const faceIdsFor = (selectionRef: string) => study.namedSelections.find((item) => item.id === selectionRef)?.geometryRefs.filter((ref) => ref.entityType === "face").map((ref) => ref.entityId) ?? [];
-    const tints = new Map<string, string>();
-    for (const load of study.loads) for (const faceId of faceIdsFor(load.selectionRef)) tints.set(faceId, "#f59e0b");
-    for (const support of study.constraints) for (const faceId of faceIdsFor(support.selectionRef)) tints.set(faceId, "#2dd4bf");
-    return [...tints].map(([faceId, color]) => ({ faceId, color }));
-  }, [study]);
+  // Multi-face entries tint every face, not only the first.
+  const assignedFaceTints = useMemo<ViewerFaceTint[]>(() => assignedFaceTintsForStudy(study), [study]);
   const meshArtifactModel = (study?.meshSettings.summary?.artifacts as { actualCoreModel?: { model?: unknown } } | undefined)?.actualCoreModel?.model;
   const meshPreviewSurface = useMemo(() => {
     if (!meshArtifactModel) return undefined;
@@ -2030,16 +2026,23 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     cancelWasmMeshing("Mesh generation cancelled.");
   }
 
+  function handleCancelMeshConvergence() {
+    convergenceAbortRef.current?.abort();
+  }
+
   async function handleRunMeshConvergence(caseId: string, probe: ConvergenceProbe) {
     const sourceProject = projectRef.current;
     if (!sourceProject || !study || study.type !== "static_stress" || !displayModel || convergenceBusy || solverRunning) return;
     setConvergenceBusy(true);
     setConvergenceProgress("Preparing coarse convergence mesh.");
     pushMessage("Starting static mesh-convergence study (coarse → medium → fine).");
+    const abortController = new AbortController();
+    convergenceAbortRef.current = abortController;
     try {
       const record = await runMeshConvergence(study, caseId, probe, displayModel, {
         customMaterials: sourceProject.customMaterials,
-        onProgress: setConvergenceProgress
+        onProgress: setConvergenceProgress,
+        signal: abortController.signal
       });
       if (projectRef.current !== sourceProject) {
         pushMessage("Convergence finished, but the project changed during the run; the stale record was not attached.");
@@ -2059,8 +2062,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           : "inconclusive";
       pushMessage(`Mesh-convergence study complete: ${label}. Working mesh and active results were unchanged.`);
     } catch (error) {
-      pushMessage(`Mesh-convergence study failed: ${error instanceof Error ? error.message : String(error)}`);
+      pushMessage(abortController.signal.aborted
+        ? "Mesh-convergence study cancelled. No record was saved; the working mesh and active results were unchanged."
+        : `Mesh-convergence study failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
+      if (convergenceAbortRef.current === abortController) convergenceAbortRef.current = null;
       setConvergenceBusy(false);
       setConvergenceProgress("");
       setMeshPhaseProgress(null);
@@ -3067,6 +3073,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           onShowWorstMeshElementsChange={setShowWorstMeshElements}
           meshError={meshError}
           onRunMeshConvergence={(caseId, probe) => void handleRunMeshConvergence(caseId, probe)}
+          onCancelMeshConvergence={handleCancelMeshConvergence}
           convergenceBusy={convergenceBusy}
           convergenceProgress={convergenceProgress}
           onUpdateSolverSettings={handleUpdateSolverSettings}

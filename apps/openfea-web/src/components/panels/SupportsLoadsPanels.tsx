@@ -1,39 +1,46 @@
 /* Step panel extracted from RightPanel.tsx: file move only, no behavior change.
    Shared contracts live in ./RightPanelProps; panels never import each other. */
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useReducer, useRef, useState } from "react";
 
 import { Gauge, Plus, ScanLine, Weight, X } from "lucide-react";
 
 import { massKgForPayloadMaterial, payloadMaterialForId, payloadMaterials, type PayloadMaterialCategory } from "@openfea/materials";
 
 import type { Constraint, DisplayFace, DisplayModel, Load, LoadCase, LoadCombination, Study } from "@openfea/schema";
+import { selectionRefsFor } from "@openfea/study-core";
 
-import { applicationPointForLoad, createViewerLoadMarkers, directionLabelForLoad, directionVectorForLabel, equivalentForceForLoad, LOAD_DIRECTION_LABELS, loadMagnitudeError, loadMarkerOrdinalLabel, payloadObjectForLoad, unitsForLoadType, type LoadApplicationPoint, type LoadDirectionLabel, type LoadType, type PayloadLoadMetadata, type PayloadMassMode } from "../../loadPreview";
+import { createViewerLoadMarkers, directionLabelForLoad, directionLabelForVector, directionVectorForLabel, equivalentForceForLoad, LOAD_DIRECTION_LABELS, loadMagnitudeError, loadMarkerOrdinalLabel, payloadObjectForLoad, unitsForLoadType, type LoadApplicationPoint, type LoadDirectionLabel, type LoadType, type PayloadLoadMetadata, type PayloadMassMode } from "../../loadPreview";
 import { type PayloadObjectSelection } from "../../workspaceViewTypes";
 
 import { supportDisplayLabel } from "../../supportLabels";
 
-import { formatDensity, formatMass, formatVolume, loadValueForUnits, type UnitSystem } from "../../unitDisplay";
+import { formatDensity, formatDisplayNumber, formatMass, formatVolume, lengthForUnits, loadValueForUnits, temperatureForUnits, type UnitSystem } from "../../unitDisplay";
+import { stepFaceLabelForUnits } from "../../stepFaceLabels";
 
 import type { RightPanelProps } from "./RightPanelProps";
 import { noopDraftPayloadPreviewChange } from "./RightPanelProps";
 import { Panel, sameLoadDirection, structuralLoadCasesForPanel } from "./PanelChrome";
 import { Callout, Collapsible, EmptyEditableList, HelpLabel, Info, PlacementReadout, SectionTitle, SupportIcon, defaultValueForLoadType, directionOptionLabel, directionPhrase, formatEquivalentForce, formatInputValue, formatNumber, loadTypeLabel, selectionForFace } from "./PanelChrome";
-export function SupportsPanel({ selectedFace, study, draftSupportTemperature, onDraftSupportTemperatureChange, onAddSupport, onUpdateSupport, onRemoveSupport }: RightPanelProps) {
+export function SupportsPanel({ project, displayModel, selectedFace, study, draftSupportTemperature, onDraftSupportTemperatureChange, onAddSupport, onUpdateSupport, onRemoveSupport }: RightPanelProps) {
+  const unitSystem = project.unitSystem;
   const selectedFromViewport = selectedFace ? selectionForFace(study, selectedFace.id) : undefined;
   const thermal = study.type === "steady_state_thermal";
   const modal = study.type === "modal_analysis";
   // Multi-face BCs (Decision 2): the viewer pick seeds the first face;
-  // additional faces toggle on from the selection list below.
-  const [extraSelectionRefs, setExtraSelectionRefs] = useState<string[]>([]);
+  // additional faces toggle on from the selection list below. The checklist
+  // clears once a support is added, so the next Add starts from one face.
+  const [extraSelectionRefs, toggleExtraRef] = useAdditionalFaces(study.constraints.length);
   // The draft temperature lives in the workspace so a viewer pick uses the
   // typed value too (2026-09 review D12); fall back to local state for callers
-  // that do not supply it.
+  // that do not supply it. Stored and drafted in °C (the solver's value);
+  // entered and shown in the project's units.
   const [localTemperature, setLocalTemperature] = useState(20);
   const temperature = draftSupportTemperature ?? localTemperature;
   const setTemperature = onDraftSupportTemperatureChange ?? setLocalTemperature;
-  // Prescribed displacement: imposed motion in display mm along one axis.
-  // Zero behaves as a fixed component; the solver treats it as a Dirichlet value.
+  // Prescribed displacement: imposed motion along one axis, stored in mm (the
+  // study format; the adapter converts to solver units) and entered in the
+  // project's length unit. Zero behaves as a fixed component; the solver treats
+  // it as a Dirichlet value.
   const [displacementKind, setDisplacementKind] = useState<"fixed" | "prescribed_displacement">("fixed");
   const [displacementValueMm, setDisplacementValueMm] = useState(0);
   const [displacementComponent, setDisplacementComponent] = useState<"x" | "y" | "z">("z");
@@ -47,14 +54,13 @@ export function SupportsPanel({ selectedFace, study, draftSupportTemperature, on
     ? `${thermal ? "A temperature boundary" : "A support"} already exists on ${selectedFromViewport?.name ?? "this face"}. Edit or remove it below.`
     : null;
   const faceOptions = study.namedSelections.filter((selection) => selection.entityType === "face");
-  const appliedRefs = [selectedFromViewport?.id, ...extraSelectionRefs].filter((ref): ref is string => Boolean(ref));
-  const toggleExtraRef = (ref: string) => setExtraSelectionRefs((current) =>
-    current.includes(ref) ? current.filter((candidate) => candidate !== ref) : [...current, ref]
-  );
+  // A face checked here and then picked in the viewer is the primary face, not an extra.
+  const extraRefsForAdd = extraSelectionRefs.filter((ref) => ref !== selectedFromViewport?.id);
+  const appliedRefs = [selectedFromViewport?.id, ...extraRefsForAdd].filter((ref): ref is string => Boolean(ref));
   return (
     <Panel title={thermal ? "Temperature boundaries" : "Supports"} question={thermal ? "Where is the temperature fixed?" : "Where is it held still?"} step="supports" helper={thermal ? "Select a face and prescribe its steady boundary temperature." : "Choose where the part is held fixed. Select a face, or click inside a cylindrical hole to constrain its wall. You can add more than one support."} study={study}>
-      <PlacementReadout selectedRef={selectedFromViewport} fallbackLabel={selectedFace?.label} helpId="supportPlacement" />
-      {thermal && <label className="field">Temperature<span className="input-with-unit"><input type="number" value={temperature} onChange={(event) => setTemperature(Number(event.currentTarget.value))} /><span>°C</span></span></label>}
+      <PlacementReadout selectedRef={selectedFromViewport} label={selectedFromViewport ? selectionDisplayName(study, displayModel, selectedFromViewport.id, unitSystem) : undefined} fallbackLabel={selectedFace ? stepFaceLabelForUnits(selectedFace.label, selectedFace.area, unitSystem) : undefined} helpId="supportPlacement" />
+      {thermal && <TemperatureField valueCelsius={temperature} unitSystem={unitSystem} onChange={setTemperature} />}
       {!thermal && !modal && (
         <label className="field">Support type
           <select value={displacementKind} onChange={(event) => setDisplacementKind(event.currentTarget.value as "fixed" | "prescribed_displacement")}>
@@ -65,7 +71,7 @@ export function SupportsPanel({ selectedFace, study, draftSupportTemperature, on
       )}
       {prescribedDisplacement && (
         <>
-          <label className="field">Displacement<span className="input-with-unit"><input type="number" value={displacementValueMm} onChange={(event) => setDisplacementValueMm(Number(event.currentTarget.value))} /><span>mm</span></span></label>
+          <DisplacementField valueMm={displacementValueMm} unitSystem={unitSystem} onChange={setDisplacementValueMm} />
           <label className="field">Component
             <select value={displacementComponent} onChange={(event) => setDisplacementComponent(event.currentTarget.value as "x" | "y" | "z")}>
               <option value="x">X</option>
@@ -78,13 +84,13 @@ export function SupportsPanel({ selectedFace, study, draftSupportTemperature, on
       {duplicateSupportError && <p className="field-error" role="alert">{duplicateSupportError}</p>}
       {!thermal && !modal && faceOptions.length > 1 && (
         <AdditionalFacesPicker
-          options={faceOptions.filter((selection) => selection.id !== selectedFromViewport?.id)}
+          options={faceOptions.filter((selection) => selection.id !== selectedFromViewport?.id).map((selection) => ({ id: selection.id, name: selectionDisplayName(study, displayModel, selection.id, unitSystem) }))}
           selectedRefs={extraSelectionRefs}
           onToggle={toggleExtraRef}
         />
       )}
-      <button className="outline-action wide" disabled={!selectedFromViewport || Boolean(duplicateSupportError) || (thermal && !Number.isFinite(temperature)) || (prescribedDisplacement && !displacementValid)} title={duplicateSupportError ?? undefined} onClick={() => selectedFromViewport && !duplicateSupportError && onAddSupport(selectedFromViewport.id, thermal ? { type: "prescribed_temperature", value: temperature } : prescribedDisplacement ? { type: "prescribed_displacement", value: displacementValueMm, component: displacementComponent } : { type: "fixed" }, extraSelectionRefs.length ? { selectionRefs: extraSelectionRefs } : undefined)}><Plus size={18} />{addLabel}{appliedRefs.length > 1 ? ` (${appliedRefs.length} faces)` : ""}</button>
-      <SupportEditorList study={study} retargetFace={selectedFace} onUpdateSupport={onUpdateSupport} onRemoveSupport={onRemoveSupport} />
+      <button className="outline-action wide" disabled={!selectedFromViewport || Boolean(duplicateSupportError) || (thermal && !Number.isFinite(temperature)) || (prescribedDisplacement && !displacementValid)} title={duplicateSupportError ?? undefined} onClick={() => selectedFromViewport && !duplicateSupportError && onAddSupport(selectedFromViewport.id, thermal ? { type: "prescribed_temperature", value: temperature } : prescribedDisplacement ? { type: "prescribed_displacement", value: displacementValueMm, component: displacementComponent } : { type: "fixed" }, extraRefsForAdd.length ? { selectionRefs: extraRefsForAdd } : undefined)}><Plus size={18} />{addLabel}{appliedRefs.length > 1 ? ` (${appliedRefs.length} faces)` : ""}</button>
+      <SupportEditorList study={study} displayModel={displayModel} unitSystem={unitSystem} retargetFace={selectedFace} onUpdateSupport={onUpdateSupport} onRemoveSupport={onRemoveSupport} />
       <Callout>{thermal ? "At least one prescribed temperature is required to make the conduction system unique." : "Fixed supports prevent any motion of the selected face."}</Callout>
     </Panel>
   );
@@ -112,6 +118,157 @@ function AdditionalFacesPicker({ options, selectedRefs, onToggle }: { options: R
       </div>
     </fieldset>
   );
+}
+
+type AdditionalFacesState = { refs: string[]; entryCount: number };
+type AdditionalFacesAction = { type: "toggle"; ref: string } | { type: "entries"; count: number };
+
+/**
+ * The "Additional faces" checklist. It clears when the panel's list of supports
+ * or loads grows, i.e. after an Add succeeded (from the panel or a viewer
+ * click), so the next Add does not silently reuse the previous extra faces.
+ * Removing an entry keeps the draft.
+ */
+export function additionalFacesReducer(state: AdditionalFacesState, action: AdditionalFacesAction): AdditionalFacesState {
+  if (action.type === "toggle") {
+    return {
+      ...state,
+      refs: state.refs.includes(action.ref) ? state.refs.filter((candidate) => candidate !== action.ref) : [...state.refs, action.ref]
+    };
+  }
+  if (action.count === state.entryCount) return state;
+  return { refs: action.count > state.entryCount ? [] : state.refs, entryCount: action.count };
+}
+
+function useAdditionalFaces(entryCount: number): [string[], (ref: string) => void] {
+  const [state, dispatch] = useReducer(additionalFacesReducer, entryCount, (count): AdditionalFacesState => ({ refs: [], entryCount: count }));
+  useEffect(() => dispatch({ type: "entries", count: entryCount }), [entryCount]);
+  return [state.refs, (ref: string) => dispatch({ type: "toggle", ref })];
+}
+
+/** Boundary temperature: stored in °C, entered in the project's temperature unit. */
+export function TemperatureField({ valueCelsius, unitSystem, onChange }: { valueCelsius: number; unitSystem: UnitSystem; onChange: (valueCelsius: number) => void }) {
+  const display = temperatureForUnits(valueCelsius, "°C", unitSystem);
+  return (
+    <label className="field">Temperature<span className="input-with-unit"><input type="number" value={formatInputValue(display.value)} onChange={(event) => onChange(temperatureForUnits(Number(event.currentTarget.value), display.units, "SI").value)} /><span>{display.units}</span></span></label>
+  );
+}
+
+/** Prescribed displacement: stored in mm, entered in the project's length unit. */
+export function DisplacementField({ valueMm, unitSystem, onChange }: { valueMm: number; unitSystem: UnitSystem; onChange: (valueMm: number) => void }) {
+  const display = lengthForUnits(valueMm, "mm", unitSystem);
+  return (
+    <label className="field">Displacement<span className="input-with-unit"><input type="number" value={formatInputValue(display.value)} onChange={(event) => onChange(lengthForUnits(Number(event.currentTarget.value), display.units, "SI").value)} /><span>{display.units}</span></span></label>
+  );
+}
+
+/** One selection's display name: its face label, with a STEP area suffix in project units. */
+function selectionDisplayName(study: Study, displayModel: DisplayModel, selectionRef: string, unitSystem: UnitSystem): string {
+  const selection = study.namedSelections.find((candidate) => candidate.id === selectionRef);
+  if (!selection) return "selected face";
+  const geometryRef = selection.geometryRefs[0];
+  const label = geometryRef?.label ?? selection.name;
+  const face = geometryRef?.entityType === "face" ? displayModel.faces.find((candidate) => candidate.id === geometryRef.entityId) : undefined;
+  return stepFaceLabelForUnits(label, face?.area, unitSystem);
+}
+
+/**
+ * Every face a support or load acts on, primary first. Same refs, order and
+ * de-duplication the adapter (and the report's selectionLabels) use.
+ */
+function entryFaceNames(study: Study, displayModel: DisplayModel, entry: { selectionRef: string; selectionRefs?: string[] }, unitSystem: UnitSystem): string[] {
+  const names = selectionRefsFor(entry).map((ref) => selectionDisplayName(study, displayModel, ref, unitSystem));
+  return names.length ? names : ["selected face"];
+}
+
+function additionalFaceCountLabel(names: readonly string[]): string {
+  const extra = names.length - 1;
+  return extra > 0 ? ` +${extra} face${extra === 1 ? "" : "s"}` : "";
+}
+
+/**
+ * How a multi-face load reaches the solver. The adapter unions the faces'
+ * facets into one surface set; Core then applies a total force by facet area
+ * over that combined set, and a pressure or traction at full value on each face.
+ */
+export function multiFaceLoadNote(type: LoadType, faceCount: number): string | null {
+  if (faceCount < 2) return null;
+  if (type === "force") return `The total force is shared across all ${faceCount} faces in proportion to their area, not applied in full to each face.`;
+  if (type === "remote_force") return `The remote force and its moment are distributed over the combined area of all ${faceCount} faces.`;
+  if (type === "pressure" || type === "surface_traction") return `The full ${type === "pressure" ? "pressure" : "traction"} acts on each of the ${faceCount} faces.`;
+  return null;
+}
+
+/** The load this panel just added, and the draft that added it. */
+export type JustAddedLoad = { loadId: string; draftKey: string } | null;
+
+/**
+ * Tracks the load an Add just created. A single new load id marks it; any
+ * change of the draft (face, type, magnitude, direction) forgets it, so a draft
+ * that later returns to an existing load is refused as a duplicate again.
+ */
+export function justAddedLoadAfterChange(previousIds: readonly string[], nextIds: readonly string[], draftKey: string, current: JustAddedLoad): JustAddedLoad {
+  const added = nextIds.filter((id) => !previousIds.includes(id));
+  if (nextIds.length > previousIds.length && added.length === 1) return { loadId: added[0]!, draftKey };
+  if (current && (current.draftKey !== draftKey || !nextIds.includes(current.loadId))) return null;
+  return current;
+}
+
+export function duplicateLoadFeedback(duplicateLoadId: string | undefined, justAdded: JustAddedLoad, draftKey: string): "duplicate" | "just_added" | null {
+  if (!duplicateLoadId) return null;
+  return justAdded?.loadId === duplicateLoadId && justAdded.draftKey === draftKey ? "just_added" : "duplicate";
+}
+
+const AXIS_DIRECTION_LABELS: readonly LoadDirectionLabel[] = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"];
+
+function isLoadDirectionLabel(value: unknown): value is LoadDirectionLabel {
+  return typeof value === "string" && (LOAD_DIRECTION_LABELS as readonly string[]).includes(value);
+}
+
+function sameDirection(left: readonly number[], right: readonly number[]): boolean {
+  const leftLength = Math.hypot(...left);
+  const rightLength = Math.hypot(...right);
+  if (!(leftLength > 0) || !(rightLength > 0)) return false;
+  return (left[0]! * right[0]! + left[1]! * right[1]! + left[2]! * right[2]!) / (leftLength * rightLength) > 0.999;
+}
+
+/**
+ * The direction the user chose for a load: its stored directionMode when that
+ * still matches the stored vector, else the label derived from the vector
+ * (legacy loads carry no mode). Deriving alone named an Add made with
+ * "Along axis -Z" as "into the face" whenever -Z was also the face's inward
+ * normal, contradicting the form that created it.
+ */
+export function storedLoadDirectionLabel(load: Load, displayModel: DisplayModel, face?: DisplayFace): LoadDirectionLabel {
+  const mode = load.parameters.directionMode;
+  const vector = load.parameters.direction;
+  const derived = directionLabelForLoad(load, displayModel, face);
+  if (!isLoadDirectionLabel(mode)) return derived;
+  if (!Array.isArray(vector) || vector.length !== 3 || !vector.every((component) => typeof component === "number")) return mode;
+  if ((mode === "Normal" || mode === "Opposite normal") && !face) return mode;
+  const expectedFace: DisplayFace = face ?? { id: "direction-check", label: "", color: "#fff", center: [0, 0, 0], normal: [0, 0, 1], stressValue: 0 };
+  return sameDirection(directionVectorForLabel(mode, expectedFace, displayModel), vector as number[]) ? mode : derived;
+}
+
+/**
+ * Row text for a load's direction, led by the chosen label. When the vector is
+ * both a global axis and the face's normal (or its opposite) the other reading
+ * follows in brackets, so "along global -Z" and "into the face" never disagree.
+ */
+export function loadDirectionDescription(load: Load, displayModel: DisplayModel, face?: DisplayFace): string {
+  const primary = storedLoadDirectionLabel(load, displayModel, face);
+  const faceRelative = face ? directionLabelForVector(load.parameters.direction, displayModel, face) : undefined;
+  const axis = directionLabelForVector(load.parameters.direction, displayModel);
+  const alternative = AXIS_DIRECTION_LABELS.includes(primary)
+    ? faceRelative === "Normal" || faceRelative === "Opposite normal" ? faceRelative : undefined
+    : AXIS_DIRECTION_LABELS.includes(axis) ? axis : undefined;
+  return alternative && alternative !== primary ? `${directionPhrase(primary)} (${directionPhrase(alternative)})` : directionPhrase(primary);
+}
+
+/** The complete face list under a multi-face row; a single-face row shows nothing extra. */
+function EntryFaceList({ names, note }: { names: readonly string[]; note?: string | null }) {
+  if (names.length < 2) return null;
+  return <small className="entry-face-list">Faces ({names.length}): {names.join(" + ")}{note ? ` — ${note}` : ""}</small>;
 }
 
 export function LoadsPanel({
@@ -150,12 +307,15 @@ export function LoadsPanel({
     [selectedFromViewport?.id, study.namedSelections]
   );
   // Multi-face loads (Decision 2): extra faces share the same magnitude and
-  // direction; pressure/traction distribute by area, forces split evenly.
-  const [extraLoadRefs, setExtraLoadRefs] = useState<string[]>([]);
+  // direction. The adapter unions their facets into one surface set, so a
+  // total force is shared by area over the combined faces while a pressure or
+  // traction acts in full on each (see multiFaceLoadNote). The checklist
+  // clears once a load is added.
+  const [extraLoadRefs, toggleExtraLoadRef] = useAdditionalFaces(study.loads.length);
   const faceOptionsForLoad = study.namedSelections.filter((selection) => selection.entityType === "face");
-  const toggleExtraLoadRef = (ref: string) => setExtraLoadRefs((current) =>
-    current.includes(ref) ? current.filter((candidate) => candidate !== ref) : [...current, ref]
-  );
+  const extraFacesApply = !thermal && draftLoadType !== "gravity" && draftLoadType !== "volume_force" && draftLoadType !== "heat_generation" && draftLoadType !== "bolt_preload";
+  const extraLoadRefsForAdd = extraFacesApply ? extraLoadRefs.filter((ref) => ref !== placementSelection?.id) : [];
+  const draftMultiFaceNote = multiFaceLoadNote(draftLoadType, extraLoadRefsForAdd.length + 1);
   const [secondarySelectionRef, setSecondarySelectionRef] = useState(secondaryFaceOptions[0]?.id ?? "");
   const payloadVolumeM3 = selectedPayloadObject?.volumeM3;
   const calculatedPayloadMass = payloadVolumeM3 ? massKgForPayloadMaterial(payloadMaterialId, payloadVolumeM3) : 0;
@@ -179,11 +339,27 @@ export function LoadsPanel({
         && (thermal || !selectedFace || sameLoadDirection(load.parameters.direction, directionVectorForLabel(draftLoadDirection, selectedFace, displayModel)))
         && Number(load.parameters.value) === effectiveDraftValue)
     : undefined;
-  const duplicateLoadError = duplicateLoad
+  // Right after a successful Add the face is still selected and the draft
+  // still matches, so the guard above would flag the load just created as a
+  // duplicate. Say it was added instead; the guard (and the disabled Add) stay,
+  // and the red error returns once the draft changes and comes back to it.
+  const draftKey = [placementSelection?.id ?? "", draftLoadType, effectiveDraftValue, draftLoadDirection].join("|");
+  // Updated during render (not in an effect) so the red error never flashes
+  // for one frame between the Add and the bookkeeping.
+  const loadIds = study.loads.map((load) => load.id);
+  const [loadTracking, setLoadTracking] = useState<{ ids: string[]; draftKey: string; justAdded: JustAddedLoad }>(() => ({ ids: loadIds, draftKey, justAdded: null }));
+  if (loadTracking.draftKey !== draftKey || loadTracking.ids.join("\n") !== loadIds.join("\n")) {
+    setLoadTracking({ ids: loadIds, draftKey, justAdded: justAddedLoadAfterChange(loadTracking.ids, loadIds, draftKey, loadTracking.justAdded) });
+  }
+  const duplicateFeedback = duplicateLoadFeedback(duplicateLoad?.id, justAddedLoadAfterChange(loadTracking.ids, loadIds, draftKey, loadTracking.justAdded), draftKey);
+  const duplicateLoadError = duplicateFeedback === "duplicate"
     ? `A ${loadTypeLabel(draftLoadType).toLowerCase()} of ${formatNumber(displayDraftLoad.value)} ${displayDraftLoad.units} is already applied to ${placementSelection?.name ?? "this face"}. Edit it to change the magnitude.`
     : null;
+  const justAddedNotice = duplicateFeedback === "just_added"
+    ? `Added to ${placementSelection ? selectionDisplayName(study, displayModel, placementSelection.id, project.unitSystem) : "this face"}. Pick another face, or change the magnitude or direction, to add another load.`
+    : null;
   const draftAddError = draftMagnitudeError ?? duplicateLoadError;
-  const canAddDraftLoad = hasDraftPlacement && !draftAddError;
+  const canAddDraftLoad = hasDraftPlacement && !draftAddError && !justAddedNotice;
   const payloadMetadata: PayloadLoadMetadata = draftLoadType === "gravity"
     ? {
       payloadMaterialId,
@@ -237,7 +413,8 @@ export function LoadsPanel({
       <PlacementReadout
         helpId="loadPlacement"
         selectedRef={placementSelection}
-        fallbackLabel={selectedPayloadObject?.label ?? selectedFace?.label}
+        label={placementSelection ? selectionDisplayName(study, displayModel, placementSelection.id, project.unitSystem) : undefined}
+        fallbackLabel={selectedPayloadObject?.label ?? (selectedFace ? stepFaceLabelForUnits(selectedFace.label, selectedFace.area, project.unitSystem) : undefined)}
         detail={selectedPayloadObject ? "object selected" : selectedLoadPoint ? "point picked" : undefined}
       />
       {draftLoadType === "gravity" ? (
@@ -274,17 +451,9 @@ export function LoadsPanel({
       )}
       {draftLoadType === "remote_force" ? (
         <fieldset className="field">
-          <legend>Remote point coordinates</legend>
-          <div className="vector-inputs">
-            {(["X", "Y", "Z"] as const).map((axis, index) => (
-              <label key={axis}>{axis}<input type="number" value={remotePoint[index]} onChange={(event) => {
-                const next = [...remotePoint] as LoadApplicationPoint;
-                next[index] = Number(event.currentTarget.value);
-                setRemotePoint(next);
-              }} /></label>
-            ))}
-          </div>
-          <small>Distributed force and moment only; this is not a rigid MPC coupling.</small>
+          <legend>Remote point coordinates ({REMOTE_POINT_UNIT_LABEL})</legend>
+          <RemotePointInputs point={remotePoint} onChange={setRemotePoint} />
+          <small>{remotePointFrameNote(project.unitSystem)} Distributed force and moment only; this is not a rigid MPC coupling.</small>
         </fieldset>
       ) : null}
       {draftLoadType === "bolt_preload" ? (
@@ -326,16 +495,18 @@ export function LoadsPanel({
         </select>
       </label>
       {draftLoadType === "force" ? <Callout>Face force is a total force distributed over the selected face. Its visual point does not affect the solve.</Callout> : null}
-      {!thermal && draftLoadType !== "gravity" && draftLoadType !== "volume_force" && draftLoadType !== "heat_generation" && draftLoadType !== "bolt_preload" && faceOptionsForLoad.length > 1 && (
+      {extraFacesApply && faceOptionsForLoad.length > 1 && (
         <AdditionalFacesPicker
-          options={faceOptionsForLoad.filter((selection) => selection.id !== placementSelection?.id)}
+          options={faceOptionsForLoad.filter((selection) => selection.id !== placementSelection?.id).map((selection) => ({ id: selection.id, name: selectionDisplayName(study, displayModel, selection.id, project.unitSystem) }))}
           selectedRefs={extraLoadRefs}
           onToggle={toggleExtraLoadRef}
         />
       )}
       </Collapsible>
+      {draftMultiFaceNote && <Callout>{draftMultiFaceNote}</Callout>}
       {hasDraftPlacement && draftAddError && <p className="field-error" role="alert">{draftAddError}</p>}
-      <button className="outline-action wide" disabled={!canAddDraftLoad} title={draftAddError ?? undefined} onClick={() => canAddDraftLoad && onAddLoad(
+      {hasDraftPlacement && !draftAddError && justAddedNotice && <p className="panel-copy" role="status">{justAddedNotice}</p>}
+      <button className="outline-action wide" disabled={!canAddDraftLoad} title={draftAddError ?? justAddedNotice ?? undefined} onClick={() => canAddDraftLoad && onAddLoad(
         draftLoadType,
         effectiveDraftValue,
         placementSelection?.id,
@@ -344,9 +515,9 @@ export function LoadsPanel({
           ...payloadMetadata,
           ...(draftLoadType === "remote_force" ? { remotePoint } : {}),
           ...(draftLoadType === "bolt_preload" ? { secondarySelectionRef } : {}),
-          ...(extraLoadRefs.length ? { selectionRefs: extraLoadRefs } : {})
+          ...(extraLoadRefsForAdd.length ? { selectionRefs: extraLoadRefsForAdd } : {})
         }
-      )}>{/* selectionRefs travel in payloadMetadata and are split out by the workspace handler. */}<Plus size={18} />{addLabel}{extraLoadRefs.length ? ` (${extraLoadRefs.length + 1} faces)` : ""}</button>
+      )}>{/* selectionRefs travel in payloadMetadata and are split out by the workspace handler. */}<Plus size={18} />{addLabel}{extraLoadRefsForAdd.length ? ` (${extraLoadRefsForAdd.length + 1} faces)` : ""}</button>
       </div>
       {structuralStudy && (
         <Collapsible
@@ -365,6 +536,31 @@ export function LoadsPanel({
       )}
       <LoadEditorList editingId={editingLoadId} onEditingIdChange={setEditingLoadId} study={study} displayModel={displayModel} unitSystem={project.unitSystem} loadCases={loadCases} retargetFace={selectedFace} onAssignLoadToCase={assignLoadToCase} onUpdateLoad={onUpdateLoad} onPreviewLoadEdit={onPreviewLoadEdit} onRemoveLoad={onRemoveLoad} />
     </Panel>
+  );
+}
+
+/**
+ * The remote point lives in the viewer's display frame (a viewport pick or a
+ * face centre). The adapter maps it onto the solver mesh by the part's extents,
+ * so it is not a physical length and is labelled by frame rather than mm/in.
+ */
+const REMOTE_POINT_UNIT_LABEL = "viewer frame";
+
+function remotePointFrameNote(unitSystem: UnitSystem): string {
+  return `Viewer-frame coordinates, as picked on the model; they are mapped onto the part for the solve and are not ${lengthForUnits(1, "mm", unitSystem).units} values.`;
+}
+
+function RemotePointInputs({ point, onChange }: { point: LoadApplicationPoint; onChange: (point: LoadApplicationPoint) => void }) {
+  return (
+    <div className="vector-inputs">
+      {(["X", "Y", "Z"] as const).map((axis, index) => (
+        <label key={axis}>{axis}<input type="number" aria-label={`Remote point ${axis} (${REMOTE_POINT_UNIT_LABEL})`} value={point[index]} onChange={(event) => {
+          const next = [...point] as LoadApplicationPoint;
+          next[index] = Number(event.currentTarget.value);
+          onChange(next);
+        }} /></label>
+      ))}
+    </div>
   );
 }
 
@@ -593,12 +789,16 @@ function LoadEditorList({ editingId, onEditingIdChange, study, displayModel, uni
         const displayLoad = loadValueForUnits(Number(load.parameters.value ?? 0), units, unitSystem);
         const selection = study.namedSelections.find((candidate) => candidate.id === load.selectionRef);
         const selectedFace = displayModel.faces.find((candidate) => candidate.id === selection?.geometryRefs[0]?.entityId);
-        const label = selection?.geometryRefs[0]?.label ?? "selected face";
+        // Multi-face loads list every face, not only the first (Decision 2).
+        const faceNames = entryFaceNames(study, displayModel, load, unitSystem);
+        const label = `${faceNames[0]}${additionalFaceCountLabel(faceNames)}`;
         const payloadObject = payloadObjectForLoad(load);
         const payloadMaterial = load.type === "gravity" && typeof load.parameters.payloadMaterialId === "string" ? payloadMaterialForId(load.parameters.payloadMaterialId).name : "";
+        // A face force's picked point is only where its arrow is drawn; the solve
+        // spreads the total over the face, so it is not described as a point load.
         const pointLabel = payloadObject
           ? ` · ${payloadObject.label}${payloadMaterial ? ` · ${payloadMaterial}` : ""}`
-          : applicationPointForLoad(load) ? " · point load" : "";
+          : load.type === "remote_force" ? " · via remote point" : "";
         const equivalentForce = load.type === "gravity" ? ` · ${formatEquivalentForce(equivalentForceForLoad(load), unitSystem)} weight` : "";
         const loadLabel = loadLabelsById.get(load.id);
         const loadCaseId = loadCases.find((loadCase) => loadCase.loadIds.includes(load.id))?.id ?? loadCases[0]?.id ?? "";
@@ -626,7 +826,7 @@ function LoadEditorList({ editingId, onEditingIdChange, study, displayModel, uni
                 <strong>{loadLabel ? `${loadLabel} · ` : ""}{loadTypeLabel(load.type)} · {formatNumber(displayLoad.value)} {displayLoad.units}</strong>
                 <small>{load.type === "heat_flux" || load.type === "heat_generation"
                   ? label
-                  : `${label}${pointLabel} · ${directionPhrase(directionLabelForLoad(load, displayModel, selectedFace))}${equivalentForce}`}</small>
+                  : `${label}${pointLabel} · ${loadDirectionDescription(load, displayModel, selectedFace)}${equivalentForce}`}</small>
               </button>
               {loadCases.length > 1 && (
                 <label className="load-case-assignment">
@@ -645,6 +845,7 @@ function LoadEditorList({ editingId, onEditingIdChange, study, displayModel, uni
                 <X size={16} />
               </button>
             </div>
+            <EntryFaceList names={faceNames} note={multiFaceLoadRowNote(load.type)} />
             {editing ? (
               <LoadEditForm
                 load={load}
@@ -682,7 +883,7 @@ function LoadEditForm({ load, study, displayModel, unitSystem, accessibleName, r
   const selectionIsBody = selectedRef?.entityType === "body";
   const selectedFace = selectedRef?.geometryRefs[0];
   const selectedDisplayFace = displayModel.faces.find((face) => face.id === selectedFace?.entityId);
-  const [direction, setDirection] = useState<LoadDirectionLabel>(directionLabelForLoad(load, displayModel, selectedDisplayFace));
+  const [direction, setDirection] = useState<LoadDirectionLabel>(() => storedLoadDirectionLabel(load, displayModel, selectedDisplayFace));
   const [payloadMaterialId, setPayloadMaterialId] = useState(String(load.parameters.payloadMaterialId ?? "payload-steel"));
   const [payloadMassMode, setPayloadMassMode] = useState<PayloadMassMode>(load.parameters.payloadMassMode === "manual" ? "manual" : "material");
   const [remotePoint, setRemotePoint] = useState<LoadApplicationPoint>(() => finiteVector3(load.parameters.remotePoint) ?? selectedDisplayFace?.center ?? [0, 0, 0]);
@@ -786,15 +987,12 @@ function LoadEditForm({ load, study, displayModel, unitSystem, accessibleName, r
         </label>
       )}
       {magnitudeError && <p className="field-error" id={magnitudeErrorId} role="alert">{magnitudeError}</p>}
-      <PlacementReadout selectedRef={selectedRef} />
+      <PlacementReadout selectedRef={selectedRef} label={selectedRef ? selectionDisplayName(study, displayModel, selectedRef.id, unitSystem) : undefined} />
       {type === "remote_force" ? (
-        <fieldset className="field"><legend>Remote point coordinates</legend><div className="vector-inputs">
-          {(["X", "Y", "Z"] as const).map((axis, index) => <label key={axis}>{axis}<input type="number" value={remotePoint[index]} onChange={(event) => {
-            const next = [...remotePoint] as LoadApplicationPoint;
-            next[index] = Number(event.currentTarget.value);
-            setRemotePoint(next);
-          }} /></label>)}
-        </div></fieldset>
+        <fieldset className="field"><legend>Remote point coordinates ({REMOTE_POINT_UNIT_LABEL})</legend>
+          <RemotePointInputs point={remotePoint} onChange={setRemotePoint} />
+          <small>{remotePointFrameNote(unitSystem)}</small>
+        </fieldset>
       ) : null}
       {type === "bolt_preload" ? (
         <label className="field">Opposing face<select value={secondarySelectionRef} onChange={(event) => setSecondarySelectionRef(event.currentTarget.value)}>
@@ -857,7 +1055,30 @@ function finiteVector3(value: unknown): LoadApplicationPoint | null {
     : null;
 }
 
-function SupportEditorList({ study, retargetFace, onUpdateSupport, onRemoveSupport }: { study: Study; retargetFace?: DisplayFace | null; onUpdateSupport: (support: Constraint, targetFace?: DisplayFace) => void; onRemoveSupport: (supportId: string) => void }) {
+/**
+ * Support summary in project units. Values are stored canonically — °C for a
+ * boundary temperature, mm for a prescribed displacement — which is what the
+ * adapter reads regardless of the stored `units` text.
+ */
+function supportValueLabel(support: Constraint, unitSystem: UnitSystem): string {
+  if (support.type === "fixed") return "Fixed support";
+  const value = Number(support.parameters.value ?? 0);
+  if (support.type === "prescribed_temperature") {
+    const temperature = temperatureForUnits(value, "°C", unitSystem);
+    return `Prescribed temperature (${formatDisplayNumber(temperature.value)}\u00a0${temperature.units})`;
+  }
+  const displacement = lengthForUnits(value, "mm", unitSystem);
+  return `Prescribed displacement (${formatDisplayNumber(displacement.value)}\u00a0${displacement.units} ${String(support.parameters.component ?? "z")})`;
+}
+
+function multiFaceLoadRowNote(type: LoadType): string | null {
+  if (type === "force") return "total force shared by area";
+  if (type === "remote_force") return "force and moment shared over the combined area";
+  if (type === "pressure" || type === "surface_traction") return "full value on each face";
+  return null;
+}
+
+function SupportEditorList({ study, displayModel, unitSystem, retargetFace, onUpdateSupport, onRemoveSupport }: { study: Study; displayModel: DisplayModel; unitSystem: UnitSystem; retargetFace?: DisplayFace | null; onUpdateSupport: (support: Constraint, targetFace?: DisplayFace) => void; onRemoveSupport: (supportId: string) => void }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   // Mirrors the load rows: closing the form must return focus to the control
   // that opened it, or the form's unmount drops focus to <body>.
@@ -882,20 +1103,23 @@ function SupportEditorList({ study, retargetFace, onUpdateSupport, onRemoveSuppo
       <h3>Supports</h3>
       {supportItems.map(({ support, displayLabel }) => {
         const editing = editingId === support.id;
-        const selection = study.namedSelections.find((candidate) => candidate.id === support.selectionRef);
-        const label = selection?.geometryRefs[0]?.label ?? "selected face";
+        // Multi-face supports list every face, not only the first (Decision 2).
+        const faceNames = entryFaceNames(study, displayModel, support, unitSystem);
         return (
           <div className="editable-item" key={support.id}>
             <div className="editable-summary">
               <span className="item-icon warning"><SupportIcon /></span>
-              <strong>{displayLabel} · {support.type === "fixed" ? "Fixed support" : support.type === "prescribed_temperature" ? `Prescribed temperature (${Number(support.parameters.value ?? 0)}\u00a0°C)` : `Prescribed displacement (${Number(support.parameters.value ?? 0)}\u00a0mm ${String(support.parameters.component ?? "z")})`}</strong>
-              <small>{label}</small>
+              <strong>{displayLabel} · {supportValueLabel(support, unitSystem)}</strong>
+              <small>{faceNames[0]}{additionalFaceCountLabel(faceNames)}</small>
               <button className="remove-glyph" type="button" aria-label="Remove support" onClick={() => onRemoveSupport(support.id)}><X size={16} /></button>
             </div>
+            <EntryFaceList names={faceNames} />
             {editing ? (
               <SupportEditForm
                 support={support}
                 study={study}
+                displayModel={displayModel}
+                unitSystem={unitSystem}
                 retargetFace={retargetFace}
                 onCancel={() => finishEditing(support.id)}
                 onSave={(nextSupport, targetFace) => {
@@ -929,7 +1153,7 @@ function LoadTypeIcon({ type }: { type: LoadType }) {
   return <ScanLine size={16} />;
 }
 
-function SupportEditForm({ support, study, retargetFace, onSave, onCancel }: { support: Constraint; study: Study; retargetFace?: DisplayFace | null; onSave: (support: Constraint, targetFace?: DisplayFace) => void; onCancel: () => void }) {
+function SupportEditForm({ support, study, displayModel, unitSystem, retargetFace, onSave, onCancel }: { support: Constraint; study: Study; displayModel: DisplayModel; unitSystem: UnitSystem; retargetFace?: DisplayFace | null; onSave: (support: Constraint, targetFace?: DisplayFace) => void; onCancel: () => void }) {
   const thermal = study.type === "steady_state_thermal";
   const [type, setType] = useState<Constraint["type"]>(support.type);
   const [temperature, setTemperature] = useState(Number(support.parameters.value ?? 20));
@@ -964,10 +1188,10 @@ function SupportEditForm({ support, study, retargetFace, onSave, onCancel }: { s
             </>}
         </select>
       </label>
-      {thermal && <label className="field">Temperature<span className="input-with-unit"><input type="number" value={temperature} onChange={(event) => setTemperature(Number(event.currentTarget.value))} /><span>°C</span></span></label>}
+      {thermal && <TemperatureField valueCelsius={temperature} unitSystem={unitSystem} onChange={setTemperature} />}
       {!thermal && type === "prescribed_displacement" && (
         <>
-          <label className="field">Displacement<span className="input-with-unit"><input type="number" value={displacementValueMm} onChange={(event) => setDisplacementValueMm(Number(event.currentTarget.value))} /><span>mm</span></span></label>
+          <DisplacementField valueMm={displacementValueMm} unitSystem={unitSystem} onChange={setDisplacementValueMm} />
           <label className="field">Component
             <select value={displacementComponent} onChange={(event) => setDisplacementComponent(event.currentTarget.value as "x" | "y" | "z")}>
               <option value="x">X</option>
@@ -977,7 +1201,7 @@ function SupportEditForm({ support, study, retargetFace, onSave, onCancel }: { s
           </label>
         </>
       )}
-      <PlacementReadout selectedRef={selectedRef} />
+      <PlacementReadout selectedRef={selectedRef} label={selectedRef ? selectionDisplayName(study, displayModel, selectedRef.id, unitSystem) : undefined} />
       <div className="edit-actions">
         <button className="primary" type="button" disabled={(thermal && !Number.isFinite(temperature)) || (!thermal && type === "prescribed_displacement" && !Number.isFinite(displacementValueMm))} onClick={() => onSave({ ...support, type, parameters: thermal ? { ...support.parameters, value: temperature, units: "°C" } : type === "prescribed_displacement" ? { ...support.parameters, value: displacementValueMm, units: "mm", component: displacementComponent } : support.parameters }, targetFace)}>Save</button>
         <button className="secondary" type="button" onClick={onCancel}>Cancel</button>

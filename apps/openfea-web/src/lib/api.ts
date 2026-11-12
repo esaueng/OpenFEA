@@ -93,6 +93,8 @@ export interface RunSimulationOptions {
 export interface RunMeshConvergenceOptions {
   customMaterials?: CustomMaterial[];
   onProgress?: (message: string) => void;
+  /** Aborting stops the in-flight mesh or solve worker and rejects with an AbortError. */
+  signal?: AbortSignal;
 }
 
 export interface GenerateMeshOptions {
@@ -529,8 +531,13 @@ export async function runMeshConvergence(
     study: currentStudy,
     caseId,
     probe,
+    ...(options.signal ? { signal: options.signal } : {}),
     onProgress: (preset, phase) => options.onProgress?.(`${capitalizeWord(preset)} convergence rung: ${phase}.`),
     prepareMesh: async (preset, isolatedStudy) => {
+      // Convergence meshing is the only meshing allowed while the ladder runs,
+      // so the global mesher cancel stops exactly this rung's mesh.
+      const stopMeshing = () => cancelWasmMeshing("Mesh-convergence study cancelled.");
+      options.signal?.addEventListener("abort", stopMeshing, { once: true });
       const generated = await generateMesh(
         isolatedStudy.id,
         preset,
@@ -539,7 +546,7 @@ export async function runMeshConvergence(
         options.onProgress,
         undefined,
         { localOnly: true, allowEstimateFallback: true }
-      );
+      ).finally(() => options.signal?.removeEventListener("abort", stopMeshing));
       if (generated.study.type !== "static_stress") throw new Error("Convergence meshing changed the static study type unexpectedly.");
       const coreStatistics = coreMeshStatisticsForStudy(generated.study, displayModel, options.customMaterials);
       const density = generated.study.meshSettings.summary?.density;
@@ -561,8 +568,14 @@ export async function runMeshConvergence(
         { runId, study: studyWithLocalBackend(isolatedStudy), displayModel, customMaterials: options.customMaterials },
         (event) => options.onProgress?.(`${capitalizeWord(preset)} solve: ${event.phase}.`)
       );
-      const { result } = await handle.completion;
-      return result;
+      const stopSolve = () => handle.cancel();
+      options.signal?.addEventListener("abort", stopSolve, { once: true });
+      try {
+        const { result } = await handle.completion;
+        return result;
+      } finally {
+        options.signal?.removeEventListener("abort", stopSolve);
+      }
     }
   });
 }
