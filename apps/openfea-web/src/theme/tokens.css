@@ -12,6 +12,11 @@
   --color-surface-hover: #1b2430;
   --color-border: #2a3441;
   --color-border-strong: #3a4554;
+  /* Form-control boundaries (WCAG 1.4.11 needs 3:1 against the ground on both sides).
+     --color-border stays for decorative dividers and card edges, where 1.3-1.5:1 is
+     intended; text fields, selects and unit boxes draw with this one instead.
+     3.39-4.17:1 against bg / surface / surface-2 / hover. */
+  --color-border-input: #6b7685;
   --color-text: #e6edf3;
   --color-text-muted: #8b949e;
   --color-text-subtle: #828d99; /* 4.87:1 vs --color-surface-2 #17202b (WCAG 1.4.3/1.4.11 AA) */
@@ -21,7 +26,12 @@
   --color-accent-dim: rgba(77, 163, 255, 0.12);
   --color-accent-border: rgba(77, 163, 255, 0.45);
   --color-warning: #f59e0b;
-  --color-error: #ef4444;
+  /* #ef4444 read 4.37:1 on surface-2, 4.16:1 on hover and 4.26:1 on its own 12% tint,
+     and .field-error is 11.5px text. 4.53:1 or better on every surface and tint now. */
+  --color-error: #f46b6b;
+  /* Fill behind white text (destructive buttons): the lighter error ink is a text colour
+     and would drop white to ~3:1 as a background. 4.83:1. */
+  --color-error-fill: #dc2626;
   --color-success: #22c55e;
   --color-viewport-bg: #070b10;
   /* Ink on an accent fill (primary buttons, selected radios). */
@@ -170,6 +180,7 @@
   --color-surface-hover: #dfe8f2;
   --color-border: #c8d2df;
   --color-border-strong: #aebbc9;
+  --color-border-input: #748190; /* 3.21-3.80:1 against bg / surface / surface-2 / hover */
   --color-text: #17202b;
   --color-text-muted: #536170;
   --color-text-subtle: #5f6b7a;
@@ -178,7 +189,10 @@
   --color-accent-border: rgba(22, 119, 210, 0.42);
   --color-warning: #854d0e; /* #a16207 fell to 3.7-4.0:1 on its own 12% warning tint */
   --color-error: #b91c1c;
-  --color-success: #15803d;
+  --color-error-fill: #b91c1c;
+  /* #15803d fell to 4.33:1 on surface-2 and 4.05:1 on hover; 4.52:1 or better now,
+     including its own 12% tint. */
+  --color-success: #116b33;
   --color-viewport-bg: #f7f9fc;
   --color-on-accent: #f8fbff;
   --color-series-1: #0369a1;
@@ -196,6 +210,7 @@
 .theme-light {
   --border-thin: 1px solid var(--color-border);
   --border-strong: 1px solid var(--color-border-strong);
+  --border-input: 1px solid var(--color-border-input);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -279,16 +294,25 @@ input, select, textarea {
   font-size: inherit;
   color: var(--color-text);
   background: var(--color-bg);
-  border: var(--border-thin);
+  border: var(--border-input);
   border-radius: var(--radius-sm);
   padding: 6px 8px;
   height: var(--control-h-md);
 }
 
 input:focus, select:focus, textarea:focus {
-  outline: none;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 2px var(--color-accent-dim);
+}
+
+/* Form controls get a solid 2px ring. The rule above used to end in `outline: none`,
+   which beat the 1px :focus-visible outline (same specificity, later) and left only a
+   12%-alpha halo — about 1.2:1 against the field. */
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 /* The text-field box above is wrong for native ticks: every checkbox inherited a

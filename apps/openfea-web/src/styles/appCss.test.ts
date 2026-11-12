@@ -662,7 +662,7 @@ describe("app CSS", () => {
     expect(cadViewer).toContain("const SceneThemeContext = createContext<ThemeMode>");
     expect(cadViewer).toContain("<SceneThemeContext.Provider value={props.themeMode}>");
     expect(cadViewer).toMatch(/function sceneLabelColors\(tone: SceneLabelTone, themeMode: ThemeMode/);
-    expect(cadViewer).toContain('sceneLabelColors(tone, useContext(SceneThemeContext))');
+    expect(cadViewer).toMatch(/const themeMode = useContext\(SceneThemeContext\);\n\s*const colors = sceneLabelColors\(tone, themeMode\);/);
     expect(cadViewer).toContain('sceneLabelColors("dimension", useContext(SceneThemeContext))');
     // Every tone carries both roles, so no tone can silently fall back to dark-only.
     const palette = cadViewer.match(/const SCENE_LABEL_PALETTE[\s\S]*?\n\};/)?.[0] ?? "";
