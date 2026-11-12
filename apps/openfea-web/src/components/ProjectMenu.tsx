@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Moon, Settings2, Sun, X } from "lucide-react";
 import { useFocusTrap } from "../hooks/useFocusTrap";
+import { handleRadioGroupKeyDown, radioTabIndex } from "./radioGroupKeyboard";
 import { GITHUB_URL, KofiLink } from "./KofiLink";
 import type { UnitSystem } from "../unitDisplay";
 import type { ThemeMode } from "../workspaceViewTypes";
@@ -48,22 +49,22 @@ export function ProjectMenu({ themeMode, unitSystem, onThemeModeChange, onUnitSy
             </div>
             <div className="project-menu-row">
               <span id="project-menu-theme">Theme</span>
-              <div className="segmented" role="radiogroup" aria-labelledby="project-menu-theme">
-                <button type="button" role="radio" aria-checked={themeMode === "dark"} className={themeMode === "dark" ? "active" : ""} onClick={() => onThemeModeChange("dark")}>
+              <div className="segmented" role="radiogroup" aria-labelledby="project-menu-theme" onKeyDown={handleRadioGroupKeyDown}>
+                <button type="button" role="radio" aria-checked={themeMode === "dark"} tabIndex={radioTabIndex(themeMode === "dark")} className={themeMode === "dark" ? "active" : ""} onClick={() => onThemeModeChange("dark")}>
                   <Moon size={14} aria-hidden="true" />Dark
                 </button>
-                <button type="button" role="radio" aria-checked={themeMode === "light"} className={themeMode === "light" ? "active" : ""} onClick={() => onThemeModeChange("light")}>
+                <button type="button" role="radio" aria-checked={themeMode === "light"} tabIndex={radioTabIndex(themeMode === "light")} className={themeMode === "light" ? "active" : ""} onClick={() => onThemeModeChange("light")}>
                   <Sun size={14} aria-hidden="true" />Light
                 </button>
               </div>
             </div>
             <div className="project-menu-row">
               <span id="project-menu-units">Units</span>
-              <div className="segmented" role="radiogroup" aria-labelledby="project-menu-units">
-                <button type="button" role="radio" aria-checked={unitSystem === "SI"} className={unitSystem === "SI" ? "active" : ""} onClick={() => onUnitSystemChange("SI")}>
+              <div className="segmented" role="radiogroup" aria-labelledby="project-menu-units" onKeyDown={handleRadioGroupKeyDown}>
+                <button type="button" role="radio" aria-checked={unitSystem === "SI"} tabIndex={radioTabIndex(unitSystem === "SI")} className={unitSystem === "SI" ? "active" : ""} onClick={() => onUnitSystemChange("SI")}>
                   Metric (mm)
                 </button>
-                <button type="button" role="radio" aria-checked={unitSystem === "US"} className={unitSystem === "US" ? "active" : ""} onClick={() => onUnitSystemChange("US")}>
+                <button type="button" role="radio" aria-checked={unitSystem === "US"} tabIndex={radioTabIndex(unitSystem === "US")} className={unitSystem === "US" ? "active" : ""} onClick={() => onUnitSystemChange("US")}>
                   Imperial (in)
                 </button>
               </div>

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import type { Project, Study } from "@openfea/schema";
-import { StepNav } from "./StepNav";
+import { StepNav, stepLabelForStudy } from "./StepNav";
 import { ProjectMenu } from "./ProjectMenu";
 
 const project: Project = {
@@ -44,11 +44,38 @@ describe("StepNav", () => {
     const labels = [...html.matchAll(/class="step-nav-label">([^<]+)</g)].map((match) => match[1]);
     expect(labels).toEqual(["Model", "Material", "Supports", "Loads", "Mesh", "Run", "Results"]);
     expect(html).toMatch(/class="step-nav-step active"[^>]*aria-current="step"[^>]*>[\s\S]*?Material/);
-    // Steps carry no number or tick: the label names the step and the bar under it
-    // (a CSS pseudo-element keyed on the state class) shows progress.
-    expect(html).toMatch(/<button type="button" class="step-nav-step done" title="Model"><svg[^>]*class="lucide lucide-box step-nav-icon"[^>]*>[\s\S]*?<\/svg><span class="step-nav-label">Model<\/span><\/button>/);
+    // Steps carry no number: the label names the step and the bar under it (a CSS
+    // pseudo-element keyed on the state class) shows progress. A done step adds a tick
+    // glyph and says "completed" in its accessible name, so the state is not colour alone.
+    expect(html).toMatch(/<button type="button" class="step-nav-step done" title="Model" aria-label="Model, completed"><svg[^>]*class="lucide lucide-box step-nav-icon"[^>]*>[\s\S]*?<\/svg><span class="step-nav-label">Model<\/span><svg[^>]*class="lucide lucide-check step-nav-check"[^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/svg><\/button>/);
     expect(html).not.toContain("step-nav-glyph");
-    expect(html).not.toContain("lucide-check");
+  });
+
+  test("ticks only completed steps and announces them as completed", () => {
+    const meshed = {
+      ...study,
+      materialAssignments: [{ id: "assignment-1", materialId: "al-6061", selectionRef: "body" }],
+      meshSettings: { preset: "medium" as const, status: "complete" as const }
+    } as unknown as Study;
+    const html = renderToStaticMarkup(<StepNav {...baseProps} activeStep="supports" study={meshed} />);
+    const ticked = [...html.matchAll(/<button[^>]*aria-label="([^"]+), completed"[^>]*>[\s\S]*?<\/button>/g)].map((match) => match[1]);
+    expect(ticked).toEqual(["Model", "Material", "Mesh"]);
+    expect(html.match(/step-nav-check/g) ?? []).toHaveLength(3);
+    // Steps still to do keep their plain name and no tick.
+    expect(html).toMatch(/<button type="button" class="step-nav-step active" aria-current="step" title="Supports"><svg[\s\S]*?<span class="step-nav-label">Supports<\/span><\/button>/);
+  });
+
+  test("keeps blockers and notices in the accessible name of a completed step", () => {
+    const html = renderToStaticMarkup(<StepNav {...baseProps} hasResults study={study} notices={{ results: "warning" }} />);
+    expect(html).toContain('aria-label="Results, completed: needs attention"');
+  });
+
+  test("names the boundary and load steps in thermal terms for thermal studies", () => {
+    const html = renderToStaticMarkup(<StepNav {...baseProps} study={{ ...study, type: "steady_state_thermal" }} />);
+    const labels = [...html.matchAll(/class="step-nav-label">([^<]+)</g)].map((match) => match[1]);
+    expect(labels).toEqual(["Model", "Material", "Temperatures", "Heat loads", "Mesh", "Run", "Results"]);
+    expect(html).toContain('title="Temperatures"');
+    expect(stepLabelForStudy("supports", "Supports", "static_stress")).toBe("Supports");
   });
 
   test("drops the loads step for modal studies", () => {
@@ -142,6 +169,8 @@ describe("stepper CSS", () => {
     expect(css).toMatch(/^\.step-nav-step::after \{[^}]*height:\s*1px;[^}]*background:\s*var\(--color-border-strong\);/m);
     expect(css).toMatch(/^\.step-nav-step\.done::after \{\s*height:\s*2px;\s*background:\s*var\(--color-success\);/m);
     expect(css).toMatch(/^\.step-nav-step\.active::after \{\s*height:\s*2px;\s*background:\s*var\(--color-accent\);/m);
+    // The done tick is a badge that takes no width, so the measured tiers below still hold.
+    expect(css).toMatch(/^\.step-nav-check \{[^}]*position:\s*absolute;[^}]*color:\s*var\(--color-success\);/m);
     expect(css).toMatch(/^\.step-nav-step\.active \{[^}]*font-weight:\s*var\(--fw-semibold\);/m);
     // Every label fits the top bar down to 1181px. Below that the other steps swap
     // their names for icons; the full-width strip shows names again from 480px.
@@ -154,5 +183,7 @@ describe("stepper CSS", () => {
   test("hides inactive step labels visually, never from assistive tech", () => {
     // display:none would strip the accessible name; the narrow tiers clip instead.
     expect(css).not.toMatch(/\.step-nav-label[^{]*\{[^}]*display:\s*none/);
+    // And an icon-only step shows its name while it has keyboard focus.
+    expect(css).toMatch(/\.step-nav-step:not\(\.active\):focus-visible \.step-nav-label \{\s*position:\s*static;[^}]*clip:\s*auto;/);
   });
 });

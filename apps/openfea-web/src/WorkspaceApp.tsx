@@ -2760,7 +2760,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     const continueProject = project && displayModel && study
       ? { name: project.name, onContinue: () => setHomeRequested(false) }
       : undefined;
-    return <StartScreen onLoadSample={handleLoadSample} onCreateProject={handleCreateProject} onOpenProject={handleOpenProject} continueProject={continueProject} />;
+    // display: contents scope, so the start screen takes the chosen theme's tokens too.
+    return <div className={`theme-scope theme-${themeMode}`}><StartScreen onLoadSample={handleLoadSample} onCreateProject={handleCreateProject} onOpenProject={handleOpenProject} continueProject={continueProject} /></div>;
   }
 
   if (project && displayModel && displayModelForUi && !study) {
@@ -2784,10 +2785,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   return (
     <div className={`app-shell theme-${themeMode}`}>
       <a className="skip-link" href="#workspace-main" onClick={handleSkipToMain}>Skip to main content</a>
-      <h1 className="visually-hidden">{project?.name ? `OpenFEA — ${project.name}` : "OpenFEA workspace"}</h1>
       {renderTopbar(true)}
 
       <main ref={workspaceMainRef} className="workspace" id="workspace-main" tabIndex={-1}>
+        <h1 className="visually-hidden">{project?.name ? `OpenFEA — ${project.name}` : "OpenFEA workspace"}</h1>
         {/* Below 980px the top bar has no room for the stepper, so this strip carries it
             instead; CSS shows exactly one of the two. */}
         <div className="step-nav-strip">
