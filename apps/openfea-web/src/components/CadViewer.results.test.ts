@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, test, vi } from "vitest";
-import { REPORT_CAPTURE_BACKGROUND, SCENE_LABEL_FONT_URL, dimensionLineSegments, viewCubePalette, VIEWER_AXIS_HEAD_RADIUS, VIEWER_AXIS_LABEL_BADGE_COLOR, VIEWER_AXIS_LABEL_BADGE_RADIUS, VIEWER_AXIS_LABEL_COLOR, VIEWER_AXIS_LABEL_FONT_SIZE, VIEWER_AXIS_LABEL_FONT_WEIGHT, VIEWER_AXIS_LABEL_OUTLINE_COLOR, VIEWER_AXIS_LABEL_OUTLINE_WIDTH, VIEWER_CREDIT_URL, VIEWER_GIZMO_ALIGNMENT, VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_LABEL_DISTANCE, VIEWER_GIZMO_MARGIN, VIEWER_GIZMO_SCALE, VIEWER_ISOMETRIC_GIZMO_VIEW, VIEWER_VIEW_CUBE_BODY_OPACITY, VIEWER_VIEW_CUBE_CORNER_HIT_RADIUS, VIEWER_VIEW_CUBE_CORNER_RADIUS, VIEWER_VIEW_CUBE_EDGE_COLOR, VIEWER_VIEW_CUBE_FACE_HOVER_OPACITY, VIEWER_VIEW_CUBE_FACE_LABEL_FONT_SIZE, VIEWER_VIEW_CUBE_FACE_OPACITY, VIEWER_VIEW_CUBE_SIZE, applyResultFrameToGeometry, applySectionClippingToObject, axisLabelToViewAxis, beamDemoDisplacementAtStation, beamDemoPayloadOffset, beamDemoStationForPoint, buildSolverSurfaceOutlineGeometry, buildSolverSurfaceResultGeometry, cameraDistanceForBounds, cameraViewForAxis, cloneResultPreviewObject, colorizeResultObject, colorizeSampleResultGeometry, createBeamDemoCoordinate, createRenderedFrameCaptureController, createUndeformedResultOutlineObject, defaultHomeViewTarget, deformationScaleForResultFields, dimensionLabelFlipped, displayedLegendTickLabels, finalVisualScaleForDisplacementField, getViewCubeCornerDescriptors, getViewCubeFaceDescriptors, gizmoViewTargetToRequest, interpolateDisplacementAtPoint, legendMeshStats, legendTickLabels, normalizedPointLoadCantileverShape, opaqueContentCropRect, payloadHighlightObjectId, pointLoadCantileverShape, printLayerVisualizationForBounds, recoverSurfaceNodeScalarField, renderReportCapture, reportCaptureBounds, resultFieldValuesAlignedToGeometry, resultLegendContentScale, resultLegendResizeDimensions, resultLegendTitle, resultProbesForKind, resultValueForPoint, rotatedCameraOrbit, sectionPlaneForBounds, shouldDisableResultDeformation, shouldShowDimensionOverlay, shouldShowModelHitLabel, shouldShowResultMarkers, shouldShowUndeformedResultOutline, shouldShowViewCubeFaceLabel, solverSpaceResultCoordinateTransform, solverSurfaceDisplayFootprint, solverSurfaceResultFields, updatePackedSamples, viewCubeFaceToGizmoView, viewerCameraResetPose, viewerGizmoLayout } from "./CadViewer";
+import { REPORT_CAPTURE_BACKGROUND, SCENE_LABEL_FONT_URL, dimensionLineSegments, viewCubePalette, VIEWER_AXIS_HEAD_RADIUS, VIEWER_AXIS_LABEL_BADGE_COLOR, VIEWER_AXIS_LABEL_BADGE_RADIUS, VIEWER_AXIS_LABEL_COLOR, VIEWER_AXIS_LABEL_FONT_SIZE, VIEWER_AXIS_LABEL_FONT_WEIGHT, VIEWER_AXIS_LABEL_OUTLINE_COLOR, VIEWER_AXIS_LABEL_OUTLINE_WIDTH, VIEWER_CREDIT_URL, VIEWER_COMPACT_QUERY, VIEWER_GIZMO_ALIGNMENT, VIEWER_GIZMO_AXIS_LENGTH, VIEWER_GIZMO_COMPACT_MARGIN, VIEWER_GIZMO_COMPACT_SCALE, VIEWER_GIZMO_LABEL_DISTANCE, VIEWER_GIZMO_MARGIN, VIEWER_GIZMO_SCALE, VIEWER_ISOMETRIC_GIZMO_VIEW, VIEWER_VIEW_CUBE_BODY_OPACITY, VIEWER_VIEW_CUBE_CORNER_HIT_RADIUS, VIEWER_VIEW_CUBE_CORNER_RADIUS, VIEWER_VIEW_CUBE_EDGE_COLOR, VIEWER_VIEW_CUBE_FACE_HOVER_OPACITY, VIEWER_VIEW_CUBE_FACE_LABEL_FONT_SIZE, VIEWER_VIEW_CUBE_FACE_OPACITY, VIEWER_VIEW_CUBE_SIZE, applyResultFrameToGeometry, applySectionClippingToObject, axisLabelToViewAxis, beamDemoDisplacementAtStation, beamDemoPayloadOffset, beamDemoStationForPoint, buildSolverSurfaceOutlineGeometry, buildSolverSurfaceResultGeometry, cameraDistanceForBounds, cameraViewForAxis, cloneResultPreviewObject, colorizeResultObject, colorizeSampleResultGeometry, createBeamDemoCoordinate, createRenderedFrameCaptureController, createUndeformedResultOutlineObject, defaultHomeViewTarget, deformationScaleForResultFields, dimensionLabelFlipped, displayedLegendTickLabels, finalVisualScaleForDisplacementField, legendTickExponent, legendTickMultiplier, RESULT_LEGEND_NO_VALUE, resultLegendBasis, resultLegendKeyboardResize, resultLegendRange, resultLegendTicks, viewerOrbitHint, getViewCubeCornerDescriptors, getViewCubeFaceDescriptors, gizmoViewTargetToRequest, interpolateDisplacementAtPoint, legendMeshStats, legendTickLabels, normalizedPointLoadCantileverShape, opaqueContentCropRect, payloadHighlightObjectId, pointLoadCantileverShape, printLayerVisualizationForBounds, recoverSurfaceNodeScalarField, renderReportCapture, reportCaptureBounds, resultFieldValuesAlignedToGeometry, resultLegendContentScale, resultLegendResizeDimensions, resultLegendTitle, resultProbesForKind, resultValueForPoint, rotatedCameraOrbit, sectionPlaneForBounds, shouldDisableResultDeformation, shouldShowDimensionOverlay, shouldShowModelHitLabel, shouldShowResultMarkers, shouldShowUndeformedResultOutline, shouldShowViewCubeFaceLabel, solverSpaceResultCoordinateTransform, solverSurfaceDisplayFootprint, solverSurfaceResultFields, updatePackedSamples, viewCubeFaceToGizmoView, viewerCameraResetPose, viewerGizmoLayout } from "./CadViewer";
 import { cameraForProjection, cameraVerticalSpanAtTarget, captureExcludedObjects, fitOrthographicCamera, orthographicVerticalSpanForBounds, panCamera, resizeProjectionCamera, solverSurfaceDisplayBoundsForDisplayModel } from "./CadViewer";
 import { createPackedResultPlaybackCache, createResultFrameCache, type FaceResultSample } from "../resultFields";
 import type { DisplayFace, DisplayModel, ResultField } from "@openfea/schema";
@@ -628,7 +628,15 @@ describe("CadViewer result coloring", () => {
     expect(VIEWER_GIZMO_MARGIN).toEqual([112, 112]);
     expect(VIEWER_GIZMO_MARGIN[0]).toBe(VIEWER_GIZMO_MARGIN[1]);
     expect(VIEWER_GIZMO_MARGIN[0]).toBeGreaterThan(83);
-    expect(cadViewerSource).toContain("margin={VIEWER_GIZMO_MARGIN}");
+    expect(cadViewerSource).toContain("margin={compactViewer ? VIEWER_GIZMO_COMPACT_MARGIN : VIEWER_GIZMO_MARGIN}");
+  });
+
+  test("shrinks the gizmo on phone-width viewers in the same proportions", () => {
+    expect(VIEWER_COMPACT_QUERY).toBe("(max-width: 640px)");
+    expect(VIEWER_GIZMO_COMPACT_SCALE).toBeLessThan(VIEWER_GIZMO_SCALE);
+    // The margin keeps clear of the corner by the same ratio as the full-size gizmo.
+    expect(VIEWER_GIZMO_COMPACT_MARGIN[0] / VIEWER_GIZMO_COMPACT_SCALE).toBeGreaterThanOrEqual(83 / VIEWER_GIZMO_SCALE);
+    expect(cadViewerSource).toContain("scale={compactViewer ? VIEWER_GIZMO_COMPACT_SCALE : VIEWER_GIZMO_SCALE}");
   });
 
   test("renders compact positive viewer XYZ axis labels", () => {
@@ -830,14 +838,74 @@ describe("CadViewer result coloring", () => {
     expect(legendTickLabels(88.3, 156.6)).toEqual(["88.3", "105.4", "122.4", "139.5", "156.6"]);
   });
 
-  test("shows only min, middle, and max result legend tick labels", () => {
-    expect(displayedLegendTickLabels(88.3, 156.6)).toEqual(["88.3", "122.4", "156.6"]);
+  test("labels the legend at its quarters, not only min, middle and max", () => {
+    expect(displayedLegendTickLabels(88.3, 156.6)).toEqual(["88.3", "105.4", "122.4", "139.5", "156.6"]);
+    expect(resultLegendTicks({ type: "stress", min: 88.3, max: 156.6 }).map((tick) => tick.position)).toEqual([0, 0.25, 0.5, 0.75, 1]);
+    // The two quarter labels are the ones a narrow legend may drop.
+    expect(resultLegendTicks({ type: "stress", min: 0, max: 1 }).map((tick) => Boolean(tick.minor))).toEqual([false, true, false, true, false]);
   });
 
-  test("keeps small result ranges distinguishable in the legend", () => {
-    // Ticks use the KPI formatter: at least three significant digits, never a
-    // six-digit tail the cards beside the legend do not show.
-    expect(displayedLegendTickLabels(0, 0.00143293)).toEqual(["0", "0.0007165", "0.001433"]);
+  test("factors a shared engineering exponent out of tiny or huge ranges", () => {
+    // "0.00003152" beside "0.0007165" read as different precisions. Three significant
+    // figures against one factored power of ten, shown with the unit.
+    expect(legendTickExponent(0, 0.00143293)).toBe(-3);
+    expect(displayedLegendTickLabels(0, 0.00143293)).toEqual(["0", "0.358", "0.716", "1.07", "1.43"]);
+    expect(legendTickExponent(0.00003152, 0.0006)).toBe(-6);
+    expect(displayedLegendTickLabels(0.00003152, 0.0006)).toEqual(["31.5", "174", "316", "458", "600"]);
+    expect(legendTickExponent(0, 2.5e7)).toBe(6);
+    expect(legendTickMultiplier(-3)).toBe("×10⁻³");
+    expect(legendTickMultiplier(6)).toBe("×10⁶");
+    expect(legendTickMultiplier(0)).toBe("");
+    // Ordinary engineering ranges keep the KPI formatter the cards use.
+    expect(legendTickExponent(0.05, 156.6)).toBe(0);
+    expect(displayedLegendTickLabels(0, 0.0143293)).toEqual(["0", "0.003582", "0.007165", "0.01075", "0.01433"]);
+  });
+
+  test("ticks the fixed safety-factor scale at its band edges", () => {
+    expect(resultLegendTicks({ type: "safety_factor", min: 0, max: 3 })).toEqual([
+      { position: 0, label: "0" },
+      { position: 1 / 3, label: "1" },
+      { position: 2 / 3, label: "2" },
+      { position: 1, label: "≥ 3" }
+    ]);
+    // A manual safety-factor range is labelled like any other scale.
+    expect(resultLegendTicks({ type: "safety_factor", min: 1, max: 5 }).map((tick) => tick.label)).toEqual(["1", "2", "3", "4", "5"]);
+  });
+
+  test("shows a dash instead of inventing a range when no field backs the legend", () => {
+    // The legend used to fall back to 28-142 MPa (or the 0-1 placeholder scale).
+    expect(RESULT_LEGEND_NO_VALUE).toBe("—");
+    expect(resultLegendRange(undefined, { min: 0, max: 1 })).toBeNull();
+    expect(resultLegendRange({ min: 2, max: 9 }, { min: 2, max: 9 })).toEqual({ min: 2, max: 9 });
+    expect(resultLegendRange({ min: 2, max: 9 }, { min: Number.NaN, max: 9 })).toBeNull();
+    expect(cadViewerSource).not.toContain("stressForUnits(142, \"MPa\", unitSystem) : resultMode");
+    expect(cadViewerSource).toContain("<span>{RESULT_LEGEND_NO_VALUE}</span>");
+  });
+
+  test("names the contour basis so the bar and the element peak can differ honestly", () => {
+    expect(resultLegendBasis(true, { min: 0.2, max: 1.746 }, "stress")).toBe("Nodal-averaged surface values");
+    expect(resultLegendBasis(false, { min: 0.2, max: 1.746 }, "stress")).toBe("Face-sampled values");
+    // The fixed safety-factor bar cannot show the field's own extent, so the line does.
+    expect(resultLegendBasis(true, { min: 158, max: 10000 }, "safety_factor")).toBe("Nodal-averaged surface values: 158 to 10,000");
+  });
+
+  test("resizes the legend from the keyboard within the drag limits", () => {
+    const limits = { maxHeight: 400, maxWidth: 500, minHeight: 154, minWidth: 280 };
+    expect(resultLegendKeyboardResize({ width: 360, height: 154 }, "ArrowRight", false, limits)).toEqual({ width: 376, height: 154 });
+    expect(resultLegendKeyboardResize({ width: 360, height: 154 }, "ArrowDown", true, limits)).toEqual({ width: 360, height: 218 });
+    expect(resultLegendKeyboardResize({ width: 290, height: 154 }, "ArrowLeft", false, limits)).toEqual({ width: 280, height: 154 });
+    expect(resultLegendKeyboardResize({ width: 490, height: 154 }, "ArrowRight", true, limits)).toEqual({ width: 500, height: 154 });
+    expect(resultLegendKeyboardResize({ width: 360, height: 154 }, "Enter", false, limits)).toBeNull();
+    expect(cadViewerSource).toContain("onKeyDown={handleResizeKeyDown}");
+    expect(cadViewerSource).toContain("aria-describedby={legendResizeHelpId}");
+  });
+
+  test("describes touch gestures on coarse pointers and stills the view under reduced motion", () => {
+    expect(viewerOrbitHint(false)).toBe("Drag to orbit · right-drag to pan · scroll to zoom");
+    expect(viewerOrbitHint(true)).toBe("Drag to orbit · two-finger drag to pan · pinch to zoom");
+    expect(cadViewerSource).toContain("useMediaQuery(REDUCED_MOTION_QUERY)");
+    expect(cadViewerSource).toContain("enableDamping={!reducedMotion}");
+    expect(cadViewerSource).toContain("maxDuration: REDUCED_MOTION_FIT_DURATION_S");
   });
 
   test("labels thermal fields with their actual engineering quantities", () => {

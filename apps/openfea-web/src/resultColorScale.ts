@@ -30,15 +30,42 @@ export const STRESS_RAMP = ["#0759d6", "#0ea5e9", "#22c55e", "#facc15", "#f97316
 
 /** The same stops as normalized 0-1 RGB triples, for WebGL consumers. */
 export function stressRampFloatStops(): number[][] {
-  return STRESS_RAMP.map((hex) => [
+  return rampFloatStops(STRESS_RAMP);
+}
+
+/** The sequential ramp a result type is drawn with, as normalized 0-1 RGB triples, so the
+ *  exported offline viewer colours each field type exactly as the workspace does. */
+export function resultRampFloatStops(type: ResultMode): number[][] {
+  return rampFloatStops(sequentialRamp(type));
+}
+
+function rampFloatStops(ramp: readonly string[]): number[][] {
+  return ramp.map((hex) => [
     parseInt(hex.slice(1, 3), 16) / 255,
     parseInt(hex.slice(3, 5), 16) / 255,
     parseInt(hex.slice(5, 7), 16) / 255
   ].map((channel) => Number(channel.toFixed(3))));
 }
 const MOTION_RAMP = ["#0759d6", "#0ea5e9", "#10b8f0", "#2ee875", "#f2e94e", "#ff8f1f", "#ef4444"];
-// Low factors of safety are dangerous and remain red; high values remain green.
-const SAFETY_RAMP = ["#ef4444", "#fb923c", "#facc15", "#a3e635", "#4ade80", "#22c55e"];
+/** The factor of safety at which the material yields; the legend marks it. */
+export const SAFETY_FACTOR_LIMIT = 1;
+/** Below this the design margin is thin: the caution band runs from the limit to here. */
+export const SAFETY_FACTOR_CAUTION = 2;
+/** The top of the fixed safety-factor scale; larger factors clamp to the safe end. */
+export const SAFETY_FACTOR_SCALE_MAX = 3;
+/* Factor of safety is read against fixed thresholds, not against its own range. Coloured
+   relative to the field's min..max, a part whose every factor was >= 158 rendered solid
+   red beside an "Unlikely to yield" verdict. Three absolute bands with hard edges at
+   SF = 1 and SF = 2: red (yields), orange-yellow (caution), blue (safe). The old ramp
+   also ran red -> green, which collapses to one olive band for deuteranopes and
+   protanopes (~8% of men); these are ColorBrewer RdYlBu stops, colour-blind safe. */
+export const SAFETY_FACTOR_BANDS: ReadonlyArray<{ from: number; to: number; colors: readonly [string, string]; label: string }> = [
+  { from: 0, to: SAFETY_FACTOR_LIMIT, colors: ["#a50026", "#d73027"], label: "Yields" },
+  { from: SAFETY_FACTOR_LIMIT, to: SAFETY_FACTOR_CAUTION, colors: ["#fdae61", "#fee090"], label: "Caution" },
+  { from: SAFETY_FACTOR_CAUTION, to: SAFETY_FACTOR_SCALE_MAX, colors: ["#91bfdb", "#4575b4"], label: "Safe" }
+];
+/** The bands' stops in order, for consumers that need a flat list (tests, swatches). */
+export const SAFETY_RAMP = SAFETY_FACTOR_BANDS.flatMap((band) => [...band.colors]);
 const DIVERGING_NEGATIVE = "#2563eb";
 const DIVERGING_NEUTRAL = "#f5f5f4";
 const DIVERGING_POSITIVE = "#dc2626";
@@ -90,13 +117,36 @@ export function resolveResultColorScale({
   setting?: ResultColorScaleSetting;
 }): ResolvedResultColorScale {
   const manual = setting.rangeMode === "manual" && validManualResultRange(setting.manualMin, setting.manualMax);
+  // Safety factor's automatic range is the fixed absolute scale, never the field's extent.
+  const automatic = type === "safety_factor" ? SAFETY_FACTOR_FIXED_RANGE : automaticRange;
   return {
     type,
     ...(component ? { component } : {}),
-    min: manual ? setting.manualMin! : automaticRange.min,
-    max: manual ? setting.manualMax! : automaticRange.max,
+    min: manual ? setting.manualMin! : automatic.min,
+    max: manual ? setting.manualMax! : automatic.max,
     bands: setting.bands
   };
+}
+
+export const SAFETY_FACTOR_FIXED_RANGE: Readonly<{ min: number; max: number }> = Object.freeze({ min: 0, max: SAFETY_FACTOR_SCALE_MAX });
+
+/** The colour of an absolute factor of safety: its band, interpolated within the band.
+ *  Factors above the scale clamp to the safe end; an infinite factor (no stress) is safe. */
+export function safetyFactorColor(value: number): string {
+  if (Number.isNaN(value)) return SAFETY_FACTOR_BANDS[0]!.colors[0];
+  const clamped = Math.max(0, Math.min(SAFETY_FACTOR_SCALE_MAX, value));
+  const band = SAFETY_FACTOR_BANDS.find((candidate) => clamped < candidate.to) ?? SAFETY_FACTOR_BANDS[SAFETY_FACTOR_BANDS.length - 1]!;
+  return interpolateHex(band.colors[0], band.colors[1], (clamped - band.from) / (band.to - band.from));
+}
+
+/** Where SF = 1 falls on a safety-factor scale (0-1), or null when it is off the scale or
+ *  the scale is not a safety factor. The legend draws its mark here. */
+export function safetyFactorLimitPosition(scale: Pick<ResolvedResultColorScale, "type" | "min" | "max">): number | null {
+  if (scale.type !== "safety_factor") return null;
+  const span = scale.max - scale.min;
+  if (!Number.isFinite(span) || span <= resultScaleRangeEpsilon(scale.min, scale.max)) return null;
+  if (SAFETY_FACTOR_LIMIT < scale.min || SAFETY_FACTOR_LIMIT > scale.max) return null;
+  return (SAFETY_FACTOR_LIMIT - scale.min) / span;
 }
 
 export function normalizedResultScaleValue(value: number, scale: Pick<ResolvedResultColorScale, "min" | "max">): number {
@@ -107,6 +157,9 @@ export function normalizedResultScaleValue(value: number, scale: Pick<ResolvedRe
 }
 
 export function resultColorForValue(value: number, scale: ResolvedResultColorScale): string {
+  // Absolute bands already quantize safety factor; eight equal bands across 0-3 would
+  // straddle SF = 1 and paint 1.1 as yielding.
+  if (scale.type === "safety_factor") return safetyFactorColor(Number.isFinite(value) ? Math.max(scale.min, Math.min(scale.max, value)) : value);
   const normalized = normalizedResultScaleValue(value, scale);
   const sample = scale.bands === "bands8" ? quantizedBandSample(normalized) : normalized;
   return colorAtScalePosition(sample, scale);
@@ -114,11 +167,13 @@ export function resultColorForValue(value: number, scale: ResolvedResultColorSca
 
 export function resultColorAtNormalized(type: ResultMode, component: StressComponent | undefined, value: number, bands: ResultColorBands = "continuous"): string {
   const normalized = clamp01(value);
+  if (type === "safety_factor") return safetyFactorColor(normalized * SAFETY_FACTOR_SCALE_MAX);
   const sample = bands === "bands8" ? quantizedBandSample(normalized) : normalized;
   return colorAtScalePosition(sample, { type, component, min: 0, max: 1 });
 }
 
 export function resultScaleCssGradient(scale: ResolvedResultColorScale): string {
+  if (scale.type === "safety_factor") return safetyFactorCssGradient(scale.min, scale.max);
   if (scale.bands === "bands8") {
     const stops: string[] = [];
     for (let index = 0; index < BAND_COUNT; index += 1) {
@@ -143,7 +198,31 @@ export function resultScaleCssGradient(scale: ResolvedResultColorScale): string 
   return `linear-gradient(90deg, ${ramp.map((color, index) => `${color} ${formatPercent(index / denominator * 100)}%`).join(", ")})`;
 }
 
+/** The fixed bands clipped to [min, max], with hard stops where a band ends. */
+function safetyFactorCssGradient(min: number, max: number): string {
+  const span = max - min;
+  if (!Number.isFinite(span) || span <= resultScaleRangeEpsilon(min, max)) {
+    const color = safetyFactorColor(min);
+    return `linear-gradient(90deg, ${color} 0%, ${color} 100%)`;
+  }
+  const percent = (value: number) => formatPercent(clamp01((value - min) / span) * 100);
+  const stops: string[] = [];
+  SAFETY_FACTOR_BANDS.forEach((band, index) => {
+    const last = index === SAFETY_FACTOR_BANDS.length - 1;
+    const start = Math.max(band.from, min);
+    const end = Math.min(last ? Math.max(band.to, max) : band.to, max);
+    if (end <= start) return;
+    const startColor = safetyFactorColor(start);
+    const endColor = interpolateHex(band.colors[0], band.colors[1], (Math.min(end, band.to) - band.from) / (band.to - band.from));
+    stops.push(`${startColor} ${percent(start)}%`);
+    if (last && end > band.to) stops.push(`${band.colors[1]} ${percent(band.to)}%`);
+    stops.push(`${endColor} ${percent(end)}%`);
+  });
+  return `linear-gradient(90deg, ${stops.join(", ")})`;
+}
+
 function colorAtScalePosition(position: number, scale: Pick<ResolvedResultColorScale, "type" | "component" | "min" | "max">): string {
+  if (scale.type === "safety_factor") return safetyFactorColor(scale.min + clamp01(position) * (scale.max - scale.min));
   if (scale.type === "stress" && isDivergingStressComponent(scale.component)) {
     return divergingColor(position, scale.min, scale.max);
   }

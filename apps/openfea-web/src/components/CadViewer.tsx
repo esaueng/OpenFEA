@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ViewerToolbar } from "./ViewerToolbar";
-import type { CSSProperties, ElementRef, MouseEvent as ReactMouseEvent, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { CSSProperties, ElementRef, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { Billboard, Bounds, Edges, GizmoHelper, Html, Line, OrbitControls, Text, useBounds } from "@react-three/drei";
 import { addAfterEffect, Canvas, useFrame, useThree } from "@react-three/fiber";
 import { configureTextBuilder } from "troika-three-text";
@@ -34,7 +34,8 @@ export { finalVisualScaleForDisplacementField } from "../resultDeformation";
 import { RESULT_DEFORMATION_CAP_FRACTION as SHARED_DEFORMATION_CAP_FRACTION, finalVisualScaleForDisplacementField, maxDisplacementMagnitude, resolvedDeformation, transientDisplacementPeakMagnitude } from "../resultDeformation";
 import { isSolverSurfaceNodeField, recoverSurfaceNodeScalarField, resultFieldValuesAlignedToGeometry, solverSurfaceResultFields } from "../solverSurfaceFields";
 export { recoverSurfaceNodeScalarField, resultFieldValuesAlignedToGeometry, solverSurfaceResultFields };
-import { resultColorAtNormalized, resultColorForValue as colorForScaleValue, resultScaleCssGradient, type ResolvedResultColorScale } from "../resultColorScale";
+import { resultColorAtNormalized, resultColorForValue as colorForScaleValue, resultScaleCssGradient, safetyFactorLimitPosition, SAFETY_FACTOR_FIXED_RANGE, SAFETY_FACTOR_LIMIT, type ResolvedResultColorScale } from "../resultColorScale";
+import { COARSE_POINTER_QUERY, REDUCED_MOTION_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { isSnapOverlayObject, SnapVisualization } from "../snapping/Visualization";
 import type { CursorRay, FaceSnapAxis, SnapMeasurement, SnapResult, Vec3 } from "../snapping/types";
 import type { PayloadObjectSelection, PrintLayerOrientation, ProjectionMode, ResultMode, ResultPlaybackFrameController, ResultPlaybackFrameSnapshot, SectionPlaneState, StressComponent, ThemeMode, ViewerLoadMarker, ViewerSupportMarker, ViewMode } from "../workspaceViewTypes";
@@ -173,6 +174,11 @@ export const VIEWER_CLICK_DRAG_THRESHOLD_PX = 4;
 export const VIEWER_GIZMO_ALIGNMENT = "bottom-right";
 export const VIEWER_GIZMO_MARGIN: [number, number] = [112, 112];
 export const VIEWER_GIZMO_SCALE = 40;
+/* On a phone the full-size cube and axes took ~200px of a ~390px-wide viewer. The compact
+   gizmo keeps the same proportions (margin/scale) at about two-thirds the size. */
+export const VIEWER_COMPACT_QUERY = "(max-width: 640px)";
+export const VIEWER_GIZMO_COMPACT_SCALE = 26;
+export const VIEWER_GIZMO_COMPACT_MARGIN: [number, number] = [74, 74];
 export const VIEWER_AXIS_HEAD_RADIUS = 0.26;
 export const VIEWER_AXIS_LABEL_BADGE_RADIUS = 0.18;
 export const VIEWER_AXIS_LABEL_BADGE_COLOR = "#07111d";
@@ -210,6 +216,16 @@ export const VIEWER_VIEW_CUBE_CORNER_HIT_RADIUS = 0.19;
 const VIEWER_VIEW_CUBE_FACE_VISIBILITY_THRESHOLD = 0;
 export const VIEWER_ISOMETRIC_GIZMO_VIEW = "iso";
 const ORBIT_HINT_STORAGE_KEY = "openfea.viewer.orbitHintDismissed";
+/** The orbit hint names the gestures of the pointer in hand: OrbitControls maps one finger
+ *  to orbit and two fingers to pan and pinch-zoom on touch screens. */
+export function viewerOrbitHint(coarsePointer: boolean): string {
+  return coarsePointer
+    ? "Drag to orbit · two-finger drag to pan · pinch to zoom"
+    : "Drag to orbit · right-drag to pan · scroll to zoom";
+}
+/** drei's <Bounds> eases the camera to each fit over 1s. Under reduced motion it snaps:
+ *  any duration below one frame finishes on the first animated frame. */
+const REDUCED_MOTION_FIT_DURATION_S = 0.001;
 export const VIEWER_CREDIT_URL = "https://esauengineering.com/";
 const VIEWER_FIT_MARGIN = 1.28;
 const DEFAULT_HOME_FIT_MARGIN = 1.46;
@@ -295,6 +311,9 @@ export function CadViewer(props: CadViewerProps) {
   const [uploadedPreviewBounds, setUploadedPreviewBounds] = useState<THREE.Box3 | null>(null);
   const [gizmoViewRequest, setGizmoViewRequest] = useState<{ view: GizmoViewRequest | null; signal: number }>({ view: null, signal: 0 });
   const [viewerInteracting, setViewerInteracting] = useState(false);
+  const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
+  const coarsePointer = useMediaQuery(COARSE_POINTER_QUERY);
+  const compactViewer = useMediaQuery(VIEWER_COMPACT_QUERY);
   // The orbit hint teaches the three gestures once, then stays gone (per browser).
   const [orbitHintDismissed, setOrbitHintDismissed] = useState(() => {
     try { return window.localStorage.getItem(ORBIT_HINT_STORAGE_KEY) === "1"; } catch { return false; }
@@ -441,7 +460,7 @@ export function CadViewer(props: CadViewerProps) {
         <color attach="background" args={[viewportBackground]} />
         <ambientLight intensity={effectiveViewMode === "results" || isLightTheme ? 1.4 : 0.75} />
         <directionalLight position={[4, 6, 3]} intensity={effectiveViewMode === "results" || isLightTheme ? 1.45 : 2.2} />
-        <Bounds fit clip observe={!props.resultPlaybackPlaying} margin={VIEWER_FIT_MARGIN}>
+        <Bounds fit clip observe={!props.resultPlaybackPlaying} margin={VIEWER_FIT_MARGIN} {...(prefersReducedMotion ? { maxDuration: REDUCED_MOTION_FIT_DURATION_S } : {})}>
           <group rotation={modelRotation}>
             {/* Solver surface meshes arrive in solver model space (Z-up), so they must not
                 inherit the legacy Y-up sample base rotation applied to procedural models.
@@ -511,10 +530,11 @@ export function CadViewer(props: CadViewerProps) {
           <GizmoCameraReset view={gizmoViewRequest.view} signal={gizmoViewRequest.signal} controlsRef={controlsRef} />
         </Bounds>
         {props.sectionPlane.enabled && sectionBounds ? <OpenSectionLabel bounds={sectionBounds} state={props.sectionPlane} /> : null}
-        <DemandOrbitControls controlsRef={controlsRef} onInteractionChange={handleViewerInteractionChange} />
+        <DemandOrbitControls controlsRef={controlsRef} onInteractionChange={handleViewerInteractionChange} reducedMotion={prefersReducedMotion} />
         <ShiftPanControls controlsRef={controlsRef} onInteractionChange={handleViewerInteractionChange} />
-        <GizmoHelper alignment={VIEWER_GIZMO_ALIGNMENT} margin={VIEWER_GIZMO_MARGIN} userData={{ openfeaCaptureExclude: true }}>
+        <GizmoHelper alignment={VIEWER_GIZMO_ALIGNMENT} margin={compactViewer ? VIEWER_GIZMO_COMPACT_MARGIN : VIEWER_GIZMO_MARGIN} userData={{ openfeaCaptureExclude: true }}>
           <CleanAxisGizmo
+            scale={compactViewer ? VIEWER_GIZMO_COMPACT_SCALE : VIEWER_GIZMO_SCALE}
             onSelectView={(view) => setGizmoViewRequest((request) => ({ view, signal: request.signal + 1 }))}
           />
         </GizmoHelper>
@@ -567,7 +587,7 @@ export function CadViewer(props: CadViewerProps) {
         </div>
       ) : null}
       {!orbitHintDismissed ? (
-        <p className="viewer-orbit-hint">Drag to orbit · right-drag to pan · scroll to zoom</p>
+        <p className="viewer-orbit-hint">{viewerOrbitHint(coarsePointer)}</p>
       ) : null}
       <ViewerToolbar
         projectionMode={projectionMode}
@@ -1206,14 +1226,16 @@ export function createRenderedFrameCaptureController({
   };
 }
 
-function DemandOrbitControls({ controlsRef, onInteractionChange }: { controlsRef: MutableRefObject<ViewerOrbitControls | null>; onInteractionChange?: (interacting: boolean) => void }) {
+function DemandOrbitControls({ controlsRef, onInteractionChange, reducedMotion = false }: { controlsRef: MutableRefObject<ViewerOrbitControls | null>; onInteractionChange?: (interacting: boolean) => void; reducedMotion?: boolean }) {
   const { invalidate } = useThree();
   const invalidateViewer = () => invalidate();
   return (
     <OrbitControls
       ref={controlsRef}
       makeDefault
-      enableDamping
+      // Damping keeps the model gliding after the pointer stops; under reduced motion the
+      // view stops where the gesture does.
+      enableDamping={!reducedMotion}
       dampingFactor={0.08}
       // Wheel zoom towards the cursor rather than the view centre (2026-09 review F18).
       zoomToCursor
@@ -1316,11 +1338,11 @@ export function panCamera(camera: THREE.Camera, target: THREE.Vector3, deltaX: n
   target.add(panOffset);
 }
 
-function CleanAxisGizmo({ onSelectView }: { onSelectView: (view: GizmoViewRequest) => void }) {
+function CleanAxisGizmo({ onSelectView, scale = VIEWER_GIZMO_SCALE }: { onSelectView: (view: GizmoViewRequest) => void; scale?: number }) {
   const layout = viewerGizmoLayout();
 
   return (
-    <group scale={VIEWER_GIZMO_SCALE}>
+    <group scale={scale}>
       <group position={layout.contentOffset}>
         <PositiveOctantViewCube onSelectView={onSelectView} />
         {GIZMO_AXES.map((axis) => (
@@ -1995,7 +2017,7 @@ function BracketModel({
       })}
       {showBoundaryMarkers && supportMarkers.map((marker) => {
         const face = displayModel.faces.find((item) => item.id === marker.faceId);
-        return face ? <SupportGlyph key={marker.id} kind={modelKind} marker={marker} face={face} active={activeStep === "supports"} labelPosition={boundaryLabelPositions.get(boundaryLabelKey("support", marker.id))} scale={markerScale} /> : null;
+        return face ? <SupportGlyph key={marker.id} kind={modelKind} marker={marker} face={face} active={activeStep === "supports"} labelPosition={boundaryLabelPositions.get(boundaryLabelKey("support", marker.id))} scale={markerScale * SUPPORT_GLYPH_EMPHASIS} /> : null;
       })}
       {showResultMarkers && resultProbesForKind(modelKind, displayModel.faces, resultMode, resultFields, unitSystem).map((probe) => <ResultProbe key={`${probe.tone}-${probe.label}-${probe.anchor.join(",")}`} {...probe} />)}
       {isResultView && (
@@ -2067,6 +2089,9 @@ function dimensionBoundsForDisplayModel(displayModel: DisplayModel) {
 // so scale the glyphs by the model's mean extent to keep them proportionate.
 const MARKER_REFERENCE_MEAN_EXTENT = 2.55;
 const MARKER_SCALE_MIN = 0.3;
+/** Supports drew at the load arrows' scale but are flat bursts, so they read as specks
+ *  next to the arrows (both themes). A modest bump on the supports alone. */
+export const SUPPORT_GLYPH_EMPHASIS = 1.35;
 const MARKER_SCALE_MAX = 1.5;
 
 export function boundaryMarkerScale(bounds: THREE.Box3 | null): number {
@@ -6760,7 +6785,11 @@ function SceneLabel({
   scale?: number;
 }) {
   const labelWidth = Math.max(1.02, label.length * 0.098);
-  const colors = sceneLabelColors(tone, useContext(SceneThemeContext));
+  const themeMode = useContext(SceneThemeContext);
+  const colors = sceneLabelColors(tone, themeMode);
+  // On the light ground a 70%-opaque pale halo all but vanished, which left the thin dark
+  // glyphs looking ghosted ("FS 1"). Light labels take a full, slightly wider halo.
+  const solidHalo = tone === "probe" || themeMode === "light";
   return (
     <Billboard position={position} renderOrder={50}>
       <Text
@@ -6775,8 +6804,8 @@ function SceneLabel({
         letterSpacing={0.01}
         maxWidth={(labelWidth - 0.16) * scale}
         outlineColor={colors.outline}
-        outlineOpacity={tone === "probe" ? 1 : 0.7}
-        outlineWidth={(tone === "probe" ? 0.02 : 0.011) * scale}
+        outlineOpacity={solidHalo ? 1 : 0.7}
+        outlineWidth={(tone === "probe" ? 0.02 : themeMode === "light" ? 0.016 : 0.011) * scale}
       >
         {label}
       </Text>
@@ -6907,9 +6936,111 @@ export function legendTickLabels(minValue: number, maxValue: number) {
   return [0, 0.25, 0.5, 0.75, 1].map((tick) => formatResultValue(minValue + (maxValue - minValue) * tick));
 }
 
+/** Shown in place of the scale's numbers when there is no result range to label. */
+export const RESULT_LEGEND_NO_VALUE = "—";
+
+const SUPERSCRIPT_DIGITS: Record<string, string> = { "-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+
+/** The power of ten the legend factors out of its ticks: an engineering exponent (a multiple
+ *  of three) for ranges below 0.01 or at a million and over, else 0. Without it a 0-0.0013
+ *  range printed "0.00003152" beside "0.0007165": different lengths, unreadable at a glance. */
+export function legendTickExponent(minValue: number, maxValue: number): number {
+  const magnitude = Math.max(Math.abs(minValue), Math.abs(maxValue));
+  if (!Number.isFinite(magnitude) || magnitude === 0) return 0;
+  if (magnitude >= 1e-2 && magnitude < 1e6) return 0;
+  return 3 * Math.floor(Math.log10(magnitude) / 3);
+}
+
+/** "×10⁻³" for an exponent, "" for none. */
+export function legendTickMultiplier(exponent: number): string {
+  if (!exponent) return "";
+  return `×10${String(exponent).split("").map((character) => SUPERSCRIPT_DIGITS[character] ?? character).join("")}`;
+}
+
+/** Five labels at 0/25/50/75/100% of the bar. Three left the bar's quarters unreadable on
+ *  any non-trivial gradient; the narrow-legend tier drops the two quarter labels in CSS.
+ *  Out-of-range magnitudes share one factored exponent and three significant figures. */
 export function displayedLegendTickLabels(minValue: number, maxValue: number) {
-  const ticks = legendTickLabels(minValue, maxValue);
-  return [ticks[0], ticks[2], ticks[4]];
+  const exponent = legendTickExponent(minValue, maxValue);
+  if (!exponent) return legendTickLabels(minValue, maxValue);
+  const factor = 10 ** exponent;
+  return [0, 0.25, 0.5, 0.75, 1].map((tick) => {
+    const scaled = (minValue + (maxValue - minValue) * tick) / factor;
+    return scaled === 0 ? "0" : String(Number(scaled.toPrecision(3)));
+  });
+}
+
+export type ResultLegendTick = { position: number; label: string; minor?: boolean };
+
+/** The ticks the legend draws for a scale: its fixed band edges for the absolute
+ *  safety-factor scale, five evenly spaced values otherwise. */
+export function resultLegendTicks(scale: Pick<ResolvedResultColorScale, "type" | "min" | "max">): ResultLegendTick[] {
+  if (scale.type === "safety_factor" && scale.min === SAFETY_FACTOR_FIXED_RANGE.min && scale.max === SAFETY_FACTOR_FIXED_RANGE.max) {
+    const span = scale.max - scale.min;
+    const edges = [scale.min, SAFETY_FACTOR_LIMIT, 2, scale.max];
+    return edges.map((value, index) => ({
+      position: (value - scale.min) / span,
+      label: index === edges.length - 1 ? `≥ ${formatResultValue(value)}` : formatResultValue(value)
+    }));
+  }
+  return displayedLegendTickLabels(scale.min, scale.max).map((label, index) => ({ position: index / 4, label, minor: index === 1 || index === 3 }));
+}
+
+/** The legend's numeric range, or null when no result field backs it. A colour scale with
+ *  no field resolves to a 0-1 placeholder (and this legend used to invent 28-142 MPa on
+ *  top of that); neither is a reading, so the legend shows a dash instead. */
+export function resultLegendRange(field: Pick<ResultField, "min" | "max"> | undefined, scale: Pick<ResolvedResultColorScale, "min" | "max">): { min: number; max: number } | null {
+  if (!field) return null;
+  if (!Number.isFinite(scale.min) || !Number.isFinite(scale.max)) return null;
+  return { min: scale.min, max: scale.max };
+}
+
+/** One line naming what the contours are drawn from, with the field's own extent when the
+ *  bar is a fixed scale and so cannot show it. */
+export function resultLegendBasis(surfaceAveraged: boolean, field: Pick<ResultField, "min" | "max">, resultMode: ResultMode): string {
+  const basis = surfaceAveraged ? "Nodal-averaged surface values" : "Face-sampled values";
+  if (resultMode !== "safety_factor" || !Number.isFinite(field.min) || !Number.isFinite(field.max)) return basis;
+  return `${basis}: ${formatResultValue(field.min)} to ${formatResultValue(field.max)}`;
+}
+
+function resultLegendFallbackUnit(resultMode: ResultMode, unitSystem: UnitSystem): string {
+  if (resultMode === "stress") return stressForUnits(0, "MPa", unitSystem).units;
+  if (resultMode === "displacement") return lengthForUnits(0, "mm", unitSystem).units;
+  if (resultMode === "velocity") return lengthForUnits(0, "mm/s", unitSystem).units;
+  if (resultMode === "acceleration") return lengthForUnits(0, "mm/s^2", unitSystem).units;
+  if (resultMode === "mode_shape") return "normalized";
+  if (resultMode === "temperature") return unitSystem === "US" ? "°F" : "°C";
+  if (resultMode === "heat_flux") return unitSystem === "US" ? "BTU/(h·ft²)" : "W/m²";
+  return "";
+}
+
+export const RESULT_LEGEND_KEYBOARD_STEP = 16;
+export const RESULT_LEGEND_KEYBOARD_LARGE_STEP = 64;
+
+/** Keyboard resize for the legend grip: arrows grow or shrink by 16px (64px with Shift)
+ *  within the same limits as the pointer drag. Returns null for keys it does not handle. */
+export function resultLegendKeyboardResize(
+  size: ResultLegendSize,
+  key: string,
+  shiftKey: boolean,
+  limits: { maxHeight: number; maxWidth: number; minHeight: number; minWidth: number }
+): ResultLegendSize | null {
+  const step = shiftKey ? RESULT_LEGEND_KEYBOARD_LARGE_STEP : RESULT_LEGEND_KEYBOARD_STEP;
+  const delta = key === "ArrowRight" ? [step, 0]
+    : key === "ArrowLeft" ? [-step, 0]
+      : key === "ArrowDown" ? [0, step]
+        : key === "ArrowUp" ? [0, -step]
+          : null;
+  if (!delta) return null;
+  return resultLegendResizeDimensions({
+    currentClientX: delta[0]!,
+    currentClientY: delta[1]!,
+    startClientX: 0,
+    startClientY: 0,
+    startWidth: size.width,
+    startHeight: size.height,
+    ...limits
+  });
 }
 
 export function resultLegendTitle(resultMode: ResultMode, stressComponent: StressComponent): string {
@@ -7012,6 +7143,7 @@ function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfa
   const legendRef = useRef<HTMLDivElement | null>(null);
   const resizeDragRef = useRef<ResultLegendResizeDrag | null>(null);
   const [legendSize, setLegendSize] = useState<ResultLegendSize | null>(null);
+  const legendResizeHelpId = useId();
   const deformationLabel = useMemo(() => {
     // One definition of the applied factor, shared with the PDF report caption so the two
     // can no longer disagree about what the rendered shape is exaggerated by.
@@ -7032,13 +7164,15 @@ function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfa
   // range matches the contours; fall back to the face/sample field otherwise.
   const surfaceField = surfaceMesh ? resultFields.find((candidate) => isSolverSurfaceNodeField(candidate, surfaceMesh, resultMode)) : undefined;
   const field = surfaceField ?? selectedResultField(resultFields, resultMode);
-  const fallbackMin = resultMode === "stress" ? stressForUnits(28, "MPa", unitSystem) : resultMode === "displacement" || resultMode === "velocity" || resultMode === "acceleration" ? lengthForUnits(0, "mm", unitSystem) : resultMode === "mode_shape" ? { value: 0, units: "normalized" } : resultMode === "temperature" ? { value: 0, units: unitSystem === "US" ? "°F" : "°C" } : resultMode === "heat_flux" ? { value: 0, units: unitSystem === "US" ? "BTU/(h·ft²)" : "W/m²" } : { value: 1.8, units: "" };
-  const fallbackMax = resultMode === "stress" ? stressForUnits(142, "MPa", unitSystem) : resultMode === "displacement" || resultMode === "velocity" || resultMode === "acceleration" ? lengthForUnits(0.184, "mm", unitSystem) : resultMode === "mode_shape" ? { value: 1, units: "normalized" } : resultMode === "temperature" ? { value: unitSystem === "US" ? 212 : 100, units: unitSystem === "US" ? "°F" : "°C" } : resultMode === "heat_flux" ? { value: 1, units: unitSystem === "US" ? "BTU/(h·ft²)" : "W/m²" } : { value: 7.6, units: "" };
-  const unit = field?.units ?? fallbackMax.units;
+  const unit = field?.units ?? resultLegendFallbackUnit(resultMode, unitSystem);
   const colorScale = contextColorScale ?? resultColorScaleForField(field, resultMode);
-  const minValue = colorScale.min ?? fallbackMin.value;
-  const maxValue = colorScale.max ?? fallbackMax.value;
-  const ticks = displayedLegendTickLabels(minValue, maxValue);
+  const legendRange = resultLegendRange(field, colorScale);
+  const ticks = legendRange ? resultLegendTicks({ type: colorScale.type, ...legendRange }) : null;
+  const tickMultiplier = legendRange && !(colorScale.type === "safety_factor") ? legendTickMultiplier(legendTickExponent(legendRange.min, legendRange.max)) : "";
+  const safetyLimit = legendRange ? safetyFactorLimitPosition({ type: colorScale.type, ...legendRange }) : null;
+  // What the contours are drawn from. The headline and peak line quote element values;
+  // the bar is the nodal-averaged surface field, so their extremes legitimately differ.
+  const legendBasis = field ? resultLegendBasis(Boolean(surfaceField), field, resultMode) : null;
   const meshStats = legendMeshStats(meshSummary);
   const legendStyle = legendSize
     ? ({
@@ -7096,6 +7230,34 @@ function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfa
     resizeDragRef.current = null;
     setLegendSize(null);
   }
+  // The grip was pointer-only. Arrow keys resize it from the keyboard; Home restores the
+  // default size, the keyboard path to the double-click reset.
+  const handleResizeKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const legend = legendRef.current;
+    if (!legend) return;
+    if (event.key === "Home") {
+      event.preventDefault();
+      setLegendSize(null);
+      return;
+    }
+    const legendRect = legend.getBoundingClientRect();
+    const viewportRect = legend.parentElement?.getBoundingClientRect();
+    const next = resultLegendKeyboardResize(
+      legendSize ?? { width: Math.round(legendRect.width), height: Math.round(legendRect.height) },
+      event.key,
+      event.shiftKey,
+      {
+        maxWidth: Math.max(RESULT_LEGEND_MIN_WIDTH, (viewportRect?.width ?? window.innerWidth) - RESULT_LEGEND_VIEWPORT_INSET * 2),
+        maxHeight: Math.max(RESULT_LEGEND_MIN_HEIGHT, (viewportRect?.height ?? window.innerHeight) - RESULT_LEGEND_VIEWPORT_INSET * 2),
+        minWidth: RESULT_LEGEND_MIN_WIDTH,
+        minHeight: RESULT_LEGEND_MIN_HEIGHT
+      }
+    );
+    if (!next) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setLegendSize(next);
+  };
 
   return (
     <div
@@ -7109,27 +7271,42 @@ function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfa
         className="analysis-legend-resize"
         type="button"
         aria-label="Resize results legend"
-        title="Resize results legend"
+        aria-describedby={legendResizeHelpId}
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+ArrowUp Shift+ArrowDown Shift+ArrowLeft Shift+ArrowRight Home"
+        title="Resize results legend: drag, or use the arrow keys (Shift for larger steps, Home to reset)"
+        onKeyDown={handleResizeKeyDown}
         onPointerDown={handleResizePointerDown}
         onPointerMove={handleResizePointerMove}
         onPointerUp={handleResizePointerEnd}
         onPointerCancel={handleResizePointerEnd}
         onLostPointerCapture={handleResizePointerEnd}
       />
+      <span id={legendResizeHelpId} className="legend-resize-help">Arrow keys resize the legend, Shift for larger steps; Home restores the default size.</span>
       {stale && <span className="legend-stale">Outdated: the study changed since this run. Re-run to update.</span>}
       {/* The field leads. Mesh counts used to be the bold first two lines, above a plain
           "Type:" that named what the colours meant. */}
       <div className="legend-heading">
         <strong className="legend-title">{title}</strong>
-        <span className="legend-unit">{unit || "ratio"}</span>
+        <span className="legend-unit">{tickMultiplier ? `${tickMultiplier} ` : ""}{unit || "ratio"}</span>
       </div>
       {deformationLabel && <span className="legend-deformation-note">{deformationLabel}</span>}
-      <div className="legend-scale" style={{ background: resultScaleCssGradient(colorScale) }} />
-      <div className="legend-values" aria-label="Scale minimum, midpoint and maximum">
-        <span>{ticks[0]}</span>
-        <span>{ticks[1]}</span>
-        <span>{ticks[2]}</span>
+      <div className="legend-scale" style={{ background: resultScaleCssGradient(colorScale) }}>
+        {ticks ? ticks.slice(1, -1).map((tick) => <i key={tick.position} className="legend-tick-mark" style={{ left: `${tick.position * 100}%` }} aria-hidden="true" />) : null}
+        {safetyLimit !== null ? <i className="legend-limit-mark" style={{ left: `${safetyLimit * 100}%` }} aria-hidden="true" /> : null}
       </div>
+      {ticks ? (
+        <div className="legend-values" role="group" aria-label="Scale values from minimum to maximum">
+          {ticks.map((tick, index) => (
+            <span key={index} className={tick.minor ? "legend-tick-quarter" : undefined} style={{ left: `${tick.position * 100}%` }}>{tick.label}</span>
+          ))}
+        </div>
+      ) : (
+        <div className="legend-values legend-values-empty" role="group" aria-label="No result range">
+          <span>{RESULT_LEGEND_NO_VALUE}</span>
+        </div>
+      )}
+      {safetyLimit !== null ? <span className="legend-limit-note"><i aria-hidden="true" />Line marks SF = {SAFETY_FACTOR_LIMIT}: below it the part yields</span> : null}
+      {legendBasis ? <span className="legend-basis">{legendBasis}</span> : null}
       {/* The bar shows the averaged surface field; the summary peak is the unaveraged element value (2026-09 review F8). */}
       {peakLabel && <span className="legend-peak">{peakLabel} (element, unaveraged)</span>}
       <span className="legend-meta">{meshStats.nodes} nodes · {meshStats.elements} elements</span>
@@ -7145,6 +7322,8 @@ function selectedResultField(resultFields: ResultField[], resultMode: ResultMode
 
 function resultColorScaleForField(field: ResultField | undefined, resultMode: ResultMode, component?: ResultField["component"]): ResolvedResultColorScale {
   const resolvedComponent = field?.component ?? component;
+  // Safety factor reads on the fixed absolute scale, never relative to its own extent.
+  if (resultMode === "safety_factor") return { type: resultMode, ...SAFETY_FACTOR_FIXED_RANGE, bands: "continuous" };
   return {
     type: resultMode,
     ...(resolvedComponent ? { component: resolvedComponent } : {}),

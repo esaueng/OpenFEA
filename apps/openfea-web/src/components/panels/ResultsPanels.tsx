@@ -999,9 +999,8 @@ export function playbackPeakMarkerPercent(frames: Array<{ frameIndex: number; ti
 }
 
 export function resultModeExplanation(resultMode: ResultMode): string {
-  // The safety-factor ramp runs the other way (SAFETY_RAMP: red at low factors,
-  // green at high) and has no blue, so the generic sentence would be inverted.
-  if (resultMode === "safety_factor") return "Red areas are closest to yield (low safety factor). Green areas have the most margin.";
+  // Safety factor uses fixed absolute bands (SAFETY_FACTOR_BANDS), not a low-to-high ramp.
+  if (resultMode === "safety_factor") return "Red areas yield (safety factor below 1). Orange and yellow areas have a thin margin (1 to 2). Blue areas are safe (2 or more).";
   const field = resultMode === "displacement"
     ? "displacement magnitude"
     : resultMode === "velocity"

@@ -796,8 +796,8 @@ describe("RightPanel payload mass controls", () => {
     expect(resultModeExplanation("stress")).toBe("Red areas have higher stress. Blue areas have lower stress.");
     expect(resultModeExplanation("displacement")).toBe("Red areas have higher displacement magnitude. Blue areas have lower displacement magnitude.");
     expect(resultModeExplanation("velocity")).toBe("Red areas have higher velocity magnitude. Blue areas have lower velocity magnitude.");
-    // SAFETY_RAMP puts red at low factors of safety; the sentence must agree with the ramp.
-    expect(resultModeExplanation("safety_factor")).toBe("Red areas are closest to yield (low safety factor). Green areas have the most margin.");
+    // The sentence must agree with the fixed safety-factor bands (red < 1 <= caution < 2 <= blue).
+    expect(resultModeExplanation("safety_factor")).toBe("Red areas yield (safety factor below 1). Orange and yellow areas have a thin margin (1 to 2). Blue areas are safe (2 or more).");
   });
 
   test("does not show the selected face as a persistent right-panel banner", () => {
