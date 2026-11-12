@@ -25,6 +25,52 @@ export function solverMassToKilograms(value: number, units: SolverMassUnits): nu
   return value * KILOGRAMS_PER_SOLVER_MASS_UNIT[units];
 }
 
+/** Standard gravity in m/s^2 (CGPM 1901, exact). */
+export const STANDARD_GRAVITY = 9.80665;
+
+/** Consistent solver unit systems accepted by Core models (`coordinateSystem.solverUnits`). */
+export type SolverUnitSystem = "m-N-s-Pa" | "mm-N-s-MPa";
+
+/** Pascals per international pound-force per square inch (exact by definition). */
+export const PASCALS_PER_PSI = 6894.757293168;
+
+const PASCALS_PER_PRESSURE_UNIT: ReadonlyMap<string, number> = new Map([
+  ["pa", 1],
+  ["kpa", 1_000],
+  ["mpa", 1_000_000],
+  ["psi", PASCALS_PER_PSI]
+]);
+
+/** Pascals per solver stress unit: Pa for m-N-s-Pa, MPa (N/mm^2) for mm-N-s-MPa. */
+const PASCALS_PER_SOLVER_STRESS_UNIT: Record<SolverUnitSystem, number> = {
+  "m-N-s-Pa": 1,
+  "mm-N-s-MPa": 1_000_000
+};
+
+/**
+ * Factor from a study pressure/stress unit label (Pa, kPa, MPa, psi; matched
+ * case-insensitively) to Pa. Missing, non-string, and unrecognised labels are
+ * read as Pa, matching how stored projects have always been interpreted.
+ */
+function pascalsPerPressureUnit(units: unknown): number {
+  if (typeof units !== "string") return 1;
+  return PASCALS_PER_PRESSURE_UNIT.get(units.toLowerCase()) ?? 1;
+}
+
+/** Converts a pressure/stress/traction magnitude in a study unit label to Pa. */
+export function pressureToPascals(value: number, units: unknown): number {
+  return value * pascalsPerPressureUnit(units);
+}
+
+/**
+ * Converts a pressure/stress/traction magnitude in a study unit label to the
+ * stress unit of the given solver system (Pa for m-N-s-Pa, MPa for
+ * mm-N-s-MPa). Unit labels are interpreted as in {@link pressureToPascals}.
+ */
+export function pressureToSolverStress(value: number, units: unknown, solverUnits: SolverUnitSystem): number {
+  return value * (pascalsPerPressureUnit(units) / PASCALS_PER_SOLVER_STRESS_UNIT[solverUnits]);
+}
+
 export function stlDimensionsFromBase64(contentBase64?: string): ModelDimensions | undefined {
   if (!contentBase64) return undefined;
   return stlDimensionsFromBytes(base64ToBytes(contentBase64));

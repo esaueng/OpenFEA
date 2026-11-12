@@ -10,7 +10,8 @@
     "@loumalouomega/gmsh-wasm": "0.4.0",
     "@openfea/core": "workspace:*",
     "@openfea/materials": "workspace:*",
-    "@openfea/solve-pipeline": "workspace:*"
+    "@openfea/solve-pipeline": "workspace:*",
+    "@openfea/units": "workspace:*"
   },
   "devDependencies": {
     "@openfea/core-adapter": "workspace:*",

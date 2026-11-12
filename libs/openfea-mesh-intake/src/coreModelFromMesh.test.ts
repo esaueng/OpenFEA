@@ -230,7 +230,72 @@ describe("buildCoreModelFromCloudMesh", () => {
       expect.objectContaining({ type: "remoteForce", totalForce: [0, 0, -4], remotePoint: [0.1, 0.2, 0.3] })
     ]));
   });
+
+  it("emits pressure and traction in the mesh's solver stress unit (Pa for m, MPa for mm)", () => {
+    const buildWith = (volumeMesh: CoreVolumeMeshArtifact, value: number, units: string) => buildCoreModelFromCloudMesh({
+      study: {
+        id: "pressure-units",
+        type: "static_stress",
+        materialAssignments: [{ materialId: "mat-aluminum-6061" }],
+        namedSelections: [
+          { id: "bottom", name: "Bottom", entityType: "face", geometryRefs: [{ entityType: "face", entityId: "step-face-4" }] },
+          { id: "load", name: "Load", entityType: "face", geometryRefs: [{ entityType: "face", entityId: "step-face-9" }] }
+        ],
+        constraints: [{ id: "fixed", type: "fixed", selectionRef: "bottom", parameters: {} }],
+        loads: [
+          { id: "pressure", type: "pressure", selectionRef: "load", parameters: { value, units, direction: [0, 1, 0] } },
+          { id: "traction", type: "surface_traction", selectionRef: "load", parameters: { value, units, direction: [1, 0, 0] } }
+        ]
+      },
+      volumeMesh,
+      analysisType: "static_stress",
+      solverSettings: {}
+    });
+
+    for (const { value, units, pascals } of [
+      { value: 250, units: "Pa", pascals: 250 },
+      { value: 2, units: "kPa", pascals: 2_000 },
+      { value: 1.5, units: "MPa", pascals: 1_500_000 },
+      { value: 10, units: "psi", pascals: 68_947.57293168 }
+    ]) {
+      const metres = buildWith(singleTetArtifact(), value, units);
+      const millimetres = buildWith(singleTetArtifactMm(), value, units);
+      const pressureOf = (model: typeof metres) => {
+        const load = model.loads.find((candidate) => candidate.type === "pressure");
+        if (load?.type !== "pressure") throw new Error(`Expected a pressure load for ${units}.`);
+        return load.pressure;
+      };
+      const tractionOf = (model: typeof metres) => {
+        const load = model.loads.find((candidate) => candidate.type === "surfaceTraction");
+        if (load?.type !== "surfaceTraction") throw new Error(`Expected a surface traction load for ${units}.`);
+        return load.traction;
+      };
+
+      expect(millimetres.coordinateSystem?.solverUnits).toBe("mm-N-s-MPa");
+      expect(pressureOf(metres)).toBeCloseTo(pascals, 6);
+      expect(tractionOf(metres)[0]).toBeCloseTo(pascals, 6);
+      // MPa = Pa / 1e6: the same physical load, not a 1e6x overload.
+      expect(pressureOf(millimetres)).toBeCloseTo(pascals / 1_000_000, 9);
+      expect(tractionOf(millimetres)[0]).toBeCloseTo(pascals / 1_000_000, 9);
+      expect(tractionOf(millimetres).slice(1)).toEqual([0, 0]);
+    }
+  });
 });
+
+/** {@link singleTetArtifact} in mm-N-s-MPa solver units (coordinates x1000). */
+function singleTetArtifactMm(): CoreVolumeMeshArtifact {
+  const artifact = singleTetArtifact();
+  return {
+    ...artifact,
+    nodes: { coordinates: artifact.nodes.coordinates.map((value) => value * 1000) },
+    surfaceFacets: artifact.surfaceFacets.map((facet) => ({
+      ...facet,
+      center: facet.center ? [facet.center[0] * 1000, facet.center[1] * 1000, facet.center[2] * 1000] : facet.center
+    })),
+    coordinateSystem: { solverUnits: "mm-N-s-MPa", renderCoordinateSpace: "solver" },
+    metadata: { ...artifact.metadata, units: "mm" }
+  };
+}
 
 /** One positive-volume Tet4 in meters with canonical face facets (TET_CORNER_FACES order). */
 function singleTetArtifact(): CoreVolumeMeshArtifact {

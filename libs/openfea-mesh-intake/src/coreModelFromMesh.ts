@@ -18,6 +18,9 @@
 //     carry body identity (`body:<bodyId>`) becomes one element block per body,
 //     each with its own assigned material. Meshes without body identity keep
 //     the single "solid" block and material exactly as upstream.
+//  6. Pressure and surface-traction magnitudes are emitted in the solver stress
+//     unit (Pa for m-N-s-Pa, MPa for mm-N-s-MPa) via @openfea/units. Upstream
+//     always emitted Pa, which overloaded mm-N-s-MPa models by 1e6.
 import {
   OPENFEA_MODEL_SCHEMA,
   OPENFEA_MODEL_SCHEMA_VERSION,
@@ -45,6 +48,7 @@ import {
   starterMaterials,
   type PrintStrengthContext
 } from "@openfea/materials";
+import { pressureToSolverStress, STANDARD_GRAVITY, type SolverUnitSystem } from "@openfea/units";
 import type { CloudAnalysisType, CloudStudyLike, CoreVolumeMeshArtifact } from "./types";
 
 type BuildCoreModelInput = {
@@ -80,8 +84,6 @@ type SelectionMappingInput = {
   /** A-M3 deviation (see header): receives one entry describing the resolved mapping. */
   diagnostics?: SelectionMappingDiagnostic[];
 };
-
-const STANDARD_GRAVITY = 9.80665;
 
 type PrintMaterialProfile = {
   process: "FDM" | "SLS" | "SLA" | "MJF" | "Metal AM";
@@ -212,7 +214,7 @@ export function buildCoreModelFromCloudMesh(rawInput: BuildCoreModelInput): Open
         name: `pressure${index}`,
         type: "pressure",
         surfaceSet: surfaceSet.name,
-        pressure: pressurePascals(load.parameters),
+        pressure: pressureInSolverStressUnits(load.parameters, input.volumeMesh.coordinateSystem.solverUnits),
         direction: vector3(load.parameters?.direction) ?? [0, 0, -1]
       });
       continue;
@@ -229,7 +231,7 @@ export function buildCoreModelFromCloudMesh(rawInput: BuildCoreModelInput): Open
 
     if (loadType === "surface_traction") {
       const direction = normalize(vector3(load.parameters?.direction) ?? [0, -1, 0]);
-      const magnitude = pressurePascals(load.parameters);
+      const magnitude = pressureInSolverStressUnits(load.parameters, input.volumeMesh.coordinateSystem.solverUnits);
       loads.push({
         name: `surfaceTraction${index}`,
         type: "surfaceTraction",
@@ -1193,13 +1195,9 @@ function mappedElementSetForSelection(
   return elementSets[0]!;
 }
 
-function pressurePascals(parameters: Record<string, unknown> | undefined): number {
-  const value = numberValue(parameters?.value) ?? 0;
-  const units = typeof parameters?.units === "string" ? parameters.units.toLowerCase() : "pa";
-  if (units === "kpa") return value * 1000;
-  if (units === "mpa") return value * 1_000_000;
-  if (units === "psi") return value * 6894.757293168;
-  return value;
+/** Pressure/traction magnitude in the solver stress unit: Pa (m-N-s-Pa) or MPa (mm-N-s-MPa). */
+function pressureInSolverStressUnits(parameters: Record<string, unknown> | undefined, solverUnits: SolverUnitSystem): number {
+  return pressureToSolverStress(numberValue(parameters?.value) ?? 0, parameters?.units, solverUnits);
 }
 
 function payloadGravityForce(parameters: Record<string, unknown> | undefined): [number, number, number] {

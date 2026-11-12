@@ -686,6 +686,77 @@ describe("per-model solver backend resolution", () => {
     expect(material.density).toBeCloseTo(2.7e-9, 18);
   });
 
+  test("emits pressure and traction in the stored model's solver stress unit (Pa for m, MPa for mm)", () => {
+    const pressureStudy = (meshSettings: Study["meshSettings"], value: number, units: string) => autoStudy({
+      meshSettings,
+      loads: [
+        { id: "pressure", type: "pressure", selectionRef: "selection-load-face", parameters: { value, units }, status: "complete" },
+        { id: "traction", type: "surface_traction", selectionRef: "selection-load-face", parameters: { value, units, direction: [0, -1, 0] }, status: "complete" }
+      ]
+    });
+    const mmMeshSettings = actualMeshSettings();
+    mmMeshSettings.summary!.artifacts!.actualCoreModel = { model: mmActualCoreModelFixture() };
+
+    for (const { value, units, pascals } of [
+      { value: 250, units: "Pa", pascals: 250 },
+      { value: 125, units: "kPa", pascals: 125_000 },
+      { value: 2.5, units: "MPa", pascals: 2_500_000 },
+      { value: 10, units: "psi", pascals: 68_947.57293168 }
+    ]) {
+      const mModel = buildOpenFeaCoreModelForStudy(pressureStudy(actualMeshSettings(), value, units), cantileverDisplayModel()).model;
+      const mmModel = buildOpenFeaCoreModelForStudy(pressureStudy(mmMeshSettings, value, units), cantileverDisplayModel()).model;
+      const pressureOf = (model: typeof mModel) => {
+        const load = model.loads.find((candidate) => candidate.type === "pressure");
+        if (load?.type !== "pressure") throw new Error(`Expected a pressure load for ${units}.`);
+        return load.pressure;
+      };
+      const tractionOf = (model: typeof mModel) => {
+        const load = model.loads.find((candidate) => candidate.type === "surfaceTraction");
+        if (load?.type !== "surfaceTraction") throw new Error(`Expected a surface traction load for ${units}.`);
+        return Math.hypot(...load.traction);
+      };
+
+      expect(mModel.coordinateSystem?.solverUnits).toBe("m-N-s-Pa");
+      expect(mmModel.coordinateSystem?.solverUnits).toBe("mm-N-s-MPa");
+      expect(pressureOf(mModel)).toBeCloseTo(pascals, 6);
+      expect(tractionOf(mModel)).toBeCloseTo(pascals, 6);
+      // MPa = Pa / 1e6: the same physical load, not a 1e6x overload.
+      expect(pressureOf(mmModel)).toBeCloseTo(pascals / 1_000_000, 9);
+      expect(tractionOf(mmModel)).toBeCloseTo(pascals / 1_000_000, 9);
+    }
+  });
+
+  test("solves the same pressure-loaded tet to the same physical displacement in mm and m solver units", () => {
+    const pressureStudy = (meshSettings: Study["meshSettings"]) => autoStudy({
+      meshSettings,
+      loads: [{ id: "pressure", type: "pressure", selectionRef: "selection-load-face", parameters: { value: 20, units: "MPa" }, status: "complete" }]
+    });
+    const mmMeshSettings = actualMeshSettings();
+    mmMeshSettings.summary!.artifacts!.actualCoreModel = { model: mmActualCoreModelFixture() };
+    // Solver-cpu reports displacement in mm and stress in MPa for both unit
+    // systems, so the same physical load must give the same field peaks.
+    const peaks = (model: ReturnType<typeof buildOpenFeaCoreModelForStudy>["model"]) => {
+      const solved = solveCoreStatic(model, { method: "sparse", solverMode: "sparse" });
+      if (!solved.ok) throw new Error(`Expected the pressure-loaded tet to solve: ${JSON.stringify(solved)}`);
+      const surfaceMesh = solved.result.surfaceMesh ?? solverSurfaceMeshFromModel(model);
+      const peakOf = (type: "displacement" | "stress") => {
+        const field = solved.result.fields.find((candidate) => candidate.type === type && candidate.surfaceMeshRef === surfaceMesh.id);
+        if (!field) throw new Error(`Expected a surface ${type} field.`);
+        return Math.max(...field.values.map(Math.abs));
+      };
+      return { displacementMm: peakOf("displacement"), stressMpa: peakOf("stress") };
+    };
+
+    const metres = peaks(buildOpenFeaCoreModelForStudy(pressureStudy(actualMeshSettings()), cantileverDisplayModel()).model);
+    const millimetres = peaks(buildOpenFeaCoreModelForStudy(pressureStudy(mmMeshSettings), cantileverDisplayModel()).model);
+
+    expect(metres.displacementMm).toBeGreaterThan(0);
+    expect(metres.stressMpa).toBeGreaterThan(0);
+    // Before the fix the mm model received 20e6 "MPa" and both ratios were 1e6.
+    expect(millimetres.displacementMm / metres.displacementMm).toBeCloseTo(1, 6);
+    expect(millimetres.stressMpa / metres.stressMpa).toBeCloseTo(1, 6);
+  });
+
   test("rejects unverifiable index-only mappings from pre-alias mesh artifacts", () => {
     const storedModel = actualCoreModelFixture();
     storedModel.surfaceFacets = storedModel.surfaceFacets.map(({ sourceSelectionRef: _selection, sourceFaceId: _face, ...facet }) => facet);
@@ -876,6 +947,18 @@ describe("static result envelopes", () => {
     });
   });
 });
+
+/** The actual Core model fixture rescaled to mm-N-s-MPa (lengths x1000, areas x1e6). */
+function mmActualCoreModelFixture() {
+  const model = actualCoreModelFixture();
+  const scalePoint = (point: [number, number, number]): [number, number, number] => [point[0] * 1000, point[1] * 1000, point[2] * 1000];
+  return {
+    ...model,
+    nodes: { coordinates: model.nodes.coordinates.map((value) => value * 1000) },
+    surfaceFacets: model.surfaceFacets.map((facet) => ({ ...facet, area: facet.area * 1_000_000, center: scalePoint(facet.center) })),
+    coordinateSystem: { solverUnits: "mm-N-s-MPa" as const, renderCoordinateSpace: "solver" }
+  };
+}
 
 function actualCoreModelFixture() {
   return {

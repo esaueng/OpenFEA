@@ -1,4 +1,5 @@
 import type { DisplayFace, DisplayModel, Load, Study } from "@openfea/schema";
+import { STANDARD_GRAVITY } from "@openfea/units";
 import * as THREE from "three";
 import { modelDirectionToViewerSpace as importedModelDirectionToViewerSpace, viewerDirectionToModelSpace as importedViewerDirectionToModelSpace } from "./modelOrientation";
 import type { PayloadObjectSelection, ViewerLoadMarker } from "./workspaceViewTypes";
@@ -24,7 +25,7 @@ export interface DraftLoadPreview {
   load: Load;
   selection?: Pick<Study["namedSelections"][number], "id" | "geometryRefs">;
 }
-export const STANDARD_GRAVITY = 9.80665;
+export { STANDARD_GRAVITY };
 
 const DIRECTION_VECTORS: Record<Exclude<LoadDirectionLabel, "Normal" | "Opposite normal">, LoadDirection> = {
   "-Y": [0, -1, 0],

@@ -15,6 +15,7 @@ import {
   type SurfaceSetJson
 } from "@openfea/core";
 import { solveSteadyStateThermal, type DynamicLoadProfile } from "@openfea/solver-cpu";
+import { pressureToPascals, pressureToSolverStress } from "@openfea/units";
 import { CPU_TET_DOF_THRESHOLD, MAX_WEBGPU_TET4_DOFS, WEBGPU_TET4_AUTOMATIC_ENABLED, solveStaticTet4ModelWebGpu } from "@openfea/solver-webgpu";
 import {
   BROWSER_SOLVE_LIMITS,
@@ -919,7 +920,7 @@ export function buildOpenFeaCoreModelForStudy(
       continue;
     }
     if (load.type === "pressure") {
-      const pressure = pressurePascals(load);
+      const pressure = pressureInSolverStressUnits(load, model);
       if (pressure <= 0) continue;
       const pressureDirection = normalize(vector3(load.parameters.direction) ?? [0, 0, -1]);
       const name = `pressure${index}`;
@@ -936,7 +937,7 @@ export function buildOpenFeaCoreModelForStudy(
 
     if (load.type === "surface_traction") {
       const direction = normalize(vector3(load.parameters.direction) ?? [0, 0, -1]);
-      const magnitude = pressurePascals(load);
+      const magnitude = pressureInSolverStressUnits(load, model);
       if (!direction || !(magnitude > 0)) continue;
       const name = `surfaceTraction${index}`;
       loads.push({
@@ -1458,11 +1459,14 @@ function modalSettingsForStudy(study: Extract<Study, { type: "modal_analysis" }>
 function pressurePascals(load: Study["loads"][number]): number {
   const value = Number(load.parameters.value);
   if (!Number.isFinite(value) || value <= 0) return 0;
-  const units = typeof load.parameters.units === "string" ? load.parameters.units.toLowerCase() : "pa";
-  if (units === "kpa") return value * 1000;
-  if (units === "mpa") return value * 1_000_000;
-  if (units === "psi") return value * 6894.757293168;
-  return value;
+  return pressureToPascals(value, load.parameters.units);
+}
+
+/** Pressure/traction magnitude in the model's solver stress unit: Pa (m-N-s-Pa) or MPa (mm-N-s-MPa). */
+function pressureInSolverStressUnits(load: Study["loads"][number], model: Pick<OpenFEAModelJson, "coordinateSystem">): number {
+  const value = Number(load.parameters.value);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return pressureToSolverStress(value, load.parameters.units, model.coordinateSystem?.solverUnits ?? "m-N-s-Pa");
 }
 
 function forceDensityNewtonsPerCubicMeter(load: Study["loads"][number]): number {
