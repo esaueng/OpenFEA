@@ -1358,8 +1358,10 @@ img {
    width: the stepper's tiers are measured to the pixel. */
 .step-nav-check {
   position: absolute;
-  top: 3px;
-  right: 1px;
+  top: 0;
+  right: 0;
+  width: 9px;
+  height: 9px;
   flex: none;
   color: var(--color-success);
   pointer-events: none;
