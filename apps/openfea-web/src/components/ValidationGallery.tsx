@@ -3,6 +3,7 @@ import { CheckCircle2, FlaskConical, Gauge, Play, Square, X, XCircle } from "luc
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import {
   VALIDATION_BENCHMARKS,
+  metricAcceptanceLabel,
   metricPercentError,
   type ValidationBenchmarkId,
   type ValidationBenchmarkResult
@@ -97,6 +98,7 @@ export function ValidationGallery({ onClose }: { onClose: () => void }) {
             <div className="validation-metric-grid">
               {displayedResult.metrics.map((metric) => {
                 const errorPercent = metricPercentError(metric);
+                const acceptance = metricAcceptanceLabel(metric);
                 return (
                   <article key={metric.id}>
                     <small>{metric.label}</small>
@@ -104,6 +106,7 @@ export function ValidationGallery({ onClose }: { onClose: () => void }) {
                     {metric.reference !== undefined ? (
                       <span>Reference {formatMetric(metric.reference)}{metric.units ? ` ${metric.units}` : ""}{errorPercent !== null ? ` · ${errorPercent.toFixed(2)}% error` : ""}</span>
                     ) : <span>Measured value</span>}
+                    {acceptance && <span className={`validation-metric-tolerance ${acceptance.within ? "within" : "outside"}`}>{acceptance.text}</span>}
                   </article>
                 );
               })}
