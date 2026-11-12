@@ -55,14 +55,17 @@ export async function saveEncryptedCloudBackup(
     encryptionKey: bytesToBase64Url(new Uint8Array(rawKey)),
     expiresAt: result.expiresAt
   };
+  const previous = readCloudBackupDescriptor(storage);
   if (!writeDescriptor(descriptor, storage)) {
     // The server object is unrecoverable without the local key, so remove it
     // instead of orphaning 30 days of ciphertext the user can never delete.
-    await fetchImpl(`${CLOUD_BACKUP_PATH}/${backupId}`, {
-      method: "DELETE",
-      headers: { "x-opencae-backup-token": token }
-    }).catch(() => undefined);
+    await deleteCloudBackupObject(backupId, token, fetchImpl);
     throw new Error(`Cloud backup ${backupId} was stored, but its local recovery key could not be saved. Download the project file now.`);
+  }
+  // Only one descriptor is kept, so the previous backup just lost its key.
+  // Delete it in the background; a failure leaves it to the retention sweep.
+  if (previous && previous.backupId !== backupId) {
+    void deleteCloudBackupObject(previous.backupId, previous.token, fetchImpl);
   }
   return descriptor;
 }
@@ -118,6 +121,18 @@ export function writeCloudBackupPreference(preference: CloudBackupPreference, st
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Best-effort removal of a stored backup; never rejects. */
+async function deleteCloudBackupObject(backupId: string, token: string, fetchImpl: typeof fetch): Promise<void> {
+  try {
+    await fetchImpl(`${CLOUD_BACKUP_PATH}/${backupId}`, {
+      method: "DELETE",
+      headers: { "x-opencae-backup-token": token }
+    });
+  } catch {
+    // Ignored: the daily sweep deletes the object once it expires.
   }
 }
 
