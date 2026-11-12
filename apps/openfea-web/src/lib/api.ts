@@ -28,8 +28,11 @@ import {
   finishLocalRun,
   subscribeToLocalRunRecord,
   syntheticRunErrorEvent,
-  type LocalRunRecord
+  type LocalRunRecord,
+  type RunSubscription
 } from "./localRunStore";
+
+export type { RunSubscription } from "./localRunStore";
 
 export interface SampleProjectResponse {
   message?: string;
@@ -710,7 +713,7 @@ function loadCasesWithAddedLoad(study: Extract<Study, { type: "static_stress" | 
   return cases.map((loadCase, index) => index === 0 ? { ...loadCase, loadIds: [...loadCase.loadIds, loadId] } : loadCase);
 }
 
-export async function runSimulation(studyId: string, currentStudy: Study, displayModel?: DisplayModel, options: RunSimulationOptions = {}): Promise<{ run: { id: string }; streamUrl: string; message: string }> {
+export async function runSimulation(studyId: string, currentStudy: Study, displayModel?: DisplayModel, options: RunSimulationOptions = {}): Promise<{ run: { id: string }; message: string }> {
   // B4a: every run executes locally in the browser (complex geometry without
   // a stored mesh artifact is wasm-meshed first when this build/browser can).
   // The legacy server-dispatched run branch is gone: since B3
@@ -884,25 +887,25 @@ function cancelledStudyRun(runId: string, solverBackend: string): StudyRun {
   };
 }
 
-export function subscribeToRun(runId: string, onEvent: (event: RunEvent) => void): EventSource {
+export function subscribeToRun(runId: string, onEvent: (event: RunEvent) => void): RunSubscription {
   const localRecord = localRunsByRunId.get(runId);
   if (localRecord) return subscribeToLocalRunRecord(localRecord, onEvent);
   const deliverFailure = (message: string) => onEvent(syntheticRunErrorEvent(runId, message));
-  // Browser-run ids with no live record are terminal history — never open an
-  // event stream to endpoints that cannot know them (historical cloud runs'
-  // client endpoints are gone; local runs live only in this session).
+  // Browser-run ids with no live record are terminal history: deliver one
+  // synthetic failure (historical cloud runs' endpoints are gone; local runs
+  // live only in this session).
   if (runId.startsWith(HISTORICAL_CLOUD_RUN_ID_PREFIX) || runId.startsWith("run-local-")) {
     const timer = globalThis.setTimeout(() => deliverFailure(
       runId.startsWith(HISTORICAL_CLOUD_RUN_ID_PREFIX)
         ? HISTORICAL_CLOUD_RUN_MESSAGE
         : "This local run is no longer active in this browser session. Re-run the simulation."
     ), 0);
-    return { close: () => globalThis.clearTimeout(timer) } as EventSource;
+    return { close: () => globalThis.clearTimeout(timer) };
   }
   const timer = globalThis.setTimeout(() => deliverFailure(
     "This run is not active in the current browser session. Re-run the simulation locally."
   ), 0);
-  return { close: () => globalThis.clearTimeout(timer) } as EventSource;
+  return { close: () => globalThis.clearTimeout(timer) };
 }
 
 function messageFromUnknownError(error: unknown): string {
@@ -923,7 +926,7 @@ export function geometryWithMeshPreset(geometry: NonNullable<ReturnType<typeof g
 /** First 20% of a mesh-first run's progress belongs to real meshing phases. */
 const MESH_FIRST_SOLVE_PROGRESS_OFFSET = 20;
 
-function runSimulationLocally(study: Study, displayModel?: DisplayModel, options: RunSimulationOptions = {}): { run: StudyRun; streamUrl: string; message: string } {
+function runSimulationLocally(study: Study, displayModel?: DisplayModel, options: RunSimulationOptions = {}): { run: StudyRun; message: string } {
   const runId = `run-local-${crypto.randomUUID()}`;
   const backend = simulationBackend(study);
   // A-M4 local-first meshing: complex geometry without a stored Core volume
@@ -959,7 +962,6 @@ function runSimulationLocally(study: Study, displayModel?: DisplayModel, options
           suggestedActions: []
         }]
       },
-      streamUrl: `local:${runId}`,
       message: coreEligibility.reason
     };
   }
@@ -1071,7 +1073,6 @@ function runSimulationLocally(study: Study, displayModel?: DisplayModel, options
       startedAt: now,
       diagnostics: []
     },
-    streamUrl: `local:${runId}`,
     message: "OpenFEA Core Local simulation running."
   };
 }
