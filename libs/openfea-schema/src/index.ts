@@ -21,13 +21,32 @@ const boundedId = z.string().min(1).max(256);
 const boundedLabel = z.string().max(512);
 const finiteNumber = z.number();
 
+/**
+ * The solver ran on a lower-order projection of the stored mesh (today only a
+ * local modal Tet10 solve reduced to its corner-node Tet4 topology). DOF counts
+ * are unitless.
+ */
+export const DiagnosticMeshProjectionSchema = z.object({
+  sourceElementOrder: z.enum(["Tet4", "Tet10"]),
+  solveElementOrder: z.enum(["Tet4", "Tet10"]),
+  sourceDofs: z.number().int().nonnegative(),
+  solveDofs: z.number().int().nonnegative(),
+  reason: z.string().max(128)
+});
+
 export const DiagnosticSchema = z.object({
   id: z.string(),
   severity: z.enum(["info", "warning", "error"]),
   source: z.enum(["geometry", "mesh", "solver", "local_job", "validation", "ui"]),
   message: z.string(),
   relatedEntityRef: z.string().optional(),
-  suggestedActions: z.array(z.string()).default([])
+  suggestedActions: z.array(z.string()).default([]),
+  /**
+   * Optional, additive (container stays version 2): diagnostics saved before
+   * it was persisted omit it, and an unreadable payload is dropped rather than
+   * rejecting the result bundle.
+   */
+  meshProjection: DiagnosticMeshProjectionSchema.optional().catch(undefined)
 });
 
 const MaterialPrintProfileSchema = z
