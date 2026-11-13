@@ -23,6 +23,7 @@ import {
   type MeshWorkerResults
 } from "./meshProtocol";
 import { redactLocalPaths } from "./redactLocalPaths";
+import { isAllocationFailure, reportFailureDiagnostic } from "../diagnosticSink";
 import { workerClientError } from "./workerClientError";
 
 export type MeshProgressListener = (progress: { phase: MeshWorkerPhase; elapsedMs: number; attempt?: MeshAttemptContext }) => void;
@@ -144,6 +145,8 @@ function handleMeshWorkerMessage(event: MessageEvent<MeshWorkerResponse>) {
     // distinguish quality-gate rejections (MeshQualityError) from transient
     // meshing failures.
     if (response.error.name) error.name = response.error.name;
+    // Classified locally from the reply; only the fixed code is reported.
+    if (isAllocationFailure(response.error)) reportFailureDiagnostic("error_out_of_memory");
     pending.reject(error);
     releaseMeshWorkerIfIdle();
     return;
@@ -165,6 +168,8 @@ function releaseMeshWorkerIfIdle(): void {
 }
 
 function handleMeshWorkerError(event: ErrorEvent) {
+  // Fixed code only: the event's message, filename and line never leave the page.
+  reportFailureDiagnostic("error_worker");
   const error = new Error(event.message ? userFacingMeshWorkerMessage(event.message) : "Mesh worker failed.");
   for (const pending of pendingRequests.values()) {
     globalThis.clearTimeout(pending.timeoutId);

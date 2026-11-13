@@ -51,3 +51,26 @@ it('keeps client and relay wire vocabularies aligned', async () => {
   expect(client.EXPANDED).toEqual(relay.EXPANDED);
   expect(client.CENSUS_FIELDS).toEqual(relay.CENSUS_FIELDS);
 });
+
+it('relays the four approved diagnostic codes as bare optional codes only', () => {
+  for (const event of ['error_unresponsive','error_gpu_lost','error_out_of_memory','error_worker']) {
+    expect(parseUsage({event,bucket:'none'})).toEqual({level:'optional',event,bucket:'none'});
+    for (const bucket of ['gte_60s','1_10mib','5000','NVIDIA','private.step']) expect(parseUsage({event,bucket})).toBeNull();
+    for (const key of ['message','stack','url','adapter','driver','bytes','durationMs']) expect(parseUsage({event,bucket:'none',[key]:'x'})).toBeNull();
+  }
+});
+
+it('answers 204 without retrying when an older Glimpse rejects a newer code', async () => {
+  const {record,env}=setup(); record.mockRejectedValue(new Error('Invalid metric'));
+  const response=await handleGlimpseUsage(request({event:'error_gpu_lost',bucket:'none'}),env);
+  expect(response.status).toBe(204);
+  expect(record).toHaveBeenCalledExactlyOnceWith({level:'optional',event:'error_gpu_lost',bucket:'none'});
+});
+
+it('mirrors the Glimpse diagnostic allowlist in client and relay', async () => {
+  const client=await import('../src/glimpseContract');
+  const relay=await import('./glimpseContract');
+  expect(relay.DIAGNOSTICS).toEqual(client.DIAGNOSTICS);
+  expect(client.DIAGNOSTICS).toEqual(expect.arrayContaining(['error_unresponsive','error_gpu_lost','error_out_of_memory','error_worker']));
+  for (const app of ['openfea','openzcad']) expect(client.expandedMetric('error_worker','none',app)).toBe(true);
+});

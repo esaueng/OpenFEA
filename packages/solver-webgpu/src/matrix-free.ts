@@ -8,6 +8,13 @@ export const CPU_TET_DOF_THRESHOLD = DEFAULT_STRUCTURAL_MAX_DOFS;
  * and end-to-end browser benchmarks establish a safe release ceiling.
  */
 export const WEBGPU_TET4_AUTOMATIC_ENABLED = false;
+/** Fixed failure code: the GPU device was lost (driver reset, GPU process crash, eviction). */
+export const WEBGPU_DEVICE_LOST_CODE = "webgpu-device-lost";
+/** Fixed failure code: the GPU refused to allocate the solver buffers. */
+export const WEBGPU_OUT_OF_MEMORY_CODE = "webgpu-out-of-memory";
+// How long a failed readback waits for device.lost to settle before deciding
+// the failure was something else. Loss is reported asynchronously.
+const DEVICE_LOST_SETTLE_MS = 50;
 
 export type Tet4MatrixFreeData = {
   dofs: number;
@@ -150,7 +157,13 @@ export async function solveTet4MatrixFreeWebGpu(data: Tet4MatrixFreeData, rhs: F
   try {
     for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
       if (options.shouldCancel?.()) return failure("cancelled", "WebGPU solve cancelled.", iteration - 1, Math.sqrt(dot(r, r)) / rhsNorm);
-      const ap = await operator.multiply(p);
+      let ap: Float32Array;
+      try {
+        ap = await operator.multiply(p);
+      } catch (error) {
+        if (await operator.lost()) return failure(WEBGPU_DEVICE_LOST_CODE, "WebGPU device lost.", iteration - 1, Math.sqrt(dot(r, r)) / rhsNorm);
+        throw error;
+      }
       const denominator = dot(p, ap);
       const denominatorTolerance = 16 * 2 ** -23 * Math.sqrt(dot(p, p)) * Math.sqrt(dot(ap, ap));
       if (!Number.isFinite(denominator) || denominator <= denominatorTolerance) return failure("singular-system", "WebGPU matrix-free CG encountered a singular or indefinite system.", iteration, Math.sqrt(dot(r, r)) / rhsNorm);
@@ -173,13 +186,33 @@ export async function solveTet4MatrixFreeWebGpu(data: Tet4MatrixFreeData, rhs: F
   return failure("cg-not-converged", "WebGPU matrix-free CG did not converge within maxIterations.", maxIterations, Math.sqrt(dot(r, r)) / rhsNorm);
 }
 
-async function createWebGpuOperator(data: Tet4MatrixFreeData, navigatorOverride: unknown): Promise<{ ok: true; multiply: (x: Float32Array) => Promise<Float32Array>; destroy: () => void } | { ok: false; error: { code: string; message: string } }> {
+type WebGpuOperator = {
+  ok: true;
+  multiply: (x: Float32Array) => Promise<Float32Array>;
+  /** Resolves true when the device was lost for any reason other than our own destroy(). */
+  lost: () => Promise<boolean>;
+  destroy: () => void;
+};
+
+async function createWebGpuOperator(data: Tet4MatrixFreeData, navigatorOverride: unknown): Promise<WebGpuOperator | { ok: false; error: { code: string; message: string } }> {
   const navigatorLike = (navigatorOverride ?? globalThis.navigator) as { gpu?: { requestAdapter: () => Promise<any> } } | undefined;
   const adapter = await navigatorLike?.gpu?.requestAdapter?.();
   if (!adapter) return { ok: false, error: { code: "webgpu-unavailable", message: "A WebGPU adapter is required for the matrix-free Tet4 backend." } };
   const device: any = await adapter.requestDevice();
+  // device.lost resolves once. Reason "destroyed" is our own destroy() below;
+  // anything else (driver reset, GPU process crash) is an unexpected loss.
+  let lostUnexpectedly = false;
+  const lostSettled = Promise.resolve(device.lost).then((info: { reason?: unknown } | undefined) => { if (info && info.reason !== "destroyed") lostUnexpectedly = true; }, () => undefined);
+  const lost = async (): Promise<boolean> => {
+    await Promise.race([lostSettled, new Promise((resolve) => setTimeout(resolve, DEVICE_LOST_SETTLE_MS))]);
+    return lostUnexpectedly;
+  };
+  // Buffer allocation is the explicit out-of-memory site: GPU OOM is reported
+  // through an error scope rather than an exception.
+  device.pushErrorScope?.("out-of-memory");
   const usage = { MAP_READ: 1, COPY_SRC: 4, COPY_DST: 8, STORAGE: 128 };
   const buffers: any[] = [];
+  const destroy = () => { for (const buffer of buffers) buffer.destroy(); device.destroy?.(); };
   const make = (array: ArrayBufferView, flags = usage.STORAGE | usage.COPY_DST) => {
     const buffer = device.createBuffer({ size: Math.max(4, (array.byteLength + 3) & ~3), usage: flags });
     device.queue.writeBuffer(buffer, 0, array.buffer, array.byteOffset, array.byteLength); buffers.push(buffer); return buffer;
@@ -189,6 +222,10 @@ async function createWebGpuOperator(data: Tet4MatrixFreeData, navigatorOverride:
   const read = device.createBuffer({ size: data.dofs * 4, usage: usage.MAP_READ | usage.COPY_DST }); buffers.push(read);
   const entries = [x, y, make(data.rowPtr), make(data.adjacencyElements), make(data.adjacencyLocalRows), make(data.connectivity), make(data.elementData), make(data.constrained)]
     .map((buffer, binding) => ({ binding, resource: { buffer } }));
+  if (await Promise.resolve(device.popErrorScope?.()).catch(() => null)) {
+    destroy();
+    return { ok: false, error: { code: WEBGPU_OUT_OF_MEMORY_CODE, message: "WebGPU buffer allocation failed." } };
+  }
   const module = device.createShaderModule({ code: MATVEC_WGSL });
   const pipeline = device.createComputePipeline({ layout: "auto", compute: { module, entryPoint: "main" } });
   const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries });
@@ -201,7 +238,8 @@ async function createWebGpuOperator(data: Tet4MatrixFreeData, navigatorOverride:
       encoder.copyBufferToBuffer(y, 0, read, 0, data.dofs * 4); device.queue.submit([encoder.finish()]);
       await read.mapAsync(1); const result = new Float32Array(read.getMappedRange().slice(0)); read.unmap(); return result;
     },
-    destroy() { for (const buffer of buffers) buffer.destroy(); device.destroy?.(); }
+    lost,
+    destroy
   };
 }
 

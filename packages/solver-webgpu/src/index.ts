@@ -6,6 +6,8 @@ export {
   buildTet4ElementData,
   CPU_TET_DOF_THRESHOLD,
   MAX_WEBGPU_TET4_DOFS,
+  WEBGPU_DEVICE_LOST_CODE,
+  WEBGPU_OUT_OF_MEMORY_CODE,
   WEBGPU_TET4_AUTOMATIC_ENABLED,
   solveTet4MatrixFreeWebGpu,
   tet4MatrixFreeInternalForce,
