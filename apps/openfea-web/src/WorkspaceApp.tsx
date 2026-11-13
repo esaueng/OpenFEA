@@ -368,8 +368,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     [resultSummary, safetyFactorBasis.factor]
   );
   const basisResultFields = useMemo(
-    () => rebaseSafetyFactorFields(resultFields, safetyFactorBasis.factor),
-    [resultFields, safetyFactorBasis.factor]
+    () => rebaseSafetyFactorFields(resultFields, safetyFactorBasis.factor, safetyFactorBasis.strengthPascals),
+    [resultFields, safetyFactorBasis.factor, safetyFactorBasis.strengthPascals]
   );
   const resultSummaryForUi = useMemo(() => basisResultSummary ? resultSummaryForUnits(basisResultSummary, displayUnitSystem) : null, [basisResultSummary, displayUnitSystem]);
   // The legend's max is the averaged surface field; the headline peak is the

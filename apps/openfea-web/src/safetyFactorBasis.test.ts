@@ -176,7 +176,7 @@ describe("allowable stress basis", () => {
     expect(zero.safetyFactor).toBe(0);
     const node: ResultField = { id: "sf", runId: "r", type: "safety_factor", location: "node", values: [SAFETY_FACTOR_DISPLAY_CAP, SAFETY_FACTOR_DISPLAY_FLOOR, 0.02, 9000], min: SAFETY_FACTOR_DISPLAY_FLOOR, max: SAFETY_FACTOR_DISPLAY_CAP, units: "ratio" };
     const [scaled] = rebaseSafetyFactorFields([node], 0.4);
-    expect(scaled!.values[0]).toBe(SAFETY_FACTOR_DISPLAY_CAP);
+    expect(scaled!.values[0]).toBe(SAFETY_FACTOR_DISPLAY_CAP * 0.4);
     expect(scaled!.values[1]).toBe(SAFETY_FACTOR_DISPLAY_FLOOR);
     expect(scaled!.values[2]).toBe(SAFETY_FACTOR_DISPLAY_FLOOR);
     expectRelative(scaled!.values[3]!, 3600, ROUNDOFF_RELATIVE_TOLERANCE);
@@ -191,6 +191,33 @@ describe("allowable stress basis", () => {
     const basis = resolveSafetyFactorBasis({ study: unset, customMaterials: [SHOP_STEEL], unitSystem: "SI" });
     expect(basis.strength).toBe("yield");
     expect(basis.fallbackReason).toMatch(/allowable stress is not set/);
+  });
+
+  test.each(["Pa", "MPa"])("reconstructs saturated contours from matching %s stress, including dynamic frames", (units) => {
+    const strengthPascals = 1e3;
+    const stress: ResultField = {
+      id: "stress", runId: "r", variantId: "case:a", frameIndex: 1,
+      type: "stress", component: "von_mises", location: "node", surfaceMeshRef: "surface",
+      values: [2e3, 0, 2e5].map((value) => units === "Pa" ? value : value / 1e6), min: 0, max: 2e5, units
+    };
+    const safety: ResultField = {
+      ...stress, id: "safety", type: "safety_factor", component: undefined,
+      values: [SAFETY_FACTOR_DISPLAY_CAP, SAFETY_FACTOR_DISPLAY_CAP, 1250],
+      min: 1250, max: SAFETY_FACTOR_DISPLAY_CAP, units: "ratio"
+    };
+    const otherFrame = { ...stress, id: "other-frame", frameIndex: 0, values: [0, 0, 0] };
+    const otherVariant = { ...stress, id: "other-variant", variantId: "case:b", values: [0, 0, 0] };
+    const fields = [otherFrame, otherVariant, stress, safety];
+    const rebased = rebaseSafetyFactorFields(fields, strengthPascals / SHOP_STEEL.yieldStrength, strengthPascals);
+    expect(rebased[3]!.values).toEqual([0.5, SAFETY_FACTOR_DISPLAY_CAP, SAFETY_FACTOR_DISPLAY_FLOOR]);
+    expect(rebased[3]!.min).toBe(SAFETY_FACTOR_DISPLAY_FLOOR);
+    expect(rebased[3]!.max).toBe(SAFETY_FACTOR_DISPLAY_CAP);
+    expect(safety.values[0]).toBe(SAFETY_FACTOR_DISPLAY_CAP);
+    expect(rebased[2]).toBe(stress);
+
+    const floor = { ...safety, values: [SAFETY_FACTOR_DISPLAY_FLOOR, SAFETY_FACTOR_DISPLAY_CAP, SAFETY_FACTOR_DISPLAY_FLOOR] };
+    const raised = rebaseSafetyFactorFields([stress, floor], 1e6, 250e6);
+    expect(raised[1]!.values).toEqual([SAFETY_FACTOR_DISPLAY_CAP, SAFETY_FACTOR_DISPLAY_CAP, 1250]);
   });
 });
 
