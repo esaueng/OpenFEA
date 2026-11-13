@@ -4,6 +4,12 @@
 // top face, assigns a support/load, and checks both display LODs preserve the
 // same B-rep face IDs and fingerprints.
 //
+// Multi-pick (plan 036 R1.2): at each LOD the wall and top hits go through the
+// viewer's pick seam as Ctrl-click and Cmd-click, are saved as one named
+// selection reused by a support and a load, and the wall is Ctrl-clicked off
+// again. Both LODs must select the same two B-rep identities and persist the
+// same named selection (face IDs and per-face fingerprints).
+//
 // Usage (Node >= 22, Chrome installed):
 //   pnpm verify:step-selection-browser
 //
@@ -190,6 +196,25 @@ async function run() {
   const gates = [];
   if (!result.ok) gates.push(...result.failures);
   if (result.scales?.length !== 3) gates.push(`expected 3 model scales, received ${result.scales?.length ?? 0}`);
+  for (const scale of result.scales ?? []) {
+    for (const lod of ["detailed", "balanced"]) {
+      const multiPick = scale[lod]?.multiPick;
+      const expected = [scale.supportFaceId, scale.loadFaceId];
+      if (JSON.stringify(multiPick?.faceIds) !== JSON.stringify(expected)) {
+        gates.push(`${scale.diameterMm} mm ${lod} multi-pick selected ${JSON.stringify(multiPick?.faceIds)}, expected ${JSON.stringify(expected)}`);
+      }
+      if (JSON.stringify(multiPick?.namedSelection?.faceIds) !== JSON.stringify(expected)) {
+        gates.push(`${scale.diameterMm} mm ${lod} named selection kept ${JSON.stringify(multiPick?.namedSelection?.faceIds)}`);
+      }
+      const fingerprints = [scale[lod]?.wall?.fingerprint, scale[lod]?.top?.fingerprint];
+      if (JSON.stringify(multiPick?.namedSelection?.faceFingerprints) !== JSON.stringify(fingerprints)) {
+        gates.push(`${scale.diameterMm} mm ${lod} named selection fingerprints did not match the picked faces`);
+      }
+    }
+    if (JSON.stringify(scale.detailed?.multiPick) !== JSON.stringify(scale.balanced?.multiPick)) {
+      gates.push(`${scale.diameterMm} mm multi-pick differed between detailed and playback LODs`);
+    }
+  }
   if (!page.title.startsWith("STEPSELECTION OK")) gates.push(`unexpected page title: ${page.title}`);
   if (!page.proofVisible) gates.push("proof result was not rendered into the page");
   if (page.frameworkOverlay) gates.push("Vite framework error overlay was visible");
@@ -202,7 +227,7 @@ async function run() {
 
 try {
   await run();
-  console.log("STEPSELECTION OK: wall support and top-face load remained mapped across 1, 25, and 500 mm detailed/playback meshes.");
+  console.log("STEPSELECTION OK: wall support and top-face load remained mapped across 1, 25, and 500 mm detailed/playback meshes; Ctrl/Cmd multi-pick of wall + top kept both B-rep identities and fingerprints at both LODs.");
   process.exit(0);
 } catch (error) {
   console.error(`STEPSELECTION FAIL: ${error instanceof Error ? error.message : String(error)}`);

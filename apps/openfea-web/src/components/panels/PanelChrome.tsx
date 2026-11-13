@@ -36,6 +36,7 @@ export function themedPortalRoot(anchor: Element | null): Element {
 }
 
 import { DEFAULT_DYNAMIC_OUTPUT_INTERVAL_SECONDS, MIN_DYNAMIC_OUTPUT_INTERVAL_SECONDS } from "./RightPanelProps";
+import { faceSelectionForFace } from "../../namedSelections";
 export function WorkspaceNoticeBanner({ notice, activeStep, onDismiss, onGoToStep }: { notice: WorkspaceNotice; activeStep: StepId; onDismiss?: () => void; onGoToStep?: (step: StepId) => void }) {
   const showStepLink = Boolean(notice.step && notice.step !== activeStep && onGoToStep);
   return (
@@ -64,8 +65,9 @@ export function EmptyEditableList({ title }: { title: string }) {
   );
 }
 
+/** The face's own per-face selection; a managed named selection that contains the face is not it (plan 036 R1.2). */
 export function selectionForFace(study: Study, faceId: string) {
-  return study.namedSelections.find((item) => item.entityType === "face" && item.geometryRefs.some((ref) => ref.entityId === faceId));
+  return faceSelectionForFace(study, faceId);
 }
 
 export function selectionLabelForPanel(study: Study, selectionRef: string): string {
