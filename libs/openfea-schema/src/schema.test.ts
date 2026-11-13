@@ -921,6 +921,12 @@ describe("MaterialSchema", () => {
     expect(() => CustomMaterialSchema.parse({ ...custom, verification: "verified" })).toThrow();
   });
 
+  it("keeps an optional ultimate strength in Pa and reads materials without one unchanged (plan 036 R3.4)", () => {
+    expect(MaterialSchema.parse(aluminum)).toEqual(aluminum);
+    expect(MaterialSchema.parse({ ...aluminum, ultimateStrength: 310e6 }).ultimateStrength).toBe(310e6);
+    expect(() => MaterialSchema.parse({ ...aluminum, ultimateStrength: 0 })).toThrow();
+  });
+
   it("rejects non-positive stiffness, density, and strength", () => {
     expect(() => MaterialSchema.parse({ ...aluminum, youngsModulus: 0 })).toThrow();
     expect(() => MaterialSchema.parse({ ...aluminum, density: -1 })).toThrow();

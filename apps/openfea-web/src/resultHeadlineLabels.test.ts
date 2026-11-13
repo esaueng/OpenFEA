@@ -30,9 +30,18 @@ describe("structural headline labels", () => {
     expect(labels.peak).toBe("Peak over time");
   });
 
+  test("with a safety-factor basis the label names it and that it is the model minimum (plan 036 R3.4)", () => {
+    expect(structuralHeadlineLabels({}, "yield, von Mises").safetyFactor).toBe("Min safety factor (yield, von Mises)");
+    expect(structuralHeadlineLabels({}, "allowable 138 MPa, von Mises").safetyFactor).toBe("Min safety factor (allowable 138 MPa, von Mises)");
+    const dynamic = structuralHeadlineLabels({
+      transient: { frameCount: 21, analysisType: "dynamic_structural", startTime: 0, endTime: 0.1, timeStep: 0.005, outputInterval: 0.005, peakDisplacement: 0.001433, peakDisplacementTimeSeconds: 0.1 }
+    }, "ultimate, von Mises");
+    expect(dynamic.safetyFactor).toBe("Min safety factor over time (ultimate, von Mises)");
+  });
+
   test("the results headline and the legend peak both use these labels", () => {
     const panel = readFileSync(resolve(__dirname, "components/panels/ResultsPanels.tsx"), "utf8");
-    expect(panel).toContain("structuralHeadlineLabels(resultSummary)");
+    expect(panel).toContain("structuralHeadlineLabels(resultSummary, safetyFactorBasis.shortLabel)");
     expect(panel).not.toMatch(/label: "Max stress", value: formatResultMetric\(resultSummary\.maxStress/);
     const workspace = readFileSync(resolve(__dirname, "WorkspaceApp.tsx"), "utf8");
     expect(workspace).toContain("structuralHeadlineLabels(resultSummaryForUi)");

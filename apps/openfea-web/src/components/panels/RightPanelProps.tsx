@@ -2,7 +2,8 @@
    Panels import from here; they never import each other. */
 import { useEffect, useLayoutEffect } from "react";
 
-import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, LoadCase, LoadCombination, MeshConnection, MeshQuality, ModalSolverSettings, Project, ResultField, ResultSummary, RunTimingEstimate, RunVariantRef, Study } from "@openfea/schema";
+import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, LoadCase, LoadCombination, MeshConnection, MeshQuality, ModalSolverSettings, Project, ResultField, ResultSummary, RunTimingEstimate, RunVariantRef, SafetyFactorBasis, Study } from "@openfea/schema";
+import type { ResolvedSafetyFactorBasis } from "../../safetyFactorBasis";
 
 import type { ModelBody } from "../../modelBodies";
 import type { RunReadinessItem } from "../../runReadiness";
@@ -48,6 +49,10 @@ export interface RightPanelProps {
   stressExaggeration: number;
   resultSummary: ResultSummary | null;
   resultFields?: ResultField[];
+  /** What the safety factor in `resultSummary`/`resultFields` divides by (plan 036 R3.4); yield when absent. */
+  safetyFactorBasis?: ResolvedSafetyFactorBasis;
+  /** Stores a new basis on the study; results re-base without a re-run. */
+  onSafetyFactorBasisChange?: (basis: SafetyFactorBasis) => void;
   resultColorScale?: ResolvedResultColorScale;
   resultColorScaleControl?: {
     setting: ResultColorScaleSetting;

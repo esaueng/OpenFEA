@@ -1,6 +1,6 @@
 import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { DynamicSolverSettingsSchema, isModalResultSummary, isRunResultReadyStatus, isStructuralResultSummary, isThermalResultSummary, ModalSolverSettingsSchema } from "@openfea/schema";
-import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, MeshQuality, ModalSolverSettings, NamedSelection, Project, ResultField, ResultRenderBounds, ResultSummary, RunEvent, RunTimingEstimate, RunVariantRef, RunVariantResult, SimulationFidelity, Study } from "@openfea/schema";
+import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, MeshQuality, ModalSolverSettings, NamedSelection, Project, ResultField, ResultRenderBounds, ResultSummary, RunEvent, RunTimingEstimate, RunVariantRef, RunVariantResult, SafetyFactorBasis, SimulationFidelity, Study } from "@openfea/schema";
 import { CloudUpload, FlaskConical, HardDrive, Keyboard, RotateCcw, X } from "lucide-react";
 import { addLoad, addSupport, assignMaterial, cancelRun, createProject, generateMesh, getResults, getRunVariant, importLocalProject, loadSampleProject, renameProject, repairUploadedStepModel, runMeshConvergence, runSimulation, saveRunReportCaptures, subscribeToRun, updateStudy as saveStudyPatch, uploadModel, type RunSubscription, type SampleAnalysisType, type SampleModelId } from "./lib/api";
 import { cancelWasmMeshing, type WasmMeshPhaseProgress } from "./lib/wasmMeshing";
@@ -70,6 +70,7 @@ import { stepGeometryNeedsRepair } from "./stepGeometryState";
 import { createLocalDynamicStructuralStudy, createLocalModalStudy, createLocalStaticStressStudy, createLocalThermalStudy } from "./localProjectFactory";
 import { compatibleResultModeForSummary, createPackedResultPlaybackCache, createResultFrameCache, hasDynamicPlaybackFrames, solverMeshSummaryFromResults, synthesizeModalPhaseFields, withDerivedSurfaceSafetyFactorFields, type SolverMeshSummary } from "./resultFields";
 import { structuralHeadlineLabels } from "./resultHeadlineLabels";
+import { isStructuralStudy, rebaseSafetyFactorFields, rebaseSafetyFactorSummary, resolveSafetyFactorBasis } from "./safetyFactorBasis";
 import { appendResultProbe, availableStressComponents, derivedStressFieldsForComponent, governingVariantIdForProbe, MAX_RESULT_PROBES, resolveResultProbe, resultProbeTopologySignature, selectActiveResultField, semanticResultFieldKey, type ResultProbeAnchor, type ResultProbePin } from "./resultSelection";
 import { isResultDisplayEligible } from "./resultDisplayState";
 import { automaticResultFieldRange, DEFAULT_RESULT_COLOR_SCALE_SETTING, resolveResultColorScale, type ResultColorScaleSetting, type ResultColorScaleSettings } from "./resultColorScale";
@@ -363,7 +364,23 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const selectedFace = useMemo(() => displayModel?.faces.find((face) => face.id === selectedFaceId) ?? null, [displayModel, selectedFaceId]);
   const displayUnitSystem = project?.unitSystem ?? "SI";
   const displayModelForUi = useMemo(() => displayModel ? displayModelForUnits(displayModel, displayUnitSystem) : null, [displayModel, displayUnitSystem]);
-  const resultSummaryForUi = useMemo(() => resultSummary ? resultSummaryForUnits(resultSummary, displayUnitSystem) : null, [displayUnitSystem, resultSummary]);
+  // Safety-factor basis (plan 036 R3.4): the stored result stays on the solver's yield
+  // basis; display, report and export read it re-based to the study's choice.
+  const safetyFactorBasis = useMemo(() => resolveSafetyFactorBasis({
+    study,
+    customMaterials: project?.customMaterials,
+    displayModel,
+    unitSystem: displayUnitSystem
+  }), [displayModel, displayUnitSystem, project?.customMaterials, study]);
+  const basisResultSummary = useMemo(
+    () => resultSummary ? rebaseSafetyFactorSummary(resultSummary, safetyFactorBasis.factor) : null,
+    [resultSummary, safetyFactorBasis.factor]
+  );
+  const basisResultFields = useMemo(
+    () => rebaseSafetyFactorFields(resultFields, safetyFactorBasis.factor),
+    [resultFields, safetyFactorBasis.factor]
+  );
+  const resultSummaryForUi = useMemo(() => basisResultSummary ? resultSummaryForUnits(basisResultSummary, displayUnitSystem) : null, [basisResultSummary, displayUnitSystem]);
   // The legend's max is the averaged surface field; the headline peak is the
   // unaveraged element value. Show both on the legend (2026-09 review F8).
   const resultPeaks = useMemo<Partial<Record<ResultMode, string>>>(() => {
@@ -376,11 +393,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   }, [resultSummaryForUi]);
   const resultPeakLocations = resultSummary && isStructuralResultSummary(resultSummary) ? resultSummary.peakLocations : undefined;
   const resultFieldsForUi = useMemo(() => {
-    const converted = resultFields.map((field) => resultFieldForUnits(field, displayUnitSystem));
+    const converted = basisResultFields.map((field) => resultFieldForUnits(field, displayUnitSystem));
     return resultSummary && isModalResultSummary(resultSummary)
       ? synthesizeModalPhaseFields(converted, selectedModeIndex)
       : converted;
-  }, [displayUnitSystem, resultFields, resultSummary, selectedModeIndex]);
+  }, [basisResultFields, displayUnitSystem, resultSummary, selectedModeIndex]);
   const resultFrameCache = useMemo(() => createResultFrameCache(resultFieldsForUi), [resultFieldsForUi]);
   const packedResultPlaybackCache = useMemo(() => createPackedResultPlaybackCache(resultFieldsForUi), [resultFieldsForUi]);
   const resultFieldsSignature = useMemo(() => resultFieldsSignatureForCache(resultFieldsForUi), [resultFieldsForUi]);
@@ -1737,9 +1754,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         project,
         study,
         displayModel,
-        summary: resultSummary,
-        fields: resultFields,
-        surfaceMesh: resultSurfaceMesh
+        summary: basisResultSummary ?? resultSummary,
+        fields: basisResultFields,
+        surfaceMesh: resultSurfaceMesh,
+        ...(isStructuralResultSummary(resultSummary) ? { safetyFactorBasis: safetyFactorBasis.shortLabel } : {})
       });
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       if (blob.size > 50 * 1024 * 1024 && !window.confirm(`The offline viewer is ${(blob.size / 1024 / 1024).toFixed(1)} MB. Save it anyway?`)) return;
@@ -1786,7 +1804,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         state,
         model: canonicalModel,
         surfaceMesh: resultSurfaceMesh,
-        fields: resultFields
+        fields: basisResultFields,
+        ...(isStructuralResultSummary(resultSummary) ? { safetyFactorBasis: safetyFactorBasis.description } : {})
       };
       const suggestedName = selectedResultExportFilename(exportInput, format);
       const saveTarget = await prepareBlobSaveToDisk(suggestedName, format === "csv"
@@ -1914,8 +1933,9 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         study,
         displayModel,
         bodyIds: modelBodyIds,
-        resultSummary: sourceSummary,
-        resultFields,
+        resultSummary: rebaseSafetyFactorSummary(sourceSummary, safetyFactorBasis.factor),
+        resultFields: basisResultFields,
+        safetyFactorBasis,
         solverMeshSummary,
         convergenceRecords: project.convergenceRecords,
         // A report is always generated after the run finished, so runTiming is null by
@@ -2472,6 +2492,21 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     requestDefaultHomeView();
   }
 
+  // The basis re-scales the stored safety factor, so unlike other study edits it
+  // leaves the results current (plan 036 R3.4).
+  function handleSafetyFactorBasisChange(basis: SafetyFactorBasis) {
+    const currentProject = projectRef.current;
+    if (!currentProject || !isStructuralStudy(study)) return;
+    recordUndoSnapshot(currentProject);
+    setProject({
+      ...currentProject,
+      studies: currentProject.studies.map((item) => item.id === study.id && isStructuralStudy(item) ? { ...item, safetyFactorBasis: basis } : item),
+      updatedAt: new Date().toISOString()
+    });
+    const label = basis.strength === "yield" ? "yield strength" : basis.strength === "ultimate" ? "ultimate strength" : "allowable stress";
+    pushMessage(`Safety factor basis set to ${label}. Results re-based from the solved stress; no re-run needed.`);
+  }
+
   function handleUnitSystemChange(unitSystem: UnitSystem) {
     if (!project || project.unitSystem === unitSystem) return;
     recordUndoSnapshot(project);
@@ -2978,6 +3013,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
               resultsStale={Boolean(resultsOutdatedBy)}
               resultPeaks={resultPeaks}
               resultPeakLocations={resultPeakLocations}
+              safetyFactorBasis={isStructuralStudy(study) ? safetyFactorBasis : undefined}
               assignedFaceTints={assignedFaceTints}
               resultPlaybackBufferCache={resultPlaybackBufferCacheForViewer}
               resultPlaybackFrameController={resultPlaybackPlaying && resultPlaybackCacheState.status === "ready" && resultPlaybackCacheState.cache.packed ? resultPlaybackFrameControllerRef.current : undefined}
@@ -3021,6 +3057,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           stressExaggeration={stressExaggeration}
           resultSummary={resultDisplayEligible ? resultSummaryForUi : null}
           resultFields={resultDisplayEligible ? resultFieldsForUi : []}
+          safetyFactorBasis={isStructuralStudy(study) ? safetyFactorBasis : undefined}
+          onSafetyFactorBasisChange={handleSafetyFactorBasisChange}
           resultColorScale={activeResultColorScale}
           resultColorScaleControl={activeResultColorScaleControl}
           onResultColorScaleSettingChange={handleResultColorScaleSettingChange}

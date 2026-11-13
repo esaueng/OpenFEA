@@ -24,9 +24,12 @@ export function FaceSelectionOverlay({
   selectedFaceId,
   additionalSelectedFaceIds,
   showSelectionChip,
+  formatFaceLabel = (face) => face.label || face.id,
   onSelectFace
 }: {
   faces: readonly DisplayFace[];
+  /** How a face is named on its button and in the chip (the viewer passes a project-units formatter). */
+  formatFaceLabel?: (face: DisplayFace) => string;
   selectedFaceId: string | null;
   additionalSelectedFaceIds?: readonly string[];
   showSelectionChip: boolean;
@@ -38,7 +41,8 @@ export function FaceSelectionOverlay({
     [additionalSelectedFaceIds, selectedFaceId]
   );
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const primaryLabel = selectedFaceId ? faces.find((face) => face.id === selectedFaceId)?.label ?? null : null;
+  const primaryFace = selectedFaceId ? faces.find((face) => face.id === selectedFaceId) : undefined;
+  const primaryLabel = primaryFace?.label ? formatFaceLabel(primaryFace) : null;
   const additionalCount = selectedIds.length - (selectedFaceId ? 1 : 0);
   const chipText = primaryLabel
     ? selectionChipText(primaryLabel, additionalCount)
@@ -59,7 +63,7 @@ export function FaceSelectionOverlay({
               aria-pressed={selected.has(face.id)}
               onClick={(event) => onSelectFace(face, faceButtonPickIntent(addToSelection, event))}
             >
-              {face.label || face.id}
+              {formatFaceLabel(face)}
             </button>
           ))}
           {faces.length > MAX_A11Y_FACE_BUTTONS ? <span>Use pointer selection for additional faces.</span> : null}
