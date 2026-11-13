@@ -86,13 +86,36 @@ Full table. *Solve* is CG only for static, and the whole `solveCore*` call for m
    From 30k to 150k the iteration count grows about 1.7–1.8× for both variants. Slender needs 17–23× more iterations at every rung (6,240 and 11,221 at 150k, against 369 and 479 for block). That absolute gap is what R5.2 (preconditioner evaluation) should close. The diagnostics' `converged: true` does not reflect the true residual.
 
    *Follow-up:* CPU sparse CG now recomputes the true residual after convergence, restarts from it a bounded number of times, and reports `trueRelativeResidual` and `recursiveRelativeResidual`. `converged` is now gated on the true residual; a solve that stays above tolerance is returned with `converged: false` and a `partialConvergenceWarning` rather than failing. The numbers above predate this change and have not been re-measured.
-4. **Slender modal drops the fundamental modes at 30k.** Requested 3 modes, converged 1 after hitting the 30-iteration subspace cap.
+4. **Slender modal dropped the fundamental modes at 30k (fixed in the modal solver).** As first measured, it requested 3 modes and converged 1 after hitting the 30-iteration subspace cap.
 
-   The solver labels it correctly as **mode 3** (Tet4 107.3 Hz, Tet10 102.1 Hz) and sets `partialConvergenceWarning`. Modes 1 and 2 stalled at scaled residuals of 2.5e-6 and 2.0e-6, just above the 1e-6 tolerance, so they were dropped from the result. These are the near-degenerate first bending pair (y and z), about 16.3 Hz by beam theory, and the second bending mode is about 102 Hz.
+   The solver labelled it correctly as **mode 3** (Tet4 107.3 Hz, Tet10 102.1 Hz) and set `partialConvergenceWarning`. Modes 1 and 2 stalled at scaled residuals of 2.5e-6 and 2.0e-6, just above the 1e-6 tolerance, so they were dropped from the result. These are the near-degenerate first bending pair (y and z), about 16.3 Hz by beam theory, and the second bending mode is about 102 Hz.
 
-   The same fixture at about 10k DOF converges all three in 8 iterations: 18.2, 20.4 and 114 Hz, with Tet4 stiffening the values. So on slender parts, convergence of the near-degenerate pair degrades as the mesh is refined.
+   The same fixture at about 10k DOF converged all three in 8 iterations: 18.2, 20.4 and 114 Hz, with Tet4 stiffening the values. So on slender parts, convergence of the near-degenerate pair degraded as the mesh was refined.
 
-   The result is not mislabelled, but a user asking for the first three modes of a slender part gets only a higher mode plus a warning. This needs a follow-up in the modal solver: more iterations or a larger block, a tighter inner solve, or SSOR. That work is out of scope for this measurement PR and is not done here. The block variant converges 3/3 in 10–12 iterations.
+   **Cause.** The stall was a floating-point floor, not slow subspace convergence. An instrumented Node run of the old code on `slender-tet4-30k` showed the following:
+   - The pair's frequencies were settled by pass 3, and the residuals sat at 2.0–2.6e-6 from pass 4 to the cap.
+   - For the lowest bending modes of a slender, fine mesh, Kφ is a heavy cancellation of large terms. The stored vector cannot have a residual below about ε‖|K||φ|‖/‖Kφ‖, which was 4.3e-7 and 3.9e-7 for this pair.
+   - The inner Jacobi-CG was asked for a 1e-9 recursive residual, far below that floor. The extra iterations only widened the gap to the true residual: CG reported 1e-9 while ‖Ky − Mv‖/‖Mv‖ was 2.1–2.6e-6. That gap is the plateau.
+
+   The floor grows roughly with (L/H)²(L/h)², so more passes, a larger block or a tighter inner solve could not get under it.
+
+   **Fix.** `packages/solver-cpu/src/modal.ts` makes three changes:
+   - Inner solves stop at each vector's own representation floor instead of pushing past it.
+   - A mode whose residual is within its γₙ rounding bound and has stopped improving is accepted. It is labelled in `precisionLimitedModes` and `precisionLimitWarning`, and its measured residual is still exported.
+   - The projected Rayleigh–Ritz problem is solved to a relative off-diagonal criterion.
+
+   **Measured after the fix.** Node 22.23.4 on this machine (Intel Xeon @ 2.10 GHz, 4 vCPU), `scripts/solve-ladder-node.ts`, 30k modal. The "before" column is the committed Node reference for the old code (same CPU model, Node 22.22.0). Chromium was not re-run.
+
+   | Case | Before: passes, modes, solve time | After: passes, modes, solve time | After: frequencies (Hz) |
+   | --- | --- | --- | --- |
+   | slender-tet4-30k | 30, 1/3, 1,448 s | 7, 3/3, 412 s | 17.155, 18.028, 107.300 |
+   | slender-tet10-30k | 30, 1/3, 4,107 s | 7, 3/3, 886 s | 16.324, 16.325, 102.107 |
+   | block-tet4-30k | 12, 3/3, 64 s | 12, 3/3, 62 s | unchanged (≤ 3e-14 relative change) |
+   | block-tet10-30k | 10, 3/3, 111 s | 10, 3/3, 98 s | unchanged (≤ 9e-14 relative change) |
+
+   - A re-run of the old code for slender-tet4-30k on this machine reproduced 30 passes and 1/3 modes. It took 2,103 s, slowed by other jobs running at the same time.
+   - After the fix, the pair reaches scaled residuals of 4.2e-7 and 3.6e-7 (Tet4) and 9.1e-7 and 6.8e-7 (Tet10). Both meet the 1e-6 tolerance outright, so at 30k no mode needs the precision-limited path. Tet10 is already close to the line, so that path is the safety net for finer rungs and tighter tolerances. `packages/solver-cpu/tests/modal.test.ts` exercises it at test size. Finer slender modal rungs were not run.
+   - Slender Tet10 is within 0.1% of Euler–Bernoulli (16.31 and 102.20 Hz). Tet4 is 5% stiff in bending, as noted under the parity gates. Mode 3 moved by under 4e-11 relative.
 5. **The Jacobi baseline for R5.2 at 30k:**
    - Modal: block 62–103 s; slender 25.5 min (Tet4) and 68 min (Tet10).
    - Dynamic, 20 Newmark steps: block 2,413–2,853 CG iterations in total, 40–87 s. Slender 21,386–27,301 iterations, with up to 7,164 in one step, taking 6.2–14.7 min.

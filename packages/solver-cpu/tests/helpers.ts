@@ -1,4 +1,5 @@
 import {
+  elevateTet4MeshToTet10,
   extractBoundarySurfaceFacets,
   nodeSetFromSurfaceSet,
   type OpenFEAModelJson,
@@ -201,6 +202,74 @@ export function createStructuredCantileverModel(options: {
     loads: [{ name: "tipLoad", type: "surfaceForce", surfaceSet: "tipFace", totalForce: [0, 0, -options.force] }],
     steps: [{ name: "loadStep", type: "staticLinear", boundaryConditions: ["fixedSupport"], loads: ["tipLoad"] }]
   };
+}
+
+/**
+ * Slender square-section steel cantilever (1000 x 20 x 20 mm, L/H = 50), the
+ * solve-ladder "slender" shape at test size. Cells use the ladder's conforming
+ * six-tet Kuhn split, optionally elevated to Tet10. `units: "m"` writes the
+ * identical model in m-N-s-Pa for unit-equivalence checks.
+ */
+export function createSlenderSquareCantileverModal(options: {
+  xDivisions: number;
+  sectionDivisions: number;
+  order: "Tet4" | "Tet10";
+  units: "mm" | "m";
+  modeCount: number;
+}): OpenFEAModelJson {
+  const lengthScale = options.units === "mm" ? 1 : 1e-3;
+  const length = 1000 * lengthScale;
+  const side = 20 * lengthScale;
+  const nx = options.xDivisions;
+  const n = options.sectionDivisions;
+  const nodeIndex = (i: number, j: number, k: number) => (i * (n + 1) + j) * (n + 1) + k;
+  const coordinates: number[] = [];
+  for (let i = 0; i <= nx; i += 1) {
+    for (let j = 0; j <= n; j += 1) {
+      for (let k = 0; k <= n; k += 1) coordinates.push((length * i) / nx, (side * j) / n, (side * k) / n);
+    }
+  }
+  const tet4: number[][] = [];
+  for (let i = 0; i < nx; i += 1) {
+    for (let j = 0; j < n; j += 1) {
+      for (let k = 0; k < n; k += 1) {
+        const c0 = nodeIndex(i, j, k);
+        const c1 = nodeIndex(i + 1, j, k);
+        const c2 = nodeIndex(i + 1, j + 1, k);
+        const c3 = nodeIndex(i, j + 1, k);
+        const c4 = nodeIndex(i, j, k + 1);
+        const c5 = nodeIndex(i + 1, j, k + 1);
+        const c6 = nodeIndex(i + 1, j + 1, k + 1);
+        const c7 = nodeIndex(i, j + 1, k + 1);
+        tet4.push([c0, c1, c2, c6], [c0, c2, c3, c6], [c0, c3, c7, c6], [c0, c7, c4, c6], [c0, c4, c5, c6], [c0, c5, c1, c6]);
+      }
+    }
+  }
+  const elevated = options.order === "Tet10" ? elevateTet4MeshToTet10({ coordinates, elements: tet4 }) : undefined;
+  const finalCoordinates = elevated ? elevated.coordinates : coordinates;
+  const connectivity = elevated ? elevated.elements.flat() : tet4.flat();
+  const fixedNodes: number[] = [];
+  for (let node = 0; node < finalCoordinates.length / 3; node += 1) {
+    if (finalCoordinates[node * 3] === 0) fixedNodes.push(node);
+  }
+  const material = options.units === "mm"
+    ? { youngModulus: 200_000, density: 7.85e-9, yieldStrength: 250 }
+    : { youngModulus: 200e9, density: 7850, yieldStrength: 250e6 };
+  const base: OpenFEAModelJson = {
+    schema: "opencae.model",
+    schemaVersion: "0.4.0",
+    nodes: { coordinates: finalCoordinates },
+    materials: [{ name: "steel", type: "isotropicLinearElastic", poissonRatio: 0.3, ...material }],
+    elementBlocks: [{ name: "beam", type: options.order, material: "steel", connectivity }],
+    nodeSets: [{ name: "fixedNodes", nodes: fixedNodes }],
+    elementSets: [],
+    boundaryConditions: [{ name: "clamp", type: "fixed", nodeSet: "fixedNodes", components: ["x", "y", "z"] }],
+    loads: [],
+    steps: [{ name: "modes", type: "modal", boundaryConditions: ["clamp"], modeCount: options.modeCount }],
+    coordinateSystem: { solverUnits: options.units === "mm" ? "mm-N-s-MPa" : "m-N-s-Pa", renderCoordinateSpace: "solver" },
+    meshProvenance: { kind: "opencae_core_fea", solver: "opencae-core-local", resultSource: "computed", meshSource: "structured_block_core" }
+  };
+  return { ...base, surfaceFacets: extractBoundarySurfaceFacets(base) };
 }
 
 export function surfaceSetByX(name: string, facets: SurfaceFacetJson[], coordinates: number[], x: number): SurfaceSetJson {

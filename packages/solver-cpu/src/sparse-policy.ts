@@ -66,3 +66,16 @@ export function validSparseSsorOmega(value: number | undefined): number {
   const endpoint = SPARSE_ALGEBRA_POLICY.relaxationEndpointEpsilonMultiplier * Number.EPSILON;
   return value !== undefined && Number.isFinite(value) && value > endpoint && value < 2 - endpoint ? value : 1;
 }
+
+/**
+ * Standard a-priori rounding bound gamma_n = n*u / (1 - n*u), u = eps/2, for a
+ * floating-point sum of n products (Higham, "Accuracy and Stability of
+ * Numerical Algorithms", 2nd ed., section 3.1). A sparse residual row
+ * (A x - b)_i evaluated in IEEE-754 doubles is wrong by at most
+ * gamma_n * (|A||x| + |b|)_i, so a residual below that bound is
+ * indistinguishable from zero. Dimensionless; never encodes a unit system.
+ */
+export function sparseRoundingGamma(termCount: number): number {
+  const product = Math.max(1, Math.ceil(termCount)) * (Number.EPSILON / 2);
+  return product < 1 ? product / (1 - product) : Number.POSITIVE_INFINITY;
+}

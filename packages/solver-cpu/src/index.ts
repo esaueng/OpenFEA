@@ -83,6 +83,7 @@ export {
   retainSparseAssemblyValue,
   sparseCurvatureTolerance,
   sparseDiagonalTolerance,
+  sparseRoundingGamma,
   usableSparseDiagonal,
   validSparseSsorOmega
 } from "./sparse-policy";

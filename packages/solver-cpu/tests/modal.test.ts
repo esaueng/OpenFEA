@@ -8,6 +8,7 @@ import {
 import { singleTetStaticFixture } from "@openfea/examples";
 import { linearizeTet10ModelForModal, solveModalLinearTet, solveModalSubspace, toCsrMatrix, createSparseMatrixBuilder, addSparseEntry } from "../src";
 import { assembleLumpedMass, prepareStructuralSystem, type PreparedStructuralSystem } from "../src/structural-system";
+import { createSlenderSquareCantileverModal } from "./helpers";
 
 function diagonalSystem(stiffness: number[], mass: number[]): PreparedStructuralSystem {
   const builder = createSparseMatrixBuilder(stiffness.length);
@@ -87,6 +88,101 @@ describe("block shift-invert modal solver", () => {
       for (let other = 0; other < solved.modes.length; other += 1) {
         expect(massDot(system.mass, mode.vector, solved.modes[other].vector)).toBeCloseTo(index === other ? 1 : 0, 9);
       }
+    });
+  });
+
+  test("accepts a tolerance below machine precision at the rounding floor instead of dropping every mode", () => {
+    const system = diagonalSystem([4, 18, 48, 100, 300], [1, 2, 3, 1, 1]);
+    const solved = solveModalSubspace(system, 3, { tolerance: 1e-17 });
+
+    expect(solved.ok).toBe(true);
+    if (!solved.ok) return;
+    // Before the floor-aware test this ran all 30 passes and returned no modes.
+    expect(solved.modes).toHaveLength(3);
+    expect(solved.warning).toBeUndefined();
+    expect(solved.subspaceIterations).toBeLessThan(30);
+    expect(solved.modes.map((mode) => mode.eigenvalue)).toEqual([
+      expect.closeTo(4, 12),
+      expect.closeTo(9, 12),
+      expect.closeTo(16, 12)
+    ]);
+    expect(solved.precisionLimitedModes?.map((mode) => mode.modeIndex)).toEqual([1, 2, 3]);
+    for (const mode of solved.modes) {
+      expect(mode.scaledResidual).toBeLessThanOrEqual(mode.residualFloor);
+      // gamma_n for a 1-entry row plus the mass term: a few machine epsilons.
+      expect(mode.residualFloor).toBeLessThan(8 * Number.EPSILON);
+    }
+    expect(solved.precisionLimitWarning).toContain("double-precision residual floor");
+  });
+
+  test("keeps the requested tolerance and reports no precision limit on well-conditioned systems", () => {
+    const solved = solveModalSubspace(diagonalSystem([4, 18, 48, 100, 300], [1, 2, 3, 1, 1]), 3);
+    expect(solved.ok).toBe(true);
+    if (!solved.ok) return;
+    expect(solved.subspaceIterations).toBe(1);
+    expect(solved.precisionLimitedModes).toBeUndefined();
+    expect(solved.precisionLimitWarning).toBeUndefined();
+    for (const mode of solved.modes) expect(mode.scaledResidual).toBeLessThanOrEqual(1e-6);
+  });
+
+  test(
+    "converges the near-degenerate first bending pair of a slender cantilever below its rounding floor",
+    { timeout: 30_000 },
+    () => {
+      const solved = slenderModalSolve("mm");
+      expect(solved.ok).toBe(true);
+      if (!solved.ok) return;
+      const { diagnostics, result } = solved;
+      // Before the fix this fixture reproduced solve-ladder finding 4: all 30
+      // passes ran, the y/z pair stalled above the requested 1e-8 and only
+      // mode 3 was returned with a partial-convergence warning.
+      expect(diagnostics.requestedModeCount).toBe(3);
+      expect(diagnostics.convergedModeCount).toBe(3);
+      expect(diagnostics.partialConvergenceWarning).toBeUndefined();
+      expect(diagnostics.subspaceIterations).toBeLessThan(SLENDER_MODAL_ITERATION_CAP);
+      expect(result.modes.map((mode) => mode.modeIndex)).toEqual([1, 2, 3]);
+
+      // The pair is accepted at its floor, labeled, and nothing else is.
+      const limited = diagnostics.precisionLimitedModes ?? [];
+      expect(limited.map((mode) => mode.modeIndex)).toEqual([1, 2]);
+      for (const mode of limited) {
+        expect(mode.scaledResidual).toBeGreaterThan(SLENDER_MODAL_TOLERANCE);
+        expect(mode.scaledResidual).toBeLessThanOrEqual(mode.residualFloor);
+      }
+      expect(result.modes[2].scaledResidual).toBeLessThanOrEqual(SLENDER_MODAL_TOLERANCE);
+      expect(diagnostics.precisionLimitWarning).toContain("modes 1, 2");
+      expect(result.coreResult?.summary.warning).toContain("double-precision residual floor");
+      expect(validateCoreResult(result.coreResult!).ok).toBe(true);
+
+      // Near-degenerate y/z pair, then the first second-bending mode.
+      const [first, second, third] = result.modes.map((mode) => mode.frequencyHz);
+      expect(Math.abs(second - first) / first).toBeLessThan(0.01);
+      expect(relativeError(first, eulerBernoulliCantileverHz(0))).toBeLessThan(SLENDER_TET10_EULER_BERNOULLI_TOLERANCE);
+      expect(relativeError(second, eulerBernoulliCantileverHz(0))).toBeLessThan(SLENDER_TET10_EULER_BERNOULLI_TOLERANCE);
+      expect(relativeError(third, eulerBernoulliCantileverHz(1))).toBeLessThan(SLENDER_TET10_EULER_BERNOULLI_TOLERANCE);
+    }
+  );
+
+  test("returns unit-independent slender frequencies and floors in mm-N-s-MPa and m-N-s-Pa", { timeout: 30_000 }, () => {
+    const millimetre = slenderModalSolve("mm");
+    const metre = slenderModalSolve("m");
+    expect(millimetre.ok && metre.ok).toBe(true);
+    if (!millimetre.ok || !metre.ok) return;
+    expect(metre.diagnostics.convergedModeCount).toBe(millimetre.diagnostics.convergedModeCount);
+    expect(metre.result.modes.map((mode) => mode.modeIndex)).toEqual(millimetre.result.modes.map((mode) => mode.modeIndex));
+    millimetre.result.modes.forEach((mode, index) => {
+      expect(relativeError(metre.result.modes[index].frequencyHz, mode.frequencyHz)).toBeLessThan(MODAL_UNIT_EQUIVALENCE_TOLERANCE);
+    });
+    const floors = (solve: typeof millimetre) => solve.ok ? (solve.diagnostics.precisionLimitedModes ?? []) : [];
+    expect(floors(metre).map((mode) => mode.modeIndex)).toEqual(floors(millimetre).map((mode) => mode.modeIndex));
+    floors(millimetre).forEach((mode, index) => {
+      // The floor is a dimensionless ratio of stiffness products, so it does
+      // not scale with units. It is not rotation-invariant inside the
+      // near-degenerate pair, and rounding can rotate the y/z split slightly
+      // (about 1% here), so compare magnitudes, not digits.
+      const ratio = floors(metre)[index].residualFloor / mode.residualFloor;
+      expect(ratio).toBeGreaterThan(0.5);
+      expect(ratio).toBeLessThan(2);
     });
   });
 
@@ -219,6 +315,65 @@ describe("block shift-invert modal solver", () => {
     expect(Math.abs(compatibilityOmega - modalOmega) / modalOmega).toBeLessThan(1e-6);
   });
 });
+
+/**
+ * Slender square cantilever, L/H = 50, the solve-ladder "slender" shape at test
+ * size: Tet10, 7 cells along the axis and one Kuhn-split cell per section
+ * (405 DOFs). Tet10 is used because Tet4 at test-sized meshes locks in bending
+ * (26.0 Hz against 16.3 Hz at 1,377 DOFs), which would swamp the check. Its
+ * y/z bending pair is near-degenerate (16.60 / 16.66 Hz) and its rounding floor
+ * (scaled residual ~8e-8 under Jacobi-CG) sits above SLENDER_MODAL_TOLERANCE.
+ * That reproduces at test size the 30k-DOF ladder case, where the same pair
+ * stalled at 2.5e-6 / 2.0e-6 against the 1e-6 default: before the fix this
+ * fixture ran all 30 passes and returned only mode 3.
+ */
+const SLENDER_MODAL_TOLERANCE = 1e-8;
+const SLENDER_MODAL_ITERATION_CAP = 30;
+/**
+ * The coarse 7-cell Tet10 mesh is 1.8% / 2.2% (first bending pair) and 3.2%
+ * (second bending) stiffer than Euler-Bernoulli (16.31 / 102.20 Hz). Beam
+ * theory also omits shear and rotary inertia, about 0.1% at L/H = 50. 4%
+ * bounds the discretization error without admitting a wrong mode: the next
+ * mode family is six times higher.
+ */
+const SLENDER_TET10_EULER_BERNOULLI_TOLERANCE = 0.04;
+/**
+ * Units change only rounding. The Rayleigh quotients of these slender modes
+ * carry the same cancellation as their residuals (eps x rounding scale, about
+ * 1e-9 here), so frequencies agree to ~1e-9, not to machine precision. A unit
+ * conversion error would be off by orders of magnitude.
+ */
+const MODAL_UNIT_EQUIVALENCE_TOLERANCE = 1e-7;
+/** Clamped-free roots beta_n * L of cos(bL) cosh(bL) = -1. */
+const CANTILEVER_BETA_L = [1.8751040687119611, 4.6940911329741745];
+
+const slenderSolves = new Map<"mm" | "m", ReturnType<typeof solveModalLinearTet>>();
+
+function slenderModalSolve(units: "mm" | "m"): ReturnType<typeof solveModalLinearTet> {
+  const cached = slenderSolves.get(units);
+  if (cached) return cached;
+  const solved = solveModalLinearTet(
+    createSlenderSquareCantileverModal({ xDivisions: 7, sectionDivisions: 1, order: "Tet10", units, modeCount: 3 }),
+    { modalTolerance: SLENDER_MODAL_TOLERANCE, maxSubspaceIterations: SLENDER_MODAL_ITERATION_CAP }
+  );
+  slenderSolves.set(units, solved);
+  return solved;
+}
+
+/** Euler-Bernoulli bending frequency of the 1000 x 20 x 20 mm steel cantilever (Hz). */
+function eulerBernoulliCantileverHz(modeNumber: number): number {
+  const length = 1000;
+  const side = 20;
+  const youngModulus = 200_000;
+  const density = 7.85e-9;
+  const secondMoment = side ** 4 / 12;
+  const betaL = CANTILEVER_BETA_L[modeNumber];
+  return (betaL ** 2 / (2 * Math.PI * length ** 2)) * Math.sqrt((youngModulus * secondMoment) / (density * side * side));
+}
+
+function relativeError(value: number, reference: number): number {
+  return Math.abs(value - reference) / Math.abs(reference);
+}
 
 function massDot(mass: Float64Array, left: Float64Array, right: Float64Array): number {
   let result = 0;

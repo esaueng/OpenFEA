@@ -790,9 +790,10 @@ function collectDiagnostics(input: BuildReportDataInput, summary: ResultSummary,
     // Solver-confessed approximations (modal Tet10→Tet4 projection, partial
     // convergence) are computed but historically never displayed. Surface the
     // structured payloads, not just the free-text message.
-    const detail = diagnostic as { approximationWarning?: unknown; meshProjection?: unknown; partialConvergenceWarning?: unknown };
+    const detail = diagnostic as { approximationWarning?: unknown; meshProjection?: unknown; partialConvergenceWarning?: unknown; precisionLimitWarning?: unknown };
     if (typeof detail.approximationWarning === "string" && detail.approximationWarning) entries.add(detail.approximationWarning);
     if (typeof detail.partialConvergenceWarning === "string" && detail.partialConvergenceWarning) entries.add(detail.partialConvergenceWarning);
+    if (typeof detail.precisionLimitWarning === "string" && detail.precisionLimitWarning) entries.add(detail.precisionLimitWarning);
     if (detail.meshProjection && typeof detail.meshProjection === "object") {
       const projection = detail.meshProjection as { sourceElementOrder?: unknown; solveElementOrder?: unknown; reason?: unknown };
       entries.add(`Mesh projection for solve: ${String(projection.sourceElementOrder ?? "?")} → ${String(projection.solveElementOrder ?? "?")}${projection.reason ? ` (${String(projection.reason)})` : ""}. Results are computed on the projected mesh.`);

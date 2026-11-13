@@ -3,7 +3,8 @@ import { modalMassParticipation, solverMassUnits } from "./modal-participation";
 import { modalCoreResultFromSolve } from "./results";
 import { boundedStructuralMaxDofs, structuralDofCount, structuralDofLimitError } from "./limits";
 import { getNormalizedModel } from "./solver";
-import { conjugateGradient, csrDiagonal, csrMatVec, norm } from "./sparse";
+import { conjugateGradient, csrDiagonal, csrMatVec, norm, type CsrMatrix } from "./sparse";
+import { sparseRoundingGamma } from "./sparse-policy";
 import { expandFreeVector, prepareStructuralSystem, type PreparedStructuralSystem } from "./structural-system";
 import type {
   CpuSolverError,
@@ -20,10 +21,24 @@ const DEFAULT_SUBSPACE_ITERATIONS = 30;
 // Earlier subspace passes use a looser forcing term and are warm-started below.
 // Keep the final inverse solves at 1e-9: the large-model Tet4 projection showed
 // that 1e-8 can plateau just above the unchanged 1e-6 exported mode residual.
+// A vector whose own representation floor lies above 1e-9 is solved to that
+// floor instead (see the inner solve in solveModalSubspace).
 const DEFAULT_INNER_TOLERANCE = 1e-9;
 const FREQUENCY_ESTIMATE_INNER_TOLERANCE = 1e-8;
 const DEFAULT_FREQUENCY_ESTIMATE_ITERATIONS = 4;
 const DEFAULT_TET10_PROJECTION_DOF_THRESHOLD = 50_000;
+/**
+ * Products summed in one row of r = Kx - lambda*M*x beyond the stiffness row:
+ * the lumped-mass product and the subtraction. Sizes the gamma_n rounding bound.
+ */
+const MODAL_RESIDUAL_EXTRA_TERMS = 2;
+/**
+ * A mode inside its rounding floor counts as stalled there once a subspace
+ * pass shrinks its residual by less than this factor. Dimensionless.
+ */
+const MODAL_FLOOR_STAGNATION_RATIO = 0.5;
+/** Jacobi stop for the projected Rayleigh-Ritz problem: |a_pq| <= eps * sqrt(|a_pp a_qq|). */
+const RAYLEIGH_RITZ_RELATIVE_OFF_DIAGONAL = Number.EPSILON;
 
 export type ModalMeshProjection = {
   sourceElementOrder: "Tet10";
@@ -38,7 +53,20 @@ export type ModalSubspaceMode = {
   eigenvalue: number;
   frequencyHz: number;
   scaledResidual: number;
+  /**
+   * Dimensionless rounding floor of `scaledResidual` for this vector:
+   * gamma_n * ||(|K||x| + |lambda| M|x|)|| / max(||Kx||, |lambda| ||Mx||), with n
+   * the longest stiffness row plus the mass term. A residual at or below it is
+   * indistinguishable from zero in double precision. Unit-invariant.
+   */
+  residualFloor: number;
   vector: Float64Array;
+};
+
+export type ModalPrecisionLimitedMode = {
+  modeIndex: number;
+  scaledResidual: number;
+  residualFloor: number;
 };
 
 export type ModalSubspaceResult =
@@ -49,6 +77,9 @@ export type ModalSubspaceResult =
       blockSize: number;
       subspaceIterations: number;
       warning?: string;
+      /** Modes accepted at their rounding floor because the requested tolerance is below it. */
+      precisionLimitedModes?: ModalPrecisionLimitedMode[];
+      precisionLimitWarning?: string;
     }
   | { ok: false; error: CpuSolverError };
 
@@ -123,6 +154,10 @@ export function solveModalLinearTet(input: CpuSolverInput, options: ModalCpuOpti
     tolerance,
     totalMass: prepared.system.totalMass,
     ...(subspace.warning ? { partialConvergenceWarning: subspace.warning } : {}),
+    ...(subspace.precisionLimitedModes?.length ? {
+      precisionLimitedModes: subspace.precisionLimitedModes,
+      precisionLimitWarning: subspace.precisionLimitWarning
+    } : {}),
     ...(projected.projection ? {
       approximationWarning: modalProjectionWarning(projected.projection),
       meshProjection: projected.projection
@@ -265,9 +300,12 @@ export function solveModalSubspace(
   const maxSubspaceIterations = positiveInteger(options.maxSubspaceIterations) ?? DEFAULT_SUBSPACE_ITERATIONS;
   let basis = deterministicInitialBlock(size, blockSize);
   if (!massOrthonormalize(basis, system.mass)) return insufficientConstraints();
+  const residualGamma = sparseRoundingGamma(csrMaxRowNonZeros(system.stiffness) + MODAL_RESIDUAL_EXTRA_TERMS);
   let latestModes: ModalSubspaceMode[] = [];
+  let latestConverged: ModalSubspaceMode[] = [];
   let completedIterations = 0;
   let basisEigenvalues: number[] | undefined;
+  let basisInnerFloors: number[] | undefined;
 
   for (let iteration = 1; iteration <= maxSubspaceIterations; iteration += 1) {
     if (options.hooks?.shouldCancel?.()) return failureResult("cancelled", "Solve cancelled.");
@@ -276,7 +314,10 @@ export function solveModalSubspace(
       const vector = basis[blockIndex];
       const rhs = massProduct(system.mass, vector);
       const solved = conjugateGradient(system.stiffness, rhs, {
-        tolerance: modalInnerTolerance(iteration),
+        // Never ask CG for a relative residual below this vector's own
+        // representation floor: past it, more CG iterations shrink only the
+        // recursive residual while the true residual stays put.
+        tolerance: Math.max(modalInnerTolerance(iteration), basisInnerFloors?.[blockIndex] ?? 0),
         maxIterations: options.maxCgIterations,
         preconditioner: options.preconditioner ?? "jacobi",
         ssorOmega: options.ssorOmega,
@@ -301,19 +342,25 @@ export function solveModalSubspace(
     basisEigenvalues = eigensystem.values;
     const ritzVectors = rotateBlock(inverseBlock, eigensystem.vectors);
     if (!massOrthonormalize(ritzVectors, system.mass)) return insufficientConstraints();
-    latestModes = eigensystem.values.map((eigenvalue, index) => {
+    const blockModes = eigensystem.values.map((eigenvalue, index) => {
       const vector = ritzVectors[index];
-      const residual = scaledModalResidual(system, vector, eigenvalue);
-      return {
+      const residual = modalResidual(system, vector, eigenvalue);
+      const mode: ModalSubspaceMode = {
         modeIndex: index + 1,
         eigenvalue,
         frequencyHz: eigenvalue > 0 ? Math.sqrt(eigenvalue) / (2 * Math.PI) : 0,
-        scaledResidual: residual,
+        scaledResidual: residual.scaledResidual,
+        residualFloor: residualGamma * residual.roundingScale,
         vector
       };
-    }).slice(0, target);
+      return { mode, innerFloor: Number.EPSILON * residual.roundingScale };
+    });
+    basisInnerFloors = blockModes.map((entry) => entry.innerFloor);
+    const previousResiduals = latestModes.map((mode) => mode.scaledResidual);
+    latestModes = blockModes.slice(0, target).map((entry) => entry.mode);
     completedIterations = iteration;
-    const converged = latestModes.filter((mode) => mode.eigenvalue > 0 && Number.isFinite(mode.frequencyHz) && mode.scaledResidual <= tolerance);
+    const converged = latestModes.filter((mode, index) => modalModeConverged(mode, tolerance, previousResiduals[index]));
+    latestConverged = converged;
     options.hooks?.onProgress?.({
       phase: "solve",
       completed: iteration,
@@ -327,13 +374,14 @@ export function solveModalSubspace(
         modes: converged,
         requestedModeCount: target,
         blockSize,
-        subspaceIterations: iteration
+        subspaceIterations: iteration,
+        ...precisionLimitReport(converged, tolerance)
       };
     }
     basis = ritzVectors;
   }
 
-  const converged = latestModes.filter((mode) => mode.eigenvalue > 0 && Number.isFinite(mode.frequencyHz) && mode.scaledResidual <= tolerance);
+  const converged = latestConverged;
   const residualSummary = latestModes
     .map((mode) => `mode ${mode.modeIndex}: ${mode.scaledResidual.toExponential(3)}`)
     .join(", ");
@@ -345,7 +393,50 @@ export function solveModalSubspace(
     requestedModeCount: target,
     blockSize,
     subspaceIterations: completedIterations,
-    warning
+    warning,
+    ...precisionLimitReport(converged, tolerance)
+  };
+}
+
+/**
+ * A mode converges when its scaled residual meets the requested tolerance, or
+ * when that tolerance is below what double precision can resolve for the
+ * vector: the residual is within the vector's own gamma_n rounding floor AND
+ * the last subspace pass no longer reduced it by MODAL_FLOOR_STAGNATION_RATIO.
+ * The second condition keeps a mode that is still converging geometrically
+ * (the worst-case gamma_n bound is loose) iterating toward the tolerance.
+ *
+ * On slender, finely meshed parts the floor of the lowest bending modes grows
+ * roughly with (L/H)^2 (L/h)^2 and can cross the 1e-6 default; there the
+ * residual plateaus at the floor however many passes run, and without this
+ * branch the fundamental modes would be dropped. On well-conditioned parts
+ * the floor is orders of magnitude below the tolerance, so the test is
+ * unchanged there.
+ */
+function modalModeConverged(mode: ModalSubspaceMode, tolerance: number, previousResidual: number | undefined): boolean {
+  if (!(mode.eigenvalue > 0) || !Number.isFinite(mode.frequencyHz)) return false;
+  if (mode.scaledResidual <= tolerance) return true;
+  return mode.scaledResidual <= mode.residualFloor &&
+    previousResidual !== undefined &&
+    mode.scaledResidual > MODAL_FLOOR_STAGNATION_RATIO * previousResidual;
+}
+
+function precisionLimitReport(
+  converged: ModalSubspaceMode[],
+  tolerance: number
+): { precisionLimitedModes?: ModalPrecisionLimitedMode[]; precisionLimitWarning?: string } {
+  const limited = converged
+    .filter((mode) => mode.scaledResidual > tolerance)
+    .map((mode) => ({ modeIndex: mode.modeIndex, scaledResidual: mode.scaledResidual, residualFloor: mode.residualFloor }));
+  if (limited.length === 0) return {};
+  const detail = limited
+    .map((mode) => `mode ${mode.modeIndex}: ${mode.scaledResidual.toExponential(3)} (floor ${mode.residualFloor.toExponential(3)})`)
+    .join(", ");
+  return {
+    precisionLimitedModes: limited,
+    precisionLimitWarning: `Modal analysis accepted ${limited.length === 1 ? "mode" : "modes"} ` +
+      `${limited.map((mode) => mode.modeIndex).join(", ")} at the double-precision residual floor of this stiffness ` +
+      `matrix, which lies above the requested scaled residual tolerance ${tolerance}. Scaled residuals: ${detail}.`
   };
 }
 
@@ -450,13 +541,15 @@ function solveFrequencyEstimate(
   const eigenvalue = numerator / denominator;
   const frequencyHz = Math.sqrt(eigenvalue) / (2 * Math.PI);
   if (!Number.isFinite(frequencyHz) || !(frequencyHz > 0)) return insufficientConstraints();
+  const residual = modalResidual(system, vector, eigenvalue);
   return {
     ok: true,
     modes: [{
       modeIndex: 1,
       eigenvalue,
       frequencyHz,
-      scaledResidual: scaledModalResidual(system, vector, eigenvalue),
+      scaledResidual: residual.scaledResidual,
+      residualFloor: sparseRoundingGamma(csrMaxRowNonZeros(system.stiffness) + MODAL_RESIDUAL_EXTRA_TERMS) * residual.roundingScale,
       vector
     }],
     requestedModeCount: 1,
@@ -479,15 +572,57 @@ function projectedStiffness(system: PreparedStructuralSystem, basis: Float64Arra
   return projected;
 }
 
-function scaledModalResidual(system: PreparedStructuralSystem, vector: Float64Array, eigenvalue: number): number {
-  const stiffnessProduct = csrMatVec(system.stiffness, vector);
+/**
+ * Scaled residual ||Kx - lambda Mx|| / max(||Kx||, |lambda| ||Mx||) plus its
+ * rounding scale ||(|K||x| + |lambda| M|x|)|| / max(...). The rounding scale is
+ * >= 1 and dimensionless; it grows when Kx is a heavy cancellation of large
+ * terms, as for the lowest bending modes of slender, fine meshes.
+ */
+function modalResidual(
+  system: PreparedStructuralSystem,
+  vector: Float64Array,
+  eigenvalue: number
+): { scaledResidual: number; roundingScale: number } {
+  const { product: stiffnessProduct, absoluteProduct } = csrMatVecWithAbsolute(system.stiffness, vector);
   const massProductVector = massProduct(system.mass, vector);
+  const absoluteEigenvalue = Math.abs(eigenvalue);
   const residual = new Float64Array(vector.length);
+  const absoluteTerms = new Float64Array(vector.length);
   for (let index = 0; index < residual.length; index += 1) {
     residual[index] = stiffnessProduct[index] - eigenvalue * massProductVector[index];
+    absoluteTerms[index] = absoluteProduct[index] + absoluteEigenvalue * Math.abs(massProductVector[index]);
   }
-  const scale = Math.max(norm(stiffnessProduct), Math.abs(eigenvalue) * norm(massProductVector));
-  return scale > 0 && Number.isFinite(scale) ? norm(residual) / scale : Number.POSITIVE_INFINITY;
+  const scale = Math.max(norm(stiffnessProduct), absoluteEigenvalue * norm(massProductVector));
+  if (!(scale > 0) || !Number.isFinite(scale)) {
+    return { scaledResidual: Number.POSITIVE_INFINITY, roundingScale: Number.POSITIVE_INFINITY };
+  }
+  return { scaledResidual: norm(residual) / scale, roundingScale: norm(absoluteTerms) / scale };
+}
+
+/** One CSR pass computing A x and |A||x| together. */
+function csrMatVecWithAbsolute(matrix: CsrMatrix, vector: Float64Array): { product: Float64Array; absoluteProduct: Float64Array } {
+  const product = new Float64Array(matrix.rowCount);
+  const absoluteProduct = new Float64Array(matrix.rowCount);
+  for (let row = 0; row < matrix.rowCount; row += 1) {
+    let sum = 0;
+    let absoluteSum = 0;
+    for (let entry = matrix.rowPtr[row]; entry < matrix.rowPtr[row + 1]; entry += 1) {
+      const term = matrix.values[entry] * vector[matrix.colInd[entry]];
+      sum += term;
+      absoluteSum += Math.abs(term);
+    }
+    product[row] = sum;
+    absoluteProduct[row] = absoluteSum;
+  }
+  return { product, absoluteProduct };
+}
+
+function csrMaxRowNonZeros(matrix: CsrMatrix): number {
+  let maximum = 0;
+  for (let row = 0; row < matrix.rowCount; row += 1) {
+    maximum = Math.max(maximum, matrix.rowPtr[row + 1] - matrix.rowPtr[row]);
+  }
+  return maximum;
 }
 
 function massOrthonormalize(vectors: Float64Array[], mass: Float64Array): boolean {
@@ -542,10 +677,17 @@ function symmetricEigenDecomposition(matrix: Float64Array, size: number): { valu
     let q = 0;
     let maximum = 0;
     let diagonalScale = 0;
+    for (let row = 0; row < size; row += 1) diagonalScale = Math.max(diagonalScale, Math.abs(a[row * size + row]));
+    // Pivot on and stop by the off-diagonal size relative to its own diagonal
+    // pair (Demmel-Veselic). A threshold relative to the largest diagonal lets
+    // the lowest Ritz pairs of a widely spread block mix at roughly
+    // 1e-14 * lambda_max / lambda_min; on a 5-DOF diagonal pencil that alone
+    // held every residual near 5e-14 instead of ~6e-16.
     for (let row = 0; row < size; row += 1) {
-      diagonalScale = Math.max(diagonalScale, Math.abs(a[row * size + row]));
       for (let column = row + 1; column < size; column += 1) {
-        const value = Math.abs(a[row * size + column]);
+        const pairScale = Math.sqrt(Math.abs(a[row * size + row] * a[column * size + column]));
+        const reference = pairScale > 0 ? pairScale : diagonalScale;
+        const value = reference > 0 ? Math.abs(a[row * size + column]) / reference : Math.abs(a[row * size + column]);
         if (value > maximum) {
           maximum = value;
           p = row;
@@ -553,7 +695,7 @@ function symmetricEigenDecomposition(matrix: Float64Array, size: number): { valu
         }
       }
     }
-    if (maximum <= Math.max(diagonalScale, 1) * 1e-14) break;
+    if (maximum <= RAYLEIGH_RITZ_RELATIVE_OFF_DIAGONAL) break;
     const app = a[p * size + p];
     const aqq = a[q * size + q];
     const apq = a[p * size + q];
