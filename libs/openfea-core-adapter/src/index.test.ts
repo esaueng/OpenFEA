@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { solverSurfaceMeshFromModel, type OpenFEAModelJson, type SolverSurfaceMesh, type SurfaceFacetJson, type SurfaceSetJson } from "@openfea/core";
 import { solveCoreStatic } from "@openfea/solver-cpu";
-import type { DisplayModel, RunVariantResult, Study } from "@openfea/schema";
+import { createStructuredCantileverModel } from "../../../packages/solver-cpu/tests/helpers";
+import { ResultSummarySchema, type DisplayModel, type RunVariantResult, type Study } from "@openfea/schema";
 import {
   autoSolverBackend,
   bracketMeshSizeMmForPreset,
@@ -575,6 +576,38 @@ describe("per-model solver backend resolution", () => {
       }
     } as Study["meshSettings"];
   }
+
+  test("preserves a slender static solve's convergence warning in saved variant summaries", () => {
+    const displayModel = cantileverDisplayModel();
+    const model = createStructuredCantileverModel({ length: 40, width: 1, height: 1, force: 100, xDivisions: 40, yDivisions: 1, zDivisions: 1 });
+    for (const [surfaceIndex, sourceSelectionRef, sourceFaceId] of [
+      [0, "selection-fixed-face", "face-base-left"],
+      [1, "selection-load-face", "face-load-top"]
+    ] as const) {
+      for (const id of model.surfaceSets![surfaceIndex]!.facets) {
+        const facet = model.surfaceFacets!.find((entry) => entry.id === id)!;
+        Object.assign(facet, { sourceSelectionRef, sourceFaceId });
+      }
+    }
+    const study = autoStudy({
+      meshSettings: actualMeshSettings(model),
+      loads: [{ id: "load-1", type: "force", selectionRef: "selection-load-face", parameters: { value: 100, units: "N", direction: [0, -1, 0] }, status: "complete" }],
+      loadCases: [{ id: "case-default", name: "Default", enabled: true, loadIds: ["load-1"] }],
+      loadCombinations: [{ id: "combination", name: "Combination", enabled: true, factors: [{ caseId: "case-default", factor: 2 }] }]
+    });
+
+    const outcome = trySolveOpenFeaCoreStudy({ study, displayModel, runId: "slender" });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.result.variants?.map((variant) => variant.kind)).toEqual(["case", "combination", "envelope"]);
+    for (const variant of outcome.result.variants ?? []) {
+      expect(ResultSummarySchema.parse(variant.summary).diagnostics).toContainEqual(expect.objectContaining({
+        id: "partial-convergence",
+        source: "solver",
+        message: expect.stringContaining("recomputed true relative residual")
+      }));
+    }
+  });
 
   test("treats unset, auto, legacy, retired-cloud, and unknown backend values as no explicit choice", () => {
     for (const backend of [undefined, "auto", "cloudflare_fea", "opencae_core", "local_detailed", "opencae_core_cloud", "mystery_backend"]) {

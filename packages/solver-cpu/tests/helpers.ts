@@ -276,7 +276,10 @@ export function surfaceSetByX(name: string, facets: SurfaceFacetJson[], coordina
   return {
     name,
     facets: facets
-      .filter((facet) => facet.nodes.every((node) => Math.abs(coordinates[node * 3] - x) < 1e-12))
+      .filter((facet) => facet.nodes.every((node) => {
+        const coordinate = coordinates[node * 3];
+        return coordinate !== undefined && Math.abs(coordinate - x) < 1e-12;
+      }))
       .map((facet) => facet.id)
   };
 }

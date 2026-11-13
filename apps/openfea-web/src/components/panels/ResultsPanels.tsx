@@ -73,6 +73,7 @@ export function ThermalResultsPanelContent({
 }: RightPanelProps & { resultSummary: ThermalResultSummary }) {
   return (
     <Panel title="Thermal results" step="results" helper="Inspect steady temperature and conductive heat-flux fields on the solved mesh." study={study}>
+      <PartialConvergenceWarnings summary={resultSummary} />
       <ResultAnswer outdated={resultsOutdated}>
       <ResultTierBadge summary={resultSummary} />
       <Headline items={[
@@ -113,6 +114,12 @@ export function ThermalResultsPanelContent({
       </ResultActionsSlot>
     </Panel>
   );
+}
+
+function PartialConvergenceWarnings({ summary }: { summary: ResultSummary }) {
+  return summary.diagnostics?.filter((diagnostic) => diagnostic.id === "partial-convergence").map((diagnostic) => (
+    <p key={diagnostic.message} className="panel-warning" role="status"><AlertTriangle size={16} />{diagnostic.message}</p>
+  ));
 }
 
 /** Mode shapes colour by normalized displacement, so the legend uses the motion ramp. */
@@ -661,6 +668,7 @@ export function ResultsPanelContent({
           </select>
         </label>
       )}
+      <PartialConvergenceWarnings summary={resultSummary} />
       <ResultAnswer outdated={resultsOutdated}>
       {/* The verdict below reads the same for every tier; the chip says which tier it is. */}
       <ResultTierBadge summary={resultSummary} />

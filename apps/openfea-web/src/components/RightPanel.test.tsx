@@ -246,6 +246,16 @@ function uploadedStepProject(status: StepGeometryMetadata["status"], message?: s
   };
 }
 
+test("shows a partial convergence warning alongside structural results", () => {
+  const message = "Static sparse CG partially converged.";
+  const html = renderPanel("results", { resultSummary: {
+    ...resultSummary,
+    diagnostics: [{ id: "partial-convergence", severity: "warning", source: "solver", message, suggestedActions: [] }]
+  } });
+  expect(html).toContain(message);
+  expect(html).toContain('class="panel-warning" role="status"');
+});
+
 describe("RightPanel advanced loads", () => {
   const advancedStudy: Study = {
     ...study,

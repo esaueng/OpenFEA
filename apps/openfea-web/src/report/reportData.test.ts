@@ -631,10 +631,14 @@ describe("solver diagnostic payloads in Diagnostics & limitations", () => {
       convergedModeCount: 1,
       modes: [{ modeIndex: 1, frequencyHz: 16.3, eigenvalue: 10_489, scaledResidual: 3e-7, fieldId: "mode-1" }],
       provenance: productionSummary.provenance,
-      diagnostics: [projectionDiagnostic]
+      diagnostics: [projectionDiagnostic, {
+        id: "modal-precision-limit", severity: "warning", source: "solver",
+        message: "Mode 1 was accepted at the double-precision residual floor.", suggestedActions: []
+      }]
     };
     for (const unitSystem of ["SI", "US"] as const) {
-      const diagnostics = report({ study, resultSummary: modalSummary, resultFields: [], unitSystem }).diagnostics;
+      const { diagnostics, failureAssessment } = report({ study, resultSummary: modalSummary, resultFields: [], unitSystem });
+      expect(failureAssessment).toMatchObject({ status: "warning", title: "Modal precision limit" });
       expect(diagnostics).toContain("Modal solve ran on the Tet4 projection.");
       expect(diagnostics).toContain(projectionLine);
       expect(diagnostics).toContain("2 of 3 requested modes converged.");

@@ -35,6 +35,7 @@ import {
 } from "@openfea/materials";
 import {
   type CustomMaterial,
+  type Diagnostic,
   type DisplayModel,
   type DynamicSolverSettings,
   type ModalSolverSettings,
@@ -434,6 +435,7 @@ export function trySolveOpenFeaCoreStudy({ study, runId, displayModel, customMat
             reactionHeat: solved.diagnostics.reactionHeatW,
             heatRateUnits: "W",
             energyBalanceRelativeError: solved.diagnostics.energyBalanceRelativeError,
+            ...convergenceWarningSummary([solved.diagnostics]),
             provenance
           },
           fields: [
@@ -471,6 +473,7 @@ export function trySolveOpenFeaCoreStudy({ study, runId, displayModel, customMat
       }
       const caseById = new Map(loadCases.map((loadCase) => [loadCase.id, loadCase]));
       const combinationById = new Map(enabledCombinations.map((combination) => [combination.id, combination]));
+      const solvedCaseById = new Map(solved.cases.map((entry) => [entry.id, entry.result]));
       const variants: RunVariantResult[] = [
         ...solved.cases
           .filter((entry) => caseById.get(entry.id)?.enabled)
@@ -488,7 +491,11 @@ export function trySolveOpenFeaCoreStudy({ study, runId, displayModel, customMat
           kind: "combination",
           combinationId: entry.id,
           result: entry.result,
-          runId
+          runId,
+          convergenceInputs: combinationById.get(entry.id)?.factors.flatMap(({ caseId, factor }) => {
+            const input = solvedCaseById.get(caseId);
+            return factor !== 0 && input ? input.diagnostics : [];
+          })
         }))
       ];
       if (variants.length > 1) variants.push(staticEnvelopeVariant(variants, runId));
@@ -599,6 +606,7 @@ export function trySolveOpenFeaCoreStudy({ study, runId, displayModel, customMat
           : "opencae-core-sparse-tet",
       result: {
         ...result,
+        summary: { ...result.summary, ...modalDiagnosticSummary(result.diagnostics ?? []) },
         artifacts: {
           ...(result.artifacts ?? {}),
           ...(coreBuild.meshConnectivity ? { meshConnectivity: coreBuild.meshConnectivity } : {}),
@@ -1309,7 +1317,39 @@ function coreStepIndexForLoadCase(model: OpenFEAModelJson, caseId: string): numb
   return index;
 }
 
-function runVariantFromCoreResult({ id, name, kind, caseId, combinationId, result, runId }: {
+function convergenceWarningSummary(entries: readonly unknown[]): { diagnostics?: Diagnostic[] } {
+  const warnings = new Set<string>();
+  for (const entry of entries) {
+    if (entry && typeof entry === "object" && "partialConvergenceWarning" in entry && typeof entry.partialConvergenceWarning === "string") {
+      warnings.add(entry.partialConvergenceWarning);
+    }
+  }
+  if (!warnings.size) return {};
+  return { diagnostics: [...warnings].map((message) => solverWarning("partial-convergence", message)) };
+}
+
+function solverWarning(id: string, message: string): Diagnostic {
+  return { id, severity: "warning", source: "solver", message, suggestedActions: [] };
+}
+
+function modalDiagnosticSummary(entries: readonly unknown[]): { diagnostics?: Diagnostic[] } {
+  const modal = entries.find((entry) => entry && typeof entry === "object" && "id" in entry && entry.id === "modal-solve-diagnostics");
+  if (!modal) return {};
+  const { precisionLimitWarning, meshProjection } = modal as {
+    precisionLimitWarning?: string;
+    meshProjection?: { sourceElementOrder: string; solveElementOrder: string; reason: string };
+  };
+  const diagnostics: Diagnostic[] = [];
+  if (precisionLimitWarning) diagnostics.push(solverWarning("modal-precision-limit", precisionLimitWarning));
+  if (meshProjection) {
+    const { sourceElementOrder, solveElementOrder, reason } = meshProjection;
+    diagnostics.push(solverWarning("modal-mesh-projection",
+      `Mesh projection for solve: ${sourceElementOrder} → ${solveElementOrder} (${reason}). Results are computed on the projected mesh.`));
+  }
+  return diagnostics.length ? { diagnostics } : {};
+}
+
+function runVariantFromCoreResult({ id, name, kind, caseId, combinationId, result, runId, convergenceInputs = [] }: {
   id: string;
   name: string;
   kind: "case" | "combination";
@@ -1317,6 +1357,7 @@ function runVariantFromCoreResult({ id, name, kind, caseId, combinationId, resul
   combinationId?: string;
   result: CoreStructuralSolveResult;
   runId: string;
+  convergenceInputs?: unknown[];
 }): RunVariantResult {
   return {
     id,
@@ -1324,7 +1365,7 @@ function runVariantFromCoreResult({ id, name, kind, caseId, combinationId, resul
     kind,
     ...(caseId ? { caseId } : {}),
     ...(combinationId ? { combinationId } : {}),
-    summary: result.summary as unknown as ResultSummary,
+    summary: { ...result.summary, ...convergenceWarningSummary([...result.diagnostics, ...convergenceInputs]) } as unknown as ResultSummary,
     fields: result.fields.map((field) => ({ ...field, runId, variantId: id })) as unknown as ResultField[]
   };
 }
@@ -1392,7 +1433,9 @@ export function staticEnvelopeVariant(variants: RunVariantResult[], runId: strin
       reactionForce: Math.max(reactionForce, 0),
       reactionForceUnits: structuralSummaries[0]?.reactionForceUnits ?? "N",
       provenance: structuralSummaries[0]?.provenance,
-      diagnostics: [],
+      diagnostics: [...new Map(structuralSummaries.flatMap((summary) => (summary.diagnostics ?? [])
+        .filter((diagnostic) => diagnostic.id === "partial-convergence")
+        .map((diagnostic) => [diagnostic.message, diagnostic] as const))).values()],
       ...envelopePeakLocations(referenceStress, stress, maxStress, referenceDisplacement, displacement, maxDisplacement)
     },
     fields: [

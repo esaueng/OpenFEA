@@ -247,9 +247,12 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
   const firstMode = summary.modes[0];
   const lastMode = summary.modes[summary.modes.length - 1];
   const modeField = fieldForReport(fields, "mode_shape", input.captures.displacement);
-  const assessment: FailureAssessment = summary.convergedModeCount === summary.requestedModeCount
-    ? { status: "pass", title: "Requested modes converged", message: `All ${summary.requestedModeCount} requested modes met the scaled residual tolerance.` }
-    : { status: "warning", title: "Partial modal convergence", message: summary.warning ?? `${summary.convergedModeCount} of ${summary.requestedModeCount} requested modes converged.` };
+  const precisionLimit = summary.diagnostics?.find((diagnostic) => diagnostic.id === "modal-precision-limit");
+  const assessment: FailureAssessment = summary.convergedModeCount < summary.requestedModeCount
+    ? { status: "warning", title: "Partial modal convergence", message: summary.warning ?? `${summary.convergedModeCount} of ${summary.requestedModeCount} requested modes converged.` }
+    : precisionLimit
+      ? { status: "warning", title: "Modal precision limit", message: precisionLimit.message }
+      : { status: "pass", title: "Requested modes converged", message: `All ${summary.requestedModeCount} requested modes met the scaled residual tolerance.` };
   const criticalLayerAxis = input.displayModel
     ? inferGlobalCriticalPrintAxis(input.study, input.displayModel.faces.map((face) => ({
         entityId: face.id,
