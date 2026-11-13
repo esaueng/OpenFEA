@@ -57,6 +57,24 @@ describe("Worker UI performance rewrite boundaries", () => {
     expect(apiSource).not.toContain(removedFallbackSolver);
   });
 
+  test("keeps the solver runtime out of the shared performance worker bundle", () => {
+    // Solves run only on the dedicated solve worker. The performance worker
+    // handles playback/STL/STEP work; importing the adapter here would bundle a
+    // second full copy of the solver into its chunk (~65 KB gzip).
+    const performanceWorkerSource = readFileSync(resolve(__dirname, "workers/performanceWorker.ts"), "utf8");
+    const performanceClientSource = readFileSync(resolve(__dirname, "workers/performanceClient.ts"), "utf8");
+    const performanceProtocolSource = readFileSync(resolve(__dirname, "workers/performanceProtocol.ts"), "utf8");
+    for (const source of [performanceWorkerSource, performanceClientSource, performanceProtocolSource]) {
+      expect(source).not.toContain("openfeaCoreSolve");
+      expect(source).not.toContain("@openfea/core-adapter");
+      expect(source).not.toContain("@openfea/solve-pipeline");
+      expect(source).not.toContain("@openfea/solver-cpu");
+      expect(source).not.toContain(removedFallbackSolver);
+      expect(source).not.toContain(removedWorkerSolver);
+    }
+    expect(performanceProtocolSource).not.toContain("solveLocalStudy");
+  });
+
   test("keeps OpenFEA Core dynamic integration in the Core solver package", () => {
     // The adapter delegates solving to the local Core pipeline, which
     // calls the Core solver package's solveCoreStatic/solveCoreDynamic; no
