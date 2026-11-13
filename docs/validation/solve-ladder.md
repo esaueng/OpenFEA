@@ -45,6 +45,21 @@ Full table. *Solve* is CG only for static, and the whole `solveCore*` call for m
 | `slender-tet10-150k-static` | 149,919 / 149,556 | 6.8 | 1,325 | 11,221 CG | ssor | 1.1e-06 | 972 | 1,058 | pass |
 
 
+## Re-measured rungs after the CG and modal fixes (2026-11-13, Chromium, same machine class)
+
+After the true-residual CG change and the slender modal fix, the six affected 30k rungs were re-run in Chromium (Node 22.23.4, same container class as above, `--no-sandbox`). All six pass and match the regenerated Node reference within 1e-9 relative. Raw results: [`solve-ladder/2026-11-13-chromium.json`](solve-ladder/2026-11-13-chromium.json). WebKit was not run.
+
+| Case | Solve s | Iterations | Final rel. residual | Gates |
+|---|---|---|---|---|
+| `block-tet4-30k-modal` | 44.7 | 12 subspace | – | pass |
+| `block-tet10-30k-modal` | 86.7 | 10 subspace | – | pass |
+| `slender-tet4-30k-static` | 32.3 | 4,515 CG | 1.1e-7 (true residual; reported as partially converged) | pass |
+| `slender-tet4-30k-modal` | 304.5 | 7 subspace, 3 of 3 modes | – | pass |
+| `slender-tet10-30k-static` | 125.6 | 7,782 CG | 2.8e-7 (true residual; reported as partially converged) | pass |
+| `slender-tet10-30k-modal` | 1,175.9 | 7 subspace, 3 of 3 modes | – | pass |
+
+The 75k and 150k rungs in the table above predate both fixes and were not re-measured.
+
 ## What is measured
 
 - **Fixtures** come from `apps/openfea-web/src/workers/solveLadderFixtures.ts`. They are generated deterministically from a few integers, so no mesh binaries are committed.
