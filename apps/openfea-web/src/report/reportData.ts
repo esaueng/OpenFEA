@@ -13,6 +13,7 @@ import {
 } from "@openfea/materials";
 import { inferGlobalCriticalPrintAxis } from "@openfea/study-core";
 import { supportDisplayLabel } from "../supportLabels";
+import { displayFacesForEntry, structuralSupportDescription } from "../supportDescriptions";
 import type { SolverMeshSummary } from "../resultFields";
 import { meshQualityElementLabel, meshQualityReportRows } from "../meshQualityDisplay";
 import { formatDeformationFactor, type ResolvedDeformation } from "../resultDeformation";
@@ -211,7 +212,7 @@ export function buildReportData(input: BuildReportDataInput): ReportData {
     },
     materials: materialTable(input.study, input.unitSystem, criticalLayerAxis, input.project.customMaterials, input.bodyIds),
     manufacturing: manufacturingTable(input.study, input.project.customMaterials, input.bodyIds),
-    supports: supportTable(input.study),
+    supports: supportTable(input.study, input.displayModel),
     loads: loadTable(input.study, input.unitSystem),
     boundaryFigure: boundaryFigureData(input.study, input.captures.boundary),
     mesh: [
@@ -294,7 +295,7 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
     },
     materials: materialTable(input.study, input.unitSystem, criticalLayerAxis, input.project.customMaterials, input.bodyIds),
     manufacturing: manufacturingTable(input.study, input.project.customMaterials, input.bodyIds),
-    supports: supportTable(input.study),
+    supports: supportTable(input.study, input.displayModel),
     loads: { headers: ["Load", "Magnitude", "Direction", "Target"], rows: [], emptyMessage: "Applied loads are not used in modal analysis." },
     boundaryFigure: boundaryFigureData(input.study, input.captures.boundary),
     mesh: [
@@ -371,7 +372,7 @@ function buildThermalReportData(input: BuildReportDataInput, summary: ThermalRes
     },
     materials: thermalMaterialTable(input.study, input.project.customMaterials, input.bodyIds),
     manufacturing: manufacturingTable(input.study, input.project.customMaterials, input.bodyIds),
-    supports: supportTable(input.study),
+    supports: supportTable(input.study, input.displayModel),
     loads: loadTable(input.study, input.unitSystem),
     boundaryFigure: boundaryFigureData(input.study, input.captures.boundary),
     mesh: [
@@ -605,11 +606,13 @@ function manufacturingSettingsLabel(process: ManufacturingProcess, parameters: M
   return process.description;
 }
 
-function supportTable(study: Study): ReportTable {
+function supportTable(study: Study, displayModel: DisplayModel | null): ReportTable {
   return {
     headers: ["Support", "Target"],
     rows: study.constraints.map((constraint) => [
-      constraint.type === "fixed" ? "Fixed support" : constraint.type === "prescribed_temperature" ? `Prescribed temperature (${Number(constraint.parameters.value ?? 0)} ${String(constraint.parameters.units ?? "°C")})` : `Prescribed displacement (${Number(constraint.parameters.value ?? 0)} ${String(constraint.parameters.units ?? "mm")} ${String(constraint.parameters.component ?? "z")})`,
+      // Fixed supports name the components they hold; symmetry supports name
+      // the face-normal axis (plan 036 R1.4).
+      structuralSupportDescription(constraint, displayFacesForEntry(study, displayModel ?? undefined, constraint)) ?? (constraint.type === "prescribed_temperature" ? `Prescribed temperature (${Number(constraint.parameters.value ?? 0)} ${String(constraint.parameters.units ?? "°C")})` : `Prescribed displacement (${Number(constraint.parameters.value ?? 0)} ${String(constraint.parameters.units ?? "mm")} ${String(constraint.parameters.component ?? "z")})`),
       selectionLabels(study, constraint.selectionRef, constraint.selectionRefs)
     ]),
     emptyMessage: "No supports recorded."

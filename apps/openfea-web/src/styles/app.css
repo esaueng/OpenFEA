@@ -5019,6 +5019,33 @@ button:disabled {
   line-height: var(--lh-loose);
 }
 
+/* Support notes (plan 036 R1.4): symmetry tolerance and development-grade labels. */
+.field-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-loose);
+}
+
+.component-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.component-checkboxes legend {
+  padding: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.component-checkboxes .toggle {
+  margin: var(--sp-2) 0 0;
+}
+
 input[aria-invalid="true"] {
   border-color: var(--color-error);
 }

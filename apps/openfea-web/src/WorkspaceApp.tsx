@@ -60,6 +60,7 @@ import {
 } from "./appShellState";
 import { displayModelForUnits, formatResultMetric, loadValueForUnits, resultFieldForUnits, resultSummaryForUnits, resultValueForUnits, resultValueFromDisplayUnits, type UnitSystem } from "./unitDisplay";
 import { nextLoadLabel, nextSupportLabel, supportDisplayLabel } from "./supportLabels";
+import { fixedSupportParameters, formatSupportComponents } from "./supportDescriptions";
 import { nextSelectedPayloadObject, shouldClearPayloadSelectionOnViewerMiss } from "./payloadSelection";
 import { hasLegacyStepUploadFaces, hasUnresolvedStepFaceSelections, healStepFaceSelections, healStepHoleSupportSelections, legacyStepFaceHealMessage } from "./stepFaceHealing";
 import { stepGeometryNeedsRepair } from "./stepGeometryState";
@@ -3002,6 +3003,29 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
               return;
             }
             const extraRefs = [...new Set((extras?.selectionRefs ?? []).filter((ref) => ref && ref !== selectionRef))];
+            if (options?.type === "symmetry" || (options?.type === "fixed" && options.components && options.components.length < 3)) {
+              // Symmetry/roller and per-component fixed supports (plan 036 R1.4).
+              const symmetry = options.type === "symmetry";
+              const components = options.components ?? [];
+              const constraint: Constraint = {
+                id: `constraint-${crypto.randomUUID()}`,
+                type: options.type,
+                selectionRef: selectionRef ?? "",
+                ...(extraRefs.length ? { selectionRefs: extraRefs } : {}),
+                parameters: symmetry
+                  ? { label: nextSupportLabel(study.constraints, "symmetry") }
+                  : fixedSupportParameters({ label: nextSupportLabel(study.constraints, "fixed") }, components),
+                status: "complete"
+              };
+              const faces = extraRefs.length ? ` on ${extraRefs.length + 1} faces` : "";
+              void updateStudy(saveStudyPatch(
+                study.id,
+                { constraints: [...study.constraints, constraint] },
+                symmetry ? `Symmetry support added${faces}.` : `Fixed support (${formatSupportComponents(components)}) added${faces}.`,
+                study
+              ));
+              return;
+            }
             if (!extraRefs.length) {
               void updateStudy(addSupport(study.id, selectionRef, study));
               return;

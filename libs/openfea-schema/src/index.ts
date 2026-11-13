@@ -102,15 +102,54 @@ export const NamedSelectionSchema = z.object({
   fingerprint: z.string()
 });
 
+/** Global displacement components a support can constrain. */
+export const SUPPORT_COMPONENTS = ["x", "y", "z"] as const;
+export type SupportComponent = (typeof SUPPORT_COMPONENTS)[number];
+
 export const ConstraintSchema = z.object({
   id: z.string(),
-  type: z.enum(["fixed", "prescribed_displacement", "prescribed_temperature"]),
+  /**
+   * `symmetry` (plan 036 R1.4) is a symmetry/roller support: it constrains the
+   * displacement component normal to an axis-aligned face. Older readers never
+   * see it; every older type parses unchanged.
+   */
+  type: z.enum(["fixed", "prescribed_displacement", "prescribed_temperature", "symmetry"]),
   /** One or more face selection ids the constraint applies to (multi-face BCs, Decision 2). */
   selectionRef: z.string(),
   selectionRefs: z.array(z.string()).optional(),
   parameters: z.record(z.string(), z.unknown()),
   status: z.enum(["not_started", "ready", "warning", "complete"])
+}).superRefine((constraint, context) => {
+  // Per-component fixed supports (plan 036 R1.4): an optional, non-empty set
+  // of distinct global components. Absent means all three, so every fixed
+  // support saved before the field existed still holds x, y and z.
+  if (constraint.type !== "fixed" || constraint.parameters.components === undefined) return;
+  const components = constraint.parameters.components;
+  if (
+    !Array.isArray(components) ||
+    components.length === 0 ||
+    components.some((component) => !SUPPORT_COMPONENTS.includes(component as SupportComponent)) ||
+    new Set(components).size !== components.length
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["parameters", "components"],
+      message: "Fixed support components must be a non-empty list of distinct x, y and z."
+    });
+  }
 });
+
+/**
+ * Global components a fixed support holds. A fixed support without
+ * `parameters.components` (every project saved before plan 036 R1.4) holds
+ * all three. Returns components in x, y, z order.
+ */
+export function fixedSupportComponents(constraint: Pick<Constraint, "type" | "parameters">): SupportComponent[] {
+  if (constraint.type !== "fixed") return [];
+  const components = constraint.parameters.components;
+  if (!Array.isArray(components) || components.length === 0) return [...SUPPORT_COMPONENTS];
+  return SUPPORT_COMPONENTS.filter((component) => components.includes(component));
+}
 
 export const LoadSchema = z.object({
   id: z.string(),

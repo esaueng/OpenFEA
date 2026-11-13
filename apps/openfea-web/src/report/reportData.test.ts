@@ -536,6 +536,22 @@ describe("buildReportData", () => {
 
     expect(data.supports.rows[0]?.[1]).toContain("+");
   });
+
+  test("lists the components each fixed and symmetry support holds (plan 036 R1.4)", () => {
+    const project = { ...bracketDemoProject, studies: bracketDemoProject.studies.map((study) => ({ ...study })) };
+    const study = project.studies[0]!;
+    const [first] = study.constraints;
+    study.constraints = [
+      { ...first!, parameters: { ...first!.parameters, components: ["y"] } },
+      { ...first!, id: "sym", type: "symmetry", parameters: {} }
+    ];
+    const data = report({ project, study });
+
+    expect(data.supports.rows[0]?.[0]).toBe("Fixed support (Y; X, Z free)");
+    expect(data.supports.rows[1]?.[0]).toMatch(/^Symmetry \/ roller \(holds (X|Y|Z|the face normal)/);
+    const classic = report().supports.rows[0]?.[0];
+    expect(classic).toBe("Fixed support (X, Y, Z)");
+  });
 });
 
 describe("suggestedReportFilename", () => {

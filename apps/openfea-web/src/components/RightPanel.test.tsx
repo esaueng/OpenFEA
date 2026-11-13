@@ -2528,7 +2528,7 @@ describe("select-then-act and re-targeting (2026-09 review F1, D3, F3)", () => {
     expect(rightPanelSource.match(/const pickedFaceLabel = pickedElsewhere \? stepFaceLabelForUnits\(pickedElsewhere\.label, pickedElsewhere\.area, unitSystem\) : "";/g)).toHaveLength(2);
     expect(rightPanelSource).not.toContain("Move to {pickedElsewhere.label}");
     expect(rightPanelSource).toContain("onSave(previewLoad, targetFace)");
-    expect(rightPanelSource).toContain("support.parameters }, targetFace)");
+    expect(rightPanelSource).toContain("onSave({ ...support, type, parameters: savedParameters() }, targetFace)");
   });
 
   test("the in-panel Next commits a previewed material selection", () => {

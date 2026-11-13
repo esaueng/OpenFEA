@@ -4,6 +4,7 @@ import {
   elevateTet4MeshToTet10,
   finiteExtrema,
   solverSurfaceMeshFromModel,
+  symmetrySupportAxisForFacets,
   validateModelJson,
   volumeMeshToModelJson,
   OPENFEA_MODEL_SCHEMA_VERSION,
@@ -34,6 +35,9 @@ import {
   resolveMaterial
 } from "@openfea/materials";
 import {
+  fixedSupportComponents,
+  SUPPORT_COMPONENTS,
+  type Constraint,
   type CustomMaterial,
   type Diagnostic,
   type DisplayModel,
@@ -46,7 +50,8 @@ import {
   type LoadCombination,
   type RunVariantResult,
   type RunVariantRef,
-  type Study
+  type Study,
+  type SupportComponent
 } from "@openfea/schema";
 import { inferGlobalCriticalPrintAxis, selectionRefsFor } from "@openfea/study-core";
 import {
@@ -269,6 +274,23 @@ export function displayPointToSolverFrame(point: Vec3, displayModel: DisplayMode
   return [physical[0], dimensions[2] - physical[2], physical[1]];
 }
 
+/**
+ * Support components are chosen in the display-model frame, like load
+ * directions. Legacy sample models solve in an upright frame, so their display
+ * Y and Z swap; uploaded geometry keeps its axes.
+ */
+export function displayComponentToSolverFrame(component: SupportComponent, displayModel: DisplayModel | undefined): SupportComponent {
+  const unit: Vec3 = component === "x" ? [1, 0, 0] : component === "y" ? [0, 1, 0] : [0, 0, 1];
+  const mapped = displayDirectionToSolverFrame(unit, displayModel);
+  return mapped[0] !== 0 ? "x" : mapped[1] !== 0 ? "y" : "z";
+}
+
+/** A fixed support's solver-frame components, in x, y, z order (all three when the study names none). */
+function solverFixedSupportComponents(constraint: Pick<Constraint, "type" | "parameters">, displayModel: DisplayModel | undefined): SupportComponent[] {
+  const mapped = new Set(fixedSupportComponents(constraint).map((component) => displayComponentToSolverFrame(component, displayModel)));
+  return SUPPORT_COMPONENTS.filter((component) => mapped.has(component));
+}
+
 function negated(value: number): number {
   return value === 0 ? 0 : -value;
 }
@@ -282,6 +304,9 @@ export function studyForCoreGeometryDispatch(study: Study, displayModel: Display
   if (!displayModel || !displayModelUsesUprightSolverFrame(displayModel)) return study;
   return {
     ...study,
+    constraints: study.constraints.map((constraint) => constraint.type === "fixed" && constraint.parameters.components !== undefined
+      ? { ...constraint, parameters: { ...constraint.parameters, components: solverFixedSupportComponents(constraint, displayModel) } }
+      : constraint),
     loads: study.loads.map((load) => {
       const direction = vector3(load.parameters.direction);
       const remotePoint = vector3(load.parameters.remotePoint);
@@ -355,8 +380,8 @@ export function openFeaCoreEligibility(
     if (study.loads.some((load) => load.type !== "heat_flux" && load.type !== "heat_generation")) return { ok: false, reason: "Steady thermal studies accept heat flux and heat generation only." };
     return { ok: true };
   }
-  if (!study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement")) {
-    return { ok: false, reason: "OpenFEA Core requires at least one fixed or prescribed-displacement support." };
+  if (!study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement" || constraint.type === "symmetry")) {
+    return { ok: false, reason: "OpenFEA Core requires at least one fixed, symmetry or prescribed-displacement support." };
   }
   if (study.type === "dynamic_structural" && study.loads.some((load) => load.type === "bolt_preload")) {
     return { ok: false, reason: "Equivalent bolt preload is supported for static studies only." };
@@ -839,7 +864,7 @@ export function buildOpenFeaCoreModelForStudy(
   const coreLoadNameByStudyLoadId = new Map<string, string>();
 
   for (const [index, constraint] of study.constraints.entries()) {
-    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement") {
+    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement" && constraint.type !== "symmetry") {
       throw new Error(
         `OpenFEA Core browser solve does not support ${constraint.type} constraints yet (constraint ${constraint.id}). Change it to a fixed support or remove it.`
       );
@@ -874,9 +899,21 @@ export function buildOpenFeaCoreModelForStudy(
       });
       continue;
     }
+    if (constraint.type === "symmetry") {
+      // Symmetry/roller (plan 036 R1.4): the solver-frame face normal picks
+      // the constrained component; a face off every axis is rejected.
+      const facetById = new Map((model.surfaceFacets ?? []).map((facet) => [facet.id, facet]));
+      const axis = symmetrySupportAxisForFacets(
+        model.nodes.coordinates,
+        surfaceSet.facets.flatMap((facetId) => facetById.get(facetId) ?? [])
+      );
+      if (!axis.ok) throw new Error(`${supportErrorLabel(constraint)}: ${axis.message}`);
+      boundaryConditions.push({ name: `symmetrySupport${index}`, type: "fixed", nodeSet: nodeSet.name, components: [axis.component] });
+      continue;
+    }
     boundaryConditions.push(constraint.type === "prescribed_temperature"
       ? { name: `prescribedTemperature${index}`, type: "prescribedTemperature", nodeSet: nodeSet.name, value: Number(constraint.parameters.value ?? 20) }
-      : { name: `fixedSupport${index}`, type: "fixed", nodeSet: nodeSet.name, components: ["x", "y", "z"] });
+      : { name: `fixedSupport${index}`, type: "fixed", nodeSet: nodeSet.name, components: solverFixedSupportComponents(constraint, displayModel) });
   }
 
   const density = coreMaterial.density ?? material.material.density;
@@ -1079,6 +1116,11 @@ export function buildOpenFeaCoreModelForStudy(
     meshSource,
     ...(meshConnectivity ? { meshConnectivity } : {})
   };
+}
+
+function supportErrorLabel(constraint: Pick<Constraint, "id" | "parameters">): string {
+  const label = constraint.parameters.label;
+  return `Support ${typeof label === "string" && label.trim() ? label.trim() : constraint.id}`;
 }
 
 export function coreMeshStatisticsForStudy(

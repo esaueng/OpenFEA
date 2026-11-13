@@ -101,12 +101,35 @@ is at most `1e-6`. The solver returns only converged modes and reports requested
 
 That tolerance can lie below what double precision can resolve. A vector stored in doubles cannot have a computed residual much below its rounding floor `gamma_n ||(|K||phi| + |lambda| M|phi|)|| / max(||K phi||, |lambda| ||M phi||)`, where `gamma_n = n u / (1 - n u)`, `u = eps / 2`, and `n` is the longest stiffness row plus two. For the lowest bending modes of slender, finely meshed parts this floor grows roughly with `(L/H)^2 (L/h)^2`. Inner shift-invert CG solves therefore stop at each vector's representation floor (`eps` times the same ratio) rather than at a fixed `1e-9`. Driving the recursive CG residual past that floor only widened the gap to the true residual, which is why the slender 30k-DOF solve-ladder pair stalled at 2.5e-6 / 2.0e-6. A mode is also accepted when its residual is within its own floor and the last subspace pass shrank it by less than half. The measured residual is still exported unchanged. The mode is listed in `precisionLimitedModes` with its floor, and `precisionLimitWarning` names it in the result warning. On well-conditioned parts the floor is far below `1e-6`, so the criterion is unchanged there. Inner CG non-convergence or singular constrained systems must produce an explicit insufficient-supports error naming the Supports step. A raw CG error is not an acceptable user diagnostic.
 
+## Per-Component Fixed and Symmetry Supports (plan 036 R1.4)
+
+Development-grade. The closed-form, unit-equivalence and balance gates below pass in `pnpm test`; the browser run that exercises a symmetry half model in the app was manual and is not part of CI yet. In that run (Chromium, 2026-11-13) the `box-with-bore.step` fixture got a fixed −X face, a symmetry support added through the Supports panel on the −Y face (the panel and row both reported "holds Y"), and a 500 N load on the +X face; it meshed with gmsh-wasm and solved in the browser with a 500 N reaction and no page errors.
+
+- A fixed support holds any non-empty subset of the global X, Y and Z displacement components. Without a stored component list it holds all three, exactly as before.
+- A symmetry/roller support holds only the component normal to its face. Version 1 has no local coordinate systems: every solver surface facet of the face must lie within `SUPPORT_GEOMETRY_POLICY.symmetryAxisToleranceDegrees` (1°) of the same global axis (`packages/core/src/support-policy.ts`). A curved, tilted or multi-axis selection is rejected with an explicit error naming the measured angle; it is never snapped to the nearest axis. Skew symmetry waits for local coordinate systems (R1.7).
+- Both become Core `fixed` boundary conditions with a component list, so reactions, provenance and result fields are unchanged.
+- In a modal study a symmetry plane admits only modes that are symmetric about it; antisymmetric modes need the full model or an antisymmetry support.
+- Symmetry supports on fewer than three orthogonal planes do not stop rigid-body motion on their own; the model still needs a fixed or other restraining support.
+
+Gate (`apps/openfea-web/src/workers/symmetrySupports.test.ts`): the 180 x 24 x 24 mm steel cantilever (Tet10, 500 N tip load) meshed mirror-symmetrically about both mid-planes, so a cut model is exactly the retained part of the full mesh.
+
+| Case | Supports | Tolerance | Measured |
+| --- | --- | --- | --- |
+| Half model, vertical tip load F/2 | Fixed root, symmetry on y = 0 | `SYMMETRY_MODEL_RELATIVE_TOLERANCE` 1e-6 | tip 0.176840 mm, peak 45.842 MPa; relative error 1.2e-13 and 4.7e-13 |
+| Quarter model, vertical tip load F/4 | Fixed root, symmetry on y = 0, antisymmetry on the z = 0 neutral plane (fixed X and Y only) | 1e-6 | relative error 1.3e-12 and 2.1e-12 |
+| Quarter model, axial tip load F/4 | Fixed root, symmetry on y = 0 and z = 0 | 1e-6 | relative error 2.7e-11 and 4.8e-11 |
+| Half model in mm-N-s-MPa vs m-N-s-Pa | As above | `UNIT_EQUIVALENCE_RELATIVE_TOLERANCE` 1e-6 | 9.5e-14 (tip), 1.3e-12 (stress), 2.2e-11 (reaction) |
+| Reaction balance | Full, half and quarter | `REACTION_BALANCE_RELATIVE_TOLERANCE` 1e-6 | |sum of reactions| = F, F/2, F/4 to within 1.3e-11 |
+
+A vertical load is antisymmetric about the neutral plane, so the quarter model needs the antisymmetry condition (in-plane components held, normal free) there, not a symmetry support. The full model's tip deflection is within 0.8% of Timoshenko beam theory (0.1782 mm); its peak stress includes the clamped-root corner concentration.
+
 ## Benchmark Matrix
 
 | Case | Model | Material | Load and support | Expected behavior |
 | --- | --- | --- | --- | --- |
 | Simple cantilever static | Connected Tet4 block | Linear elastic validation material | Fixed left face and transverse right-face force | Reaction force balances applied force, displacement/stress are finite and positive, safety factor is finite, fields are non-empty, and the solver surface mesh is connected. |
 | Simple cantilever dynamic | Same connected Tet4 block | Linear elastic validation material with density | Fixed left face and ramp or step right-face force | Dynamic frame count matches the requested cadence, frames are unique, velocity/acceleration fields are present, fields are non-empty, and no frame is reused as a fake response. |
+| Cantilever symmetry half/quarter models | Mirror-symmetric Tet10 cantilever and its cut halves/quarters | Steel (E 200 GPa, ν 0.29) | Fixed root plus symmetry (and, for a vertical load, antisymmetry) supports on the cut planes | Tip deflection and peak stress match the full model within 1e-6; reactions balance the applied share of the load; a face more than 1° off an axis is rejected. |
 | Simple cantilever modal | Connected Tet10 beam | Linear elastic validation material with density | Fixed left face; no loads | First bending frequency is within 10% of Euler–Bernoulli theory, returned shapes are M-orthogonal, and every returned scaled residual is at most `1e-6`. |
 | Pressure patch | Connected Tet4 block | Linear elastic validation material | Pressure on right face with explicit direction | Reaction force balances `pressure * surface area`; result provenance is computed production provenance. |
 | Surface traction patch | Connected Tet4/Tet10 block | Linear elastic validation material | Vector traction on one surface | Tri3/Tri6 integration balances `traction * surface area` and conserves direction. |
