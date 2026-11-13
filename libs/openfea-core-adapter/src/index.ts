@@ -1,3 +1,4 @@
+import { elasticSupportStiffness, fixedSupportComponents, SUPPORT_COMPONENTS } from "@openfea/schema/supports";
 import {
   connectedComponents,
   deriveFixedSupportNodeSetFromSurface,
@@ -35,9 +36,6 @@ import {
   resolveMaterial
 } from "@openfea/materials";
 import {
-  elasticSupportStiffness,
-  fixedSupportComponents,
-  SUPPORT_COMPONENTS,
   type Constraint,
   type CustomMaterial,
   type Diagnostic,

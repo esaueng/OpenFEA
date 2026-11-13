@@ -1,8 +1,8 @@
 import { finiteExtrema, type FiniteExtrema } from "@openfea/core";
-import { isModalResultSummary, isStructuralResultSummary, isThermalResultSummary } from "@openfea/schema";
+import { isModalResultSummary, isStructuralResultSummary, isThermalResultSummary } from "@openfea/schema/resultKinds";
 import type { DisplayFace, ResultField, ResultSummary, StructuralResultSummary } from "@openfea/schema";
 import { semanticResultFieldKey, stressComponentForField } from "./resultSelection";
-import { formatDisplayNumber } from "./unitDisplay";
+import { formatDisplayNumber } from "./formatDisplayNumber";
 import type { ResultMode } from "./workspaceViewTypes";
 
 export type ResultFieldMode = "stress" | "displacement" | "safety_factor" | "velocity" | "acceleration" | "mode_shape" | "temperature" | "heat_flux";

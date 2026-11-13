@@ -1,19 +1,14 @@
+import { isModalResultSummary, isThermalResultSummary } from "./resultKinds";
+export { isModalResultSummary, isStructuralResultSummary, isThermalResultSummary } from "./resultKinds";
 import { z } from "zod";
+import { SUPPORT_COMPONENTS, type SupportComponent } from "./supports";
+export { SUPPORT_COMPONENTS, elasticSupportStiffness, fixedSupportComponents } from "./supports";
+export type { SupportComponent } from "./supports";
 import { boundedLocalInput, firstIssueOnly, safeParseLocalPayload } from "./localPayloadValidation";
 export { safeParseLocalPayload } from "./localPayloadValidation";
 
-export const MAX_PROJECT_NAME_LENGTH = 128;
-export const MAX_LOAD_CASES = 64;
-export const MAX_LOAD_COMBINATIONS = 64;
-export const MAX_LOAD_COMBINATION_FACTORS = 64;
-export const MAX_DISPLAY_MODEL_FACES = 20_000;
-export const MAX_EMBEDDED_MODEL_BYTES = 32 * 1024 * 1024;
-export const MAX_VISUAL_MESH_BYTES = 8 * 1024 * 1024;
-export const MAX_RESULT_FIELD_VALUES = 500_000;
-export const MAX_RESULT_FIELD_SAMPLES = 50_000;
-export const MAX_RESULT_FIELDS = 8_192;
-export const MAX_RESULT_VARIANTS = 64;
-export const MAX_RESULT_UNIT_LENGTH = 32;
+import { MAX_PROJECT_NAME_LENGTH, MAX_LOAD_CASES, MAX_LOAD_COMBINATIONS, MAX_LOAD_COMBINATION_FACTORS, MAX_DISPLAY_MODEL_FACES, MAX_EMBEDDED_MODEL_BYTES, MAX_VISUAL_MESH_BYTES, MAX_RESULT_FIELD_VALUES, MAX_RESULT_FIELD_SAMPLES, MAX_RESULT_FIELDS, MAX_RESULT_VARIANTS, MAX_RESULT_UNIT_LENGTH } from "./limits";
+export { MAX_PROJECT_NAME_LENGTH, MAX_LOAD_CASES, MAX_LOAD_COMBINATIONS, MAX_LOAD_COMBINATION_FACTORS, MAX_DISPLAY_MODEL_FACES, MAX_EMBEDDED_MODEL_BYTES, MAX_VISUAL_MESH_BYTES, MAX_RESULT_FIELD_VALUES, MAX_RESULT_FIELD_SAMPLES, MAX_RESULT_FIELDS, MAX_RESULT_VARIANTS, MAX_RESULT_UNIT_LENGTH } from "./limits";
 
 const MAX_EMBEDDED_MODEL_BASE64_LENGTH = Math.ceil(MAX_EMBEDDED_MODEL_BYTES / 3) * 4;
 const MAX_VISUAL_MESH_BASE64_LENGTH = Math.ceil(MAX_VISUAL_MESH_BYTES / 3) * 4;
@@ -130,10 +125,6 @@ export const NamedSelectionSchema = z.object({
 /** Storage unit of elastic-support stiffness (foundation modulus) in studies. */
 export const ELASTIC_SUPPORT_STIFFNESS_UNITS = "N/m^3";
 
-/** Global displacement components a support can constrain. */
-export const SUPPORT_COMPONENTS = ["x", "y", "z"] as const;
-export type SupportComponent = (typeof SUPPORT_COMPONENTS)[number];
-
 export const ConstraintSchema = z.object({
   id: z.string(),
   /**
@@ -182,25 +173,6 @@ export const ConstraintSchema = z.object({
     });
   }
 });
-
-/** An elastic support's normal and tangential foundation moduli in N/m^3 (0 when absent or invalid). */
-export function elasticSupportStiffness(constraint: Pick<Constraint, "type" | "parameters">): { normal: number; tangential: number } {
-  if (constraint.type !== "elastic_support") return { normal: 0, tangential: 0 };
-  const read = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
-  return { normal: read(constraint.parameters.normalStiffness), tangential: read(constraint.parameters.tangentialStiffness) };
-}
-
-/**
- * Global components a fixed support holds. A fixed support without
- * `parameters.components` (every project saved before plan 036 R1.4) holds
- * all three. Returns components in x, y, z order.
- */
-export function fixedSupportComponents(constraint: Pick<Constraint, "type" | "parameters">): SupportComponent[] {
-  if (constraint.type !== "fixed") return [];
-  const components = constraint.parameters.components;
-  if (!Array.isArray(components) || components.length === 0) return [...SUPPORT_COMPONENTS];
-  return SUPPORT_COMPONENTS.filter((component) => components.includes(component));
-}
 
 export const LoadSchema = z.object({
   id: z.string(),
@@ -1243,18 +1215,6 @@ export function estimateAllowableLoadForSafetyFactor(
     loadScale: roundAssessmentNumber(loadScale),
     loadUnits: summary.reactionForceUnits
   };
-}
-
-export function isModalResultSummary(summary: ResultSummary): summary is ModalResultSummary {
-  return "analysisType" in summary && summary.analysisType === "modal_analysis";
-}
-
-export function isThermalResultSummary(summary: ResultSummary): summary is ThermalResultSummary {
-  return "analysisType" in summary && summary.analysisType === "steady_state_thermal";
-}
-
-export function isStructuralResultSummary(summary: ResultSummary): summary is StructuralResultSummary {
-  return !isModalResultSummary(summary) && !isThermalResultSummary(summary);
 }
 
 function roundAssessmentNumber(value: number): number {

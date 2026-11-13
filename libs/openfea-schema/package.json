@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./supports": "./src/supports.ts",
+    "./limits": "./src/limits.ts",
+    "./resultKinds": "./src/resultKinds.ts"
   },
   "dependencies": {
     "zod": "^4.6.7"
