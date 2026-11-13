@@ -611,3 +611,40 @@ describe("Tet4 bending-locking note in Diagnostics & limitations (plan 036 Relea
     expect(report({ study, displayModel: slenderModel, resultSummary: storedProjected, resultFields: [] }).diagnostics).toContain(TET4_BENDING_LOCKING_NOTE);
   });
 });
+
+describe("solver diagnostic payloads in Diagnostics & limitations", () => {
+  const meshProjection = { sourceElementOrder: "Tet10", solveElementOrder: "Tet4", sourceDofs: 240_000, solveDofs: 30_000, reason: "local-modal-performance" };
+  const projectionLine = "Mesh projection for solve: Tet10 → Tet4 (local-modal-performance). Results are computed on the projected mesh.";
+  const projectionDiagnostic = {
+    id: "modal-solve-diagnostics", severity: "warning", source: "solver", message: "Modal solve ran on the Tet4 projection.", suggestedActions: [],
+    meshProjection,
+    partialConvergenceWarning: "2 of 3 requested modes converged."
+  } as NonNullable<ResultSummary["diagnostics"]>[number];
+
+  // Regression: the modal report built its own diagnostics list from the free-text
+  // messages only, so the projection line (a modal-only path) never printed.
+  test("prints the mesh projection line in the modal report", () => {
+    const study: Study = { ...bracketDemoProject.studies[0]!, type: "modal_analysis", loads: [], solverSettings: { ...bracketDemoProject.studies[0]!.solverSettings, modeCount: 1 } };
+    const modalSummary: ResultSummary = {
+      analysisType: "modal_analysis",
+      requestedModeCount: 1,
+      convergedModeCount: 1,
+      modes: [{ modeIndex: 1, frequencyHz: 16.3, eigenvalue: 10_489, scaledResidual: 3e-7, fieldId: "mode-1" }],
+      provenance: productionSummary.provenance,
+      diagnostics: [projectionDiagnostic]
+    };
+    for (const unitSystem of ["SI", "US"] as const) {
+      const diagnostics = report({ study, resultSummary: modalSummary, resultFields: [], unitSystem }).diagnostics;
+      expect(diagnostics).toContain("Modal solve ran on the Tet4 projection.");
+      expect(diagnostics).toContain(projectionLine);
+      expect(diagnostics).toContain("2 of 3 requested modes converged.");
+    }
+  });
+
+  test("prints the mesh projection line in a structural report after unit conversion", () => {
+    const summary: ResultSummary = { ...productionSummary, diagnostics: [projectionDiagnostic] };
+    for (const unitSystem of ["SI", "US"] as const) {
+      expect(report({ resultSummary: summary, unitSystem }).diagnostics).toContain(projectionLine);
+    }
+  });
+});

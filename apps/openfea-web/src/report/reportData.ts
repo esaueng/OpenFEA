@@ -257,7 +257,8 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
         ...(face.area ? { areaM2: face.area * 1e-6 } : {})
       })), input.displayModel)
     : undefined;
-  const diagnostics = new Set<string>((summary.diagnostics ?? []).map((diagnostic) => diagnostic.message));
+  const diagnostics = new Set<string>();
+  addSolverDiagnosticEntries(diagnostics, input.resultSummary);
   if (summary.warning) diagnostics.add(summary.warning);
   for (const warning of input.solverMeshSummary?.warnings ?? []) diagnostics.add(warning);
   addElementFormulationNotes(diagnostics, input);
@@ -783,13 +784,17 @@ function legendValueWithUnits(value: number, units: string): string {
   return hasResultUnit(units) ? `${formatted} ${units}` : formatted;
 }
 
-function collectDiagnostics(input: BuildReportDataInput, summary: ResultSummary, fields: ResultField[]): string[] {
-  const entries = new Set<string>();
-  for (const diagnostic of summary.diagnostics ?? []) {
+/**
+ * Adds each solver diagnostic's message plus the structured payloads behind
+ * it. Solver-confessed approximations (modal Tet10→Tet4 projection, partial
+ * convergence, precision limits) are computed but historically never displayed, so surface the
+ * payloads, not just the free-text message. Reads the summary as stored
+ * (before unit conversion), like solvedElementOrderForReport, and serves both
+ * the structural and the modal report: the projection is a modal-only path.
+ */
+function addSolverDiagnosticEntries(entries: Set<string>, storedSummary: ResultSummary): void {
+  for (const diagnostic of storedSummary.diagnostics ?? []) {
     entries.add(diagnostic.message);
-    // Solver-confessed approximations (modal Tet10→Tet4 projection, partial
-    // convergence) are computed but historically never displayed. Surface the
-    // structured payloads, not just the free-text message.
     const detail = diagnostic as { approximationWarning?: unknown; meshProjection?: unknown; partialConvergenceWarning?: unknown; precisionLimitWarning?: unknown };
     if (typeof detail.approximationWarning === "string" && detail.approximationWarning) entries.add(detail.approximationWarning);
     if (typeof detail.partialConvergenceWarning === "string" && detail.partialConvergenceWarning) entries.add(detail.partialConvergenceWarning);
@@ -799,6 +804,11 @@ function collectDiagnostics(input: BuildReportDataInput, summary: ResultSummary,
       entries.add(`Mesh projection for solve: ${String(projection.sourceElementOrder ?? "?")} → ${String(projection.solveElementOrder ?? "?")}${projection.reason ? ` (${String(projection.reason)})` : ""}. Results are computed on the projected mesh.`);
     }
   }
+}
+
+function collectDiagnostics(input: BuildReportDataInput, summary: ResultSummary, fields: ResultField[]): string[] {
+  const entries = new Set<string>();
+  addSolverDiagnosticEntries(entries, input.resultSummary);
   if (input.displayModel && shouldBlockPreviewResultsForDisplayModel(input.displayModel, summary, fields, input.study)) entries.add(PREVIEW_GEOMETRY_WARNING);
   const legacyWarning = legacyResultWarningForProvenance(summary.provenance);
   if (legacyWarning) entries.add(legacyWarning);
