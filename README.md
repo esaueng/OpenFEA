@@ -97,7 +97,9 @@ Non-production branch builds use `npx wrangler preview`. The checked-in `preview
 | [`GET /health`](https://fea.esau.app/health) | Release contract: expected Worker/service identities and `solverRuntime: "browser-openfea-core"`. The [production-health workflow](.github/workflows/production-health.yml) checks it every 30 minutes. |
 | [`GET /healthz`](https://fea.esau.app/healthz) or `HEAD /healthz` | Public Worker liveness without storage or upstream requests. Returns HTTP 200, JSON `status: "ok"` for GET, and `Cache-Control: no-store`; other methods return 405. |
 
-Neither endpoint verifies browser geometry or solver execution. Retired cloud solve routes return HTTP 410. Cloudflare Access, WAF, and bot challenges run before the Worker; monitoring exceptions must be scoped to the intended hostname and exact GET/HEAD `/healthz` route and verified from the monitor's network.
+Neither endpoint verifies browser geometry or solver execution. Retired cloud solve routes return HTTP 410. The service worker leaves health and `/api` navigations to the network, and refreshes only workspace tabs when an update activates.
+
+Cloudflare Access, WAF, and bot checks run before the Worker. The production Browser Integrity Check exception is scoped to HTTPS on `fea.esau.app`: GET/HEAD `/healthz`, plus GET `/health` without a query string. Verify automated checks from the monitor's network with `node scripts/check-production-health.mjs`; a browser-signature denial is separate from Worker health.
 
 ## Repository layout
 

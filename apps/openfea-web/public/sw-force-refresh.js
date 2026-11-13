@@ -27,6 +27,9 @@
               return;
             }
             if (url.origin !== self.location.origin) return;
+            // Only the root URL is an app workspace. Do not add refresh query
+            // parameters to Worker health/API responses open in other tabs.
+            if (url.pathname !== "/") return;
             if (url.searchParams.get(refreshParam) === refreshVersion) return;
             url.searchParams.set(refreshParam, refreshVersion);
             try {

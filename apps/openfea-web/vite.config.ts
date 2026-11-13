@@ -7,7 +7,7 @@ import react from "@vitejs/plugin-react";
 import { gmshPthreadAsset } from "./gmshPthreadAsset";
 import { troikaFallbackFonts } from "./troikaFallbackFonts";
 import { VitePWA } from "vite-plugin-pwa";
-import { DONT_CACHE_BUST_URLS, MAX_PRECACHE_FILE_BYTES, PRECACHE_GLOB_IGNORES, PRECACHE_GLOB_PATTERNS, SW_FORCE_REFRESH_SCRIPT } from "./src/lib/offlinePrecache";
+import { DONT_CACHE_BUST_URLS, MAX_PRECACHE_FILE_BYTES, PRECACHE_GLOB_IGNORES, PRECACHE_GLOB_PATTERNS, SERVER_NAVIGATION_DENYLIST, SW_FORCE_REFRESH_SCRIPT } from "./src/lib/offlinePrecache";
 
 // In-browser wasm meshing is the production default (plan A-M4). Builds carry
 // gmsh-wasm unless explicitly opted out with VITE_WASM_MESHING=0 — the escape
@@ -169,6 +169,7 @@ function offlineAssetCaching(): PluginOption {
       dontCacheBustURLsMatching: DONT_CACHE_BUST_URLS,
       maximumFileSizeToCacheInBytes: MAX_PRECACHE_FILE_BYTES,
       navigateFallback: "index.html",
+      navigateFallbackDenylist: SERVER_NAVIGATION_DENYLIST,
       cleanupOutdatedCaches: true
       // No runtime caching: the 3D viewer's labels use a self-hosted,
       // precached Plex face and SceneLabelText keeps their text inside its
