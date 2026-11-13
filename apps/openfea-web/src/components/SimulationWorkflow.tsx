@@ -238,6 +238,8 @@ type MaterialEditorDraft = {
   poissonRatio: number;
   density: number;
   yieldStrength: number;
+  /** 0 means not specified; the ultimate safety-factor basis then stays unavailable. */
+  ultimateStrength: number;
   thermalConductivity: number;
   printProfile?: Material["printProfile"];
 };
@@ -291,6 +293,7 @@ export function MaterialLibraryModal({
       poissonRatio: source.poissonRatio,
       density: densityForEditor(source.density, unitSystem),
       yieldStrength: stressForEditor(source.yieldStrength, unitSystem),
+      ultimateStrength: source.ultimateStrength ? stressForEditor(source.ultimateStrength, unitSystem) : 0,
       thermalConductivity: source.thermalConductivity ?? 0,
       ...(source.printProfile ? { printProfile: structuredClone(source.printProfile) } : {})
     });
@@ -310,6 +313,7 @@ export function MaterialLibraryModal({
       poissonRatio: editor.poissonRatio,
       density: densityFromEditor(editor.density, unitSystem),
       yieldStrength: stressFromEditor(editor.yieldStrength, unitSystem),
+      ...(editor.ultimateStrength > 0 ? { ultimateStrength: stressFromEditor(editor.ultimateStrength, unitSystem) } : {}),
       ...(editor.thermalConductivity > 0 ? { thermalConductivity: editor.thermalConductivity } : {}),
       ...(editor.printProfile ? { printProfile: editor.printProfile } : {}),
       verification: "user_supplied_unverified"
@@ -320,6 +324,12 @@ export function MaterialLibraryModal({
     }
     if (!(Number.isFinite(canonical.poissonRatio) && canonical.poissonRatio > -1 && canonical.poissonRatio < 0.5)) {
       return setEditorError("Poisson ratio must be greater than -1 and less than 0.5.");
+    }
+    if (!Number.isFinite(editor.ultimateStrength) || editor.ultimateStrength < 0) {
+      return setEditorError("Ultimate strength must be a positive value, or 0 to leave it unspecified.");
+    }
+    if (canonical.ultimateStrength !== undefined && canonical.ultimateStrength < canonical.yieldStrength) {
+      return setEditorError("Ultimate strength cannot be below the yield strength.");
     }
     onSaveCustomMaterial(canonical);
     setDraftMaterialId(canonical.id);
@@ -376,6 +386,7 @@ export function MaterialLibraryModal({
                 <PreviewRow label="Poisson's ratio" value={String(selectedMaterial.poissonRatio)} />
                 <PreviewRow label="Density" value={formatDensity(selectedMaterial.density, "kg/m^3", unitSystem)} />
                 <PreviewRow label="Yield strength" value={formatMaterialStress(selectedMaterial.yieldStrength, unitSystem)} />
+                <PreviewRow label="Ultimate strength" value={selectedMaterial.ultimateStrength ? formatMaterialStress(selectedMaterial.ultimateStrength, unitSystem) : "Not specified"} />
                 <PreviewRow label="Thermal conductivity" value={selectedMaterial.thermalConductivity ? `${selectedMaterial.thermalConductivity} W/(m·K)` : "Not specified"} />
                 <div className="material-editor-actions">
                   <button className="secondary" type="button" onClick={() => beginEditor(selectedMaterial, false)} disabled={!onSaveCustomMaterial}>Duplicate &amp; edit</button>
@@ -444,6 +455,7 @@ function MaterialEditor({ draft, unitSystem, error, onChange, onCancel, onSave }
       <label>Poisson ratio<input type="number" min="-0.999" max="0.499" step="0.001" value={draft.poissonRatio} onChange={(event) => onChange({ poissonRatio: Number(event.currentTarget.value) })} /></label>
       <label>Density ({densityUnit})<input type="number" min="0" step="any" value={draft.density} onChange={(event) => onChange({ density: Number(event.currentTarget.value) })} /></label>
       <label>Yield strength ({stressUnit})<input type="number" min="0" step="any" value={draft.yieldStrength} onChange={(event) => onChange({ yieldStrength: Number(event.currentTarget.value) })} /></label>
+      <label>Ultimate strength ({stressUnit}, optional)<input type="number" min="0" step="any" value={draft.ultimateStrength} onChange={(event) => onChange({ ultimateStrength: Number(event.currentTarget.value) })} /></label>
       <label>Thermal conductivity (W/(m·K))<input type="number" min="0" step="any" value={draft.thermalConductivity} onChange={(event) => onChange({ thermalConductivity: Number(event.currentTarget.value) })} /></label>
       {draft.printProfile ? <p className="material-editor-profile">Copied {draft.printProfile.process} print profile retained.</p> : <p className="material-editor-profile">No additive profile. CNC/bulk use is unvalidated.</p>}
       {error ? <p className="material-editor-error" role="alert">{error}</p> : null}

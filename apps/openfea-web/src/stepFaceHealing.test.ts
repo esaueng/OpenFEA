@@ -254,6 +254,29 @@ describe("blind-hole support healing", () => {
     expect(heal.displayModel.faces[0]).toMatchObject({ id: cylinderFaceId, interiorSurface: true });
   });
 
+  test("never rewrites a managed named selection a support reuses (plan 036 R1.2)", () => {
+    const project = projectWithFaceSelections();
+    const study = project.studies[0]!;
+    const named = {
+      id: "selection-named-ends",
+      name: "Ends",
+      entityType: "face" as const,
+      geometryRefs: [
+        { bodyId: "body-uploaded", entityType: "face" as const, entityId: capFaceId, label: "+Z planar face F2" },
+        { bodyId: "body-uploaded", entityType: "face" as const, entityId: cylinderFaceId, label: "Cylindrical hole wall F1" }
+      ],
+      fingerprint: 'faceset:v1:["cap","wall"]'
+    };
+    study.namedSelections = [...study.namedSelections, named];
+    study.constraints = study.constraints.map((constraint, index) => (index === 0 ? { ...constraint, selectionRef: named.id } : constraint));
+    const displayModel = legacyDisplayModel({ faces: registry.displayFaces });
+
+    const heal = healStepHoleSupportSelections(project, displayModel, registry);
+    expect(heal.project.studies[0]!.namedSelections.find((selection) => selection.id === named.id)).toEqual(named);
+    const dispatched = remapStepFaceSelectionsInStudy(study, displayModel, registry);
+    expect(dispatched.namedSelections.find((selection) => selection.id === named.id)).toEqual(named);
+  });
+
   test("applies the same support redirect in the mesh-dispatch safety path", () => {
     const project = projectWithFaceSelections();
     project.studies[0]!.namedSelections = project.studies[0]!.namedSelections.map((selection) =>

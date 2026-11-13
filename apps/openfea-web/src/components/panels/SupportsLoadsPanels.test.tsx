@@ -561,3 +561,64 @@ describe("elastic (foundation) supports (plan 036 R1.5)", () => {
 function sameVector(left: readonly number[], right: readonly number[]) {
   return left.every((value, index) => Math.abs(value - right[index]!) < 1e-9);
 }
+
+describe("named selections in the Supports and Loads panels (plan 036 R1.2)", () => {
+  const boltHoles: Study["namedSelections"][number] = {
+    id: "selection-named-bolt-holes",
+    name: "Bolt holes",
+    entityType: "face",
+    geometryRefs: [namedSelections[0]!.geometryRefs[0]!, namedSelections[2]!.geometryRefs[0]!],
+    fingerprint: 'faceset:v1:["step-face-1","step-face-3"]'
+  };
+  const reusedStudy: Study = {
+    ...study,
+    namedSelections: [...namedSelections, boltHoles],
+    constraints: [{ id: "fs-1", type: "fixed", selectionRef: boltHoles.id, parameters: {}, status: "complete" }],
+    loads: [{ id: "load-1", type: "pressure", selectionRef: boltHoles.id, parameters: { value: 1, units: "MPa", direction: [0, 0, -1], directionMode: "-Z" }, status: "complete" }]
+  };
+  const manager = {
+    selectedFaceNames: ["+Z planar face F1 (645 mm²)", "-Z planar face F2 (1,290 mm²)"],
+    boundSelectionId: null,
+    onCreate: vi.fn(() => null),
+    onRename: vi.fn(() => null),
+    onDelete: vi.fn(() => null),
+    onUse: vi.fn()
+  };
+
+  test("a support and a load reusing one named selection name it and list every face", () => {
+    const supports = renderPanel("supports", { study: reusedStudy });
+    expect(supports).toContain("<small>Bolt holes · +Z planar face F1 (1 in²) +1 face</small>");
+    expect(supports).toContain("Faces (2): +Z planar face F1 (1 in²) + Cylindrical hole wall F3 (3 in²)");
+    const loads = renderPanel("loads", { study: reusedStudy });
+    expect(loads).toContain("Bolt holes · +Z planar face F1 (1 in²) +1 face");
+    expect(loads).toContain("Faces (2): +Z planar face F1 (1 in²) + Cylindrical hole wall F3 (3 in²)");
+  });
+
+  test("the Additional faces checklist offers faces, not named selections", () => {
+    const html = renderPanel("supports", { study: reusedStudy, selectedFace: displayModel.faces[0]! });
+    expect(html).toContain("Additional faces");
+    expect(html).toContain("<span>-Z planar face F2 (2 in²)</span>");
+    expect(html).not.toContain("<span>Bolt holes");
+  });
+
+  test("viewer Ctrl/Cmd-click picks arrive as checked Additional faces through the workspace", () => {
+    const html = renderPanel("supports", {
+      selectedFace: displayModel.faces[0]!,
+      additionalSelectionRefs: [namedSelections[1]!.id],
+      onToggleAdditionalSelectionRef: vi.fn()
+    });
+    expect(html).toContain('<input type="checkbox" checked=""/><span>-Z planar face F2 (2 in²)</span>');
+    expect(html).toContain('<input type="checkbox"/><span>Cylindrical hole wall F3 (3 in²)</span>');
+    expect(html).toContain("1 selected");
+    expect(html).toContain("Add fixed support (2 faces)");
+  });
+
+  test("the manager entry shows the face count and opens a dialog", () => {
+    const html = renderPanel("supports", { selectedFace: displayModel.faces[0]!, namedSelectionManager: manager });
+    expect(html).toContain('<span class="working-selection-count">2 faces selected</span>');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain("Named selections…");
+    // Not offered for body loads, which act on the whole part.
+    expect(renderPanel("loads", { draftLoadType: "volume_force", namedSelectionManager: manager })).not.toContain("Named selections…");
+  });
+});

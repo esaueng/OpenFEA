@@ -89,6 +89,24 @@ The approximately 100,000-DOF Chromium/WebKit benchmark is the existing cross-br
 
 "Apparent convergence" requires all three rungs to complete with strictly increasing actual DOF. The symmetric last-step change from medium to fine must be at most 5% for probe displacement and 10% for raw peak stress. Three successful increasing rungs outside either threshold are `unconverged`; missing, skipped, failed, or non-increasing rungs are `inconclusive`. This is a mesh-ladder indicator, not a proof of asymptotic convergence.
 
+## Local Mesh Sizing
+
+Plan 036 R2.2 sizes chosen STEP faces with gmsh Distance + Threshold fields (size grows from the local size on the face to the preset size at distance (preset − local) / 0.5). Status: the plan 036 development-grade label was lifted on this branch once all four gates below passed (Node and a local headless-Chromium run; the CI `browser-proof` job runs the same browser proof):
+
+- **Kt at equal DOF** (`apps/openfea-web/src/workers/localSizingKt.test.ts`): the plan 013 plate (W = 60, L = 120, t = 6, d = 15 mm, d/W = 0.25, 1 kN tension, fixed end) through the production STEP path (OCC-exported STEP, occt face registry, persisted rule on the hole wall resolved by face id + fingerprint, pre-mesh preflight, Tet10 mesh, facet attribution, browser solve pipeline). Oracle: Heywood/Howland Kt_net = 2 + (1 − d/W)³ = 2.422, a plane-stress value. The compared quantity is therefore the hole-edge hoop stress σxx at θ = ±90° averaged through the thickness (generalized plane stress), interpolated linearly along the solved surface. The 3D midplane peak is a few percent above the plane-stress value and the free faces below it, so a raw peak would not measure discretization error against this oracle. Measured (Node, gmsh-wasm 0.4.0, Tet10, 2026-11-13):
+
+  | Mesh | Total DOF | Kt (thickness-averaged hoop) | Error vs 2.422 |
+  | --- | --- | --- | --- |
+  | Uniform 3.8 mm | 25,920 | 2.347 | 3.1% |
+  | Local 1 mm on the hole wall, 6 mm elsewhere | 26,310 (+1.5%) | 2.464 | 1.7% |
+
+  The gate requires equal DOF within ±10%, a smaller error with local sizing, a local error below 3%, reaction balance within 1% and the pre-mesh DOF estimate within ±30% (22,077 estimated vs 26,310). Context from the exploration runs: uniform 4 mm (22,791 DOF) 2.323 (4.1%), uniform 2.5 mm (75,009 DOF) 2.375 (1.9%), local 1 mm under 8 mm (20,640 DOF) 2.457 (1.5%). The raw 3D peaks (hole-wall surface von Mises 2.36–2.51, raw element peak 2.41–2.54) lie above the plane-stress oracle once the hole is resolved, as expected for t/r = 0.8, and are not the gated quantity.
+- **mm vs m** (`libs/openfea-mesh-intake/src/wasmMesherLocalSizing.test.ts`): the same plate meshed from an OCC `.geo` in mm and in m with the size field scaled by 1/1000 gives element and node counts within 3% (gmsh has absolute tolerances), the same local/uniform refinement ratio within 3%, and the same meshed volume within 0.1%. The estimate and the face matcher are exactly scale invariant (unit tests).
+- **Pre-mesh estimate** (APPROXIMATION): against real gmsh counts on the plate, elements and nodes are within ±30% (measured within 12%) for global sizes up to the wall thickness, and only err high above it, so the preflight errs toward blocking. Fitted constants and their ranges are documented in `localSizing.ts`.
+- **Browser**: `pnpm verify:wasm-mesh-browser` includes a `localsizing` proof (box-with-bore STEP, 1.5 mm on the bore wall under the 6 mm preset): the rule must reach gmsh, refine the mesh by more than 1.5×, pass the preflight, produce no inverted elements and land the element estimate within ±30%. Passed locally on 2026-11-13 in headless Chromium after `VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build`: 1,446 uniform → 4,203 local elements, estimate 3,857 (0.92×), rule applied, no inverted elements; the bracket, STEP and run proofs still pass.
+
+Limits: faces only (the STEP face registry has no B-rep edge ids); a face split or merged by a multi-body fuse is matched only when its pieces lie inside the face's bounds and sum to its area, otherwise it is reported unmatched; the convergence ladder stays uniform.
+
 ## OpenFEA Core Modal Support
 
 Modal studies require positive density for every solved material, a generated mesh, and enough supports to make the constrained stiffness matrix nonsingular. They do not require or apply loads. The solver requests 1–10 modes (default 6) and uses deterministic block shift-invert subspace iteration with a block size of `min(modeCount + 2, freeDOFs)`.

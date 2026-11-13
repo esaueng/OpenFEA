@@ -7,15 +7,27 @@
 // raycasts their cylindrical wall and top face in a browser, assigns those
 // persistent face references to a support/load, and proves that both LODs map
 // the hits back to the same B-rep identities and fingerprints.
+//
+// Multi-pick (plan 036 R1.2): at each LOD the two raycast hits are fed through
+// the viewer's own pick seam as Ctrl-click and Cmd-click (resolveStepPickFaceId,
+// pickIntentForModifiers, applyFacePick), saved as a named selection, reused by
+// a support and a load, and toggled off again. Both LODs must produce the same
+// two B-rep identities and the same persisted named selection.
 import * as THREE from "three";
 import type { Study } from "@openfea/schema";
 import { buildParametricPartStep } from "@openfea/step";
 import {
   buildStepFaceRegistry,
+  resolvePickedStepFace,
   stepFaceIdForMeshTriangle,
+  stepFaceRecordForId,
+  stepSupportFaceIdForPickedFace,
   type StepFaceRecord,
   type StepFaceRegistry
 } from "../stepFaces";
+import { applyFacePick, EMPTY_WORKING_SELECTION, pickIntentForModifiers, resolveStepPickFaceId, workingSelectionFaceIds, type StepPickApi } from "../components/viewer/selection";
+import { createNamedFaceSelection, faceSelectionLookup, namedSelectionFacesFor, parseFaceSetFingerprint } from "../namedSelections";
+import { assignedFaceTintsForStudy } from "../assignedFaceTints";
 import { getOcctImporter, stepPreviewFromBase64 } from "../stepPreview";
 import {
   readStepFileForDisplay,
@@ -32,11 +44,23 @@ type PickedFace = {
   fingerprint: string;
 };
 
+type MultiPickProof = {
+  /** Faces in the working selection after Ctrl-click wall, Cmd-click top. */
+  faceIds: string[];
+  /** The saved named selection: face IDs and per-face fingerprints in order. */
+  namedSelection: { id: string; faceIds: string[]; faceFingerprints: string[]; fingerprint: string };
+  /** Faces tinted once a support and a load reuse the named selection. */
+  tintedFaceIds: string[];
+  /** Faces left after Ctrl-clicking the wall again. */
+  afterToggleOff: string[];
+};
+
 type LodProof = {
   triangleCount: number;
   edgeSegmentCount: number;
   wall: PickedFace;
   top: PickedFace;
+  multiPick: MultiPickProof;
 };
 
 export type StepSelectionScaleProof = {
@@ -89,8 +113,8 @@ export async function runStepSelectionProof(): Promise<StepSelectionProofResult>
         diameterMm,
         supportFaceId: requireGeometryFaceId(supportSelection, "fixed support"),
         loadFaceId: requireGeometryFaceId(loadSelection, "force load"),
-        detailed: pickedLodProof(detailed, wall, top),
-        balanced: pickedLodProof(balanced, wall, top)
+        detailed: pickedLodProof(detailed, wall, top, study),
+        balanced: pickedLodProof(balanced, wall, top, study)
       };
 
       requireCondition(detailed.registry.faces.length === 3, `${diameterMm} mm detailed registry did not contain exactly three cylinder faces`);
@@ -105,6 +129,13 @@ export async function runStepSelectionProof(): Promise<StepSelectionProofResult>
       requireMappedAssignment(proof.detailed.top, loadSelection, "detailed top-face load");
       requireMappedAssignment(proof.balanced.wall, supportSelection, "balanced cylindrical-wall support");
       requireMappedAssignment(proof.balanced.top, loadSelection, "balanced top-face load");
+      for (const [lod, multiPick] of [["detailed", proof.detailed.multiPick], ["balanced", proof.balanced.multiPick]] as const) {
+        requireMultiPick(multiPick, wall, top, `${diameterMm} mm ${lod}`);
+      }
+      requireCondition(
+        JSON.stringify(proof.detailed.multiPick) === JSON.stringify(proof.balanced.multiPick),
+        `${diameterMm} mm multi-pick named selection differed between display LODs`
+      );
       scales.push(proof);
     } catch (error) {
       failures.push(`${diameterMm} mm: ${error instanceof Error ? error.message : String(error)}`);
@@ -117,6 +148,8 @@ export async function runStepSelectionProof(): Promise<StepSelectionProofResult>
     failures
   };
 }
+
+const STEP_PICK_API: StepPickApi = { stepFaceIdForMeshTriangle, resolvePickedStepFace, stepSupportFaceIdForPickedFace };
 
 type InspectedLod = {
   registry: StepFaceRegistry;
@@ -157,7 +190,8 @@ async function inspectLod(
 function pickedLodProof(
   inspected: InspectedLod,
   expectedWall: StepFaceRecord,
-  expectedTop: StepFaceRecord
+  expectedTop: StepFaceRecord,
+  study: Study
 ): LodProof {
   requireCondition(inspected.wallPick.faceId === expectedWall.faceId, `wall raycast resolved ${inspected.wallPick.faceId}, expected ${expectedWall.faceId}`);
   requireCondition(inspected.topPick.faceId === expectedTop.faceId, `top raycast resolved ${inspected.topPick.faceId}, expected ${expectedTop.faceId}`);
@@ -165,10 +199,60 @@ function pickedLodProof(
     triangleCount: inspected.triangleCount,
     edgeSegmentCount: inspected.edgeSegmentCount,
     wall: inspected.wallPick,
-    top: inspected.topPick
+    top: inspected.topPick,
+    multiPick: multiPickProof(inspected, study)
   };
 }
 
+/**
+ * Ctrl-click the wall, Cmd-click the top, save the two as a named selection,
+ * reuse it in a support and a load, then Ctrl-click the wall off again — all
+ * through the viewer's pick seam, on this LOD's own raycast hits and registry.
+ */
+function multiPickProof(inspected: InspectedLod, study: Study): MultiPickProof {
+  const lookup = faceSelectionLookup(study);
+  const wallClick = applyFacePick(EMPTY_WORKING_SELECTION, inspected.wallPick.faceId, pickIntentForModifiers({ ctrlKey: true }), lookup);
+  requireCondition(wallClick.outcome === "primary", `Ctrl-click on the wall gave ${wallClick.outcome}, expected primary`);
+  const topClick = applyFacePick(wallClick.selection, inspected.topPick.faceId, pickIntentForModifiers({ metaKey: true }), lookup);
+  requireCondition(topClick.outcome === "added", `Cmd-click on the top gave ${topClick.outcome}, expected added`);
+  const faceIds = workingSelectionFaceIds(topClick.selection, lookup);
+  const faces = namedSelectionFacesFor(study, faceIds, inspected.registry.displayFaces, (faceId) => stepFaceRecordForId(inspected.registry, faceId)?.fingerprint);
+  const created = createNamedFaceSelection(study, "Wall and top", faces, "multi-pick-proof");
+  if (!created.ok) throw new Error(`named selection was refused: ${created.error}`);
+  const reused = {
+    ...study,
+    namedSelections: created.namedSelections,
+    constraints: [{ ...study.constraints[0]!, selectionRef: created.selection.id }],
+    loads: [{ ...study.loads[0]!, selectionRef: created.selection.id }]
+  } as Study;
+  const afterToggle = applyFacePick(topClick.selection, inspected.wallPick.faceId, pickIntentForModifiers({ ctrlKey: true }), lookup);
+  requireCondition(afterToggle.outcome === "removed", `Ctrl-click on the selected wall gave ${afterToggle.outcome}, expected removed`);
+  return {
+    faceIds,
+    namedSelection: {
+      id: created.selection.id,
+      faceIds: created.selection.geometryRefs.map((ref) => ref.entityId),
+      faceFingerprints: parseFaceSetFingerprint(created.selection.fingerprint) ?? [],
+      fingerprint: created.selection.fingerprint
+    },
+    tintedFaceIds: assignedFaceTintsForStudy(reused).map((tint) => tint.faceId).sort(),
+    afterToggleOff: workingSelectionFaceIds(afterToggle.selection, lookup)
+  };
+}
+
+function requireMultiPick(proof: MultiPickProof, wall: StepFaceRecord, top: StepFaceRecord, role: string): void {
+  const expected = [wall.faceId, top.faceId];
+  requireCondition(JSON.stringify(proof.faceIds) === JSON.stringify(expected), `${role} multi-pick selected ${proof.faceIds.join(", ")}, expected ${expected.join(", ")}`);
+  requireCondition(JSON.stringify(proof.namedSelection.faceIds) === JSON.stringify(expected), `${role} named selection kept ${proof.namedSelection.faceIds.join(", ")}`);
+  requireCondition(
+    JSON.stringify(proof.namedSelection.faceFingerprints) === JSON.stringify([wall.fingerprint, top.fingerprint]),
+    `${role} named selection changed a face fingerprint`
+  );
+  requireCondition(JSON.stringify(proof.tintedFaceIds) === JSON.stringify([...expected].sort()), `${role} reuse did not tint both faces`);
+  requireCondition(JSON.stringify(proof.afterToggleOff) === JSON.stringify([top.faceId]), `${role} Ctrl-click did not remove the wall`);
+}
+
+/** Raycast like a viewer click and resolve the hit through the viewer's STEP pick seam. */
 function raycastFace(
   object: THREE.Group,
   registry: StepFaceRegistry,
@@ -179,26 +263,11 @@ function raycastFace(
   const intersections = new THREE.Raycaster(origin, direction.normalize()).intersectObject(object, true);
   for (const intersection of intersections) {
     if (!(intersection.object instanceof THREE.Mesh) || typeof intersection.faceIndex !== "number") continue;
-    const meshIndex = stepMeshIndexForObject(intersection.object);
-    if (meshIndex === null) continue;
-    const faceId = stepFaceIdForMeshTriangle(registry, meshIndex, intersection.faceIndex);
+    const faceId = resolveStepPickFaceId(STEP_PICK_API, registry, { object: intersection.object, faceIndex: intersection.faceIndex }, { preferHoleWall: false, allowExactFallback: false });
     const record = faceId ? registry.faces.find((face) => face.faceId === faceId) : undefined;
     if (record) return { faceId: record.faceId, fingerprint: record.fingerprint };
   }
   throw new Error(`raycast from ${origin.toArray().join(",")} did not resolve a STEP face`);
-}
-
-function stepMeshIndexForObject(object: THREE.Object3D): number | null {
-  let current: THREE.Object3D | null = object;
-  while (current) {
-    const objectId = current.userData?.openfeaObjectId;
-    if (typeof objectId === "string") {
-      const match = /^step-object-(\d+)$/.exec(objectId);
-      return match ? Number.parseInt(match[1]!, 10) - 1 : null;
-    }
-    current = current.parent;
-  }
-  return null;
 }
 
 function assignedCylinderStudy(wall: StepFaceRecord, top: StepFaceRecord): Study {
@@ -345,7 +414,8 @@ function renderProofResult(result: StepSelectionProofResult): void {
   }
   const summary = result.scales.map((scale) => (
     `${scale.diameterMm} mm · support ${scale.supportFaceId} · load ${scale.loadFaceId} · ` +
-    `triangles ${scale.detailed.triangleCount} detailed / ${scale.balanced.triangleCount} playback`
+    `triangles ${scale.detailed.triangleCount} detailed / ${scale.balanced.triangleCount} playback · ` +
+    `multi-pick ${scale.detailed.multiPick.faceIds.join(" + ")} (detailed) / ${scale.balanced.multiPick.faceIds.join(" + ")} (playback)`
   ));
   proof.textContent = [
     `STEP selection LOD proof: ${result.ok ? "PASS" : "FAIL"}`,

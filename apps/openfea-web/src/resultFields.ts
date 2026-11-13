@@ -1120,8 +1120,8 @@ export function formatResultValue(value: number) {
   return formatDisplayNumber(value);
 }
 
-const SAFETY_FACTOR_DISPLAY_CAP = 10000;
-const SAFETY_FACTOR_DISPLAY_FLOOR = 0.01;
+export const SAFETY_FACTOR_DISPLAY_CAP = 10000;
+export const SAFETY_FACTOR_DISPLAY_FLOOR = 0.01;
 
 type SolverResultBundle = {
   summary?: ResultSummary | null;

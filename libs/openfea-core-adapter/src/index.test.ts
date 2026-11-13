@@ -812,6 +812,43 @@ describe("per-model solver backend resolution", () => {
     expect(millimetres.stressMpa / metres.stressMpa).toBeCloseTo(1, 6);
   });
 
+  test("maps a multi-face named selection and multi-face extras by B-rep face identity (plan 036 R1.2)", () => {
+    const groupId = "selection-named-both-ends";
+    const storedModel = actualCoreModelFixture();
+    // Facets attributed by B-rep face only, as the STEP mesher writes them, plus
+    // the single best-matching face the mesher stores under a selection's id.
+    storedModel.surfaceFacets = storedModel.surfaceFacets.map(({ sourceSelectionRef: _selection, ...facet }) => facet);
+    storedModel.surfaceSets = [{ name: groupId, facets: [0] }];
+    const base = autoStudy();
+    const group = {
+      id: groupId,
+      name: "Both ends",
+      entityType: "face" as const,
+      geometryRefs: base.namedSelections.flatMap((selection) => selection.geometryRefs),
+      fingerprint: 'faceset:v1:["fixed-face","load-face"]'
+    };
+    const nodesFor = (study: Study) => {
+      const model = buildOpenFeaCoreModelForStudy(study, cantileverDisplayModel()).model;
+      return { model, nodes: [...(model.nodeSets.find((set) => set.name === "fixedNodes0")?.nodes ?? [])].sort((left, right) => left - right) };
+    };
+
+    const reused = nodesFor(autoStudy({
+      namedSelections: [...base.namedSelections, group],
+      constraints: [{ id: "constraint-group", type: "fixed", selectionRef: groupId, parameters: {}, status: "complete" }],
+      meshSettings: actualMeshSettings(storedModel)
+    }));
+    expect(reused.model.surfaceSets?.find((set) => set.name === `${groupId}:faces`)?.facets).toEqual([0, 1]);
+    // Both faces' nodes: the single-face alias alone would give [0, 2, 3].
+    expect(reused.nodes).toEqual([0, 1, 2, 3]);
+
+    const extras = nodesFor(autoStudy({
+      constraints: [{ id: "constraint-extras", type: "fixed", selectionRef: "selection-fixed-face", selectionRefs: ["selection-load-face"], parameters: {}, status: "complete" }],
+      meshSettings: actualMeshSettings(storedModel)
+    }));
+    expect(extras.model.surfaceSets?.find((set) => set.name === "selection-fixed-face+selection-load-face")?.facets).toEqual([0, 1]);
+    expect(extras.nodes).toEqual([0, 1, 2, 3]);
+  });
+
   test("rejects unverifiable index-only mappings from pre-alias mesh artifacts", () => {
     const storedModel = actualCoreModelFixture();
     storedModel.surfaceFacets = storedModel.surfaceFacets.map(({ sourceSelectionRef: _selection, sourceFaceId: _face, ...facet }) => facet);

@@ -6,6 +6,8 @@ import type {
   CoreVolumeMeshArtifact,
   ElementOrderFallbackMetadata,
   FacetAttributionReport,
+  LocalSizeTarget,
+  LocalSizingReport,
   MeshAttemptContext,
   MeshPhase,
   MeshTimings,
@@ -48,6 +50,8 @@ export type MeshWorkerPayloads = {
      * fallback. Typed-array buffers travel as transferables.
      */
     attribution?: StepAttributionTessellation;
+    /** Local element sizes per B-rep face (plan 036 R2.2), in STEP model units (mm). */
+    localSizing?: LocalSizeTarget[];
   };
   inspectStepFile: {
     /** UTF-8 encoded STEP file content (transferable). */
@@ -124,6 +128,8 @@ export type MeshWorkerResults = {
     elementOrderFallback?: ElementOrderFallbackMetadata;
     /** Facet->B-rep-face attribution report (present when the request carried attribution inputs). */
     attribution?: FacetAttributionReport;
+    /** Which local size rules reached which gmsh surfaces (present when the request carried localSizing). */
+    localSizing?: LocalSizingReport;
   };
   inspectStepFile: {
     inspection: StepGeometryInspection;

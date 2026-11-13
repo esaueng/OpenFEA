@@ -5,6 +5,15 @@
 // The WASM module is lazy-loaded via dynamic import so browser bundles only pay
 // for it when meshing actually starts (the .wasm asset is ~44 MB).
 
+import {
+  LOCAL_MESH_SIZE_GROWTH_RATE,
+  localSizeDistanceSampling,
+  localSizeThresholdDistance,
+  matchLocalSizeSurfaces,
+  type LocalSizeSurfaceDescriptor,
+  type LocalSizeTarget,
+  type LocalSizingReport
+} from "./localSizing";
 import { MESH_QUALITY_REJECT_MIN_SICN } from "./meshQualityGate";
 import type { ElementOrderFallbackMetadata } from "./types";
 import { BROWSER_SOLVE_LIMITS } from "@openfea/solve-pipeline/limits";
@@ -26,6 +35,13 @@ export type MeshTimings = Partial<Record<MeshPhase, number>>;
 export type MeshWasmOptions = {
   elementOrder?: 1 | 2;
   onPhase?: (event: MeshPhaseEvent) => void;
+  /**
+   * Local element size per B-rep face (plan 036 R2.2), in the model's length
+   * units. Each matched face gets a gmsh Distance + Threshold size field that
+   * grows from the local size to Mesh.CharacteristicLengthMax; the fields are
+   * combined with Min as the background mesh field.
+   */
+  localSizing?: LocalSizeTarget[];
 };
 
 export type StepMeshWasmOptions = MeshWasmOptions & {
@@ -64,6 +80,8 @@ export type GeoMeshResult = {
   totalMs: number;
   /** Min signed inverse condition number over all volume elements (gmsh minSICN). */
   qualityMinSICN?: number;
+  /** Which local size rules were applied to which gmsh surfaces (present when localSizing was requested). */
+  localSizing?: LocalSizingReport;
 };
 
 export type StepMeshResult = GeoMeshResult & {
@@ -240,9 +258,11 @@ export async function meshGeoScriptToMshV2(geoScript: string, options: MeshWasmO
     quietLogger(gmsh);
   });
   try {
+    let localSizing: LocalSizingReport | undefined;
     timePhaseSync(timings, options, "import", totalStart, () => {
       gmsh.FS.writeFile("/model.geo", geoScript);
       gmsh.open("/model.geo");
+      if (options.localSizing?.length) localSizing = applyLocalSizeFields(gmsh, options.localSizing);
     });
     timePhaseSync(timings, options, "mesh2d", totalStart, () => gmsh.model.mesh.generate(2));
     timePhaseSync(timings, options, "mesh3d", totalStart, () => gmsh.model.mesh.generate(3));
@@ -251,7 +271,13 @@ export async function meshGeoScriptToMshV2(geoScript: string, options: MeshWasmO
     }
     const qualityMinSICN = minSICNQuality(gmsh);
     const msh = timePhaseSync(timings, options, "write", totalStart, () => writeMshV2(gmsh));
-    return { msh, timings, totalMs: now() - totalStart, ...(qualityMinSICN !== undefined ? { qualityMinSICN } : {}) };
+    return {
+      msh,
+      timings,
+      totalMs: now() - totalStart,
+      ...(qualityMinSICN !== undefined ? { qualityMinSICN } : {}),
+      ...(localSizing ? { localSizing } : {})
+    };
   } finally {
     safeFinalize(gmsh);
   }
@@ -681,6 +707,7 @@ function meshStepSession(
   const timings: MeshTimings = {};
   let geometryRepair: StepGeometryRepairReport | undefined;
   let multiBodyFusion: StepMultiBodyFusionReport | undefined;
+  let localSizing: LocalSizingReport | undefined;
   let preferQualityRepair = false;
   timePhaseSync(timings, options, "init", totalStart, () => {
     gmsh.initialize();
@@ -746,6 +773,9 @@ function meshStepSession(
       // and the parser collapses the whole boundary into one set.
       // Matched after repair: healing may renumber volumes.
       addPerSurfacePhysicalGroups(gmsh, options.bodyIdentities?.length ? volumeBodyNames(gmsh, options.bodyIdentities) : undefined);
+      // Local sizing runs on the final topology (after fuse/fragment/repair),
+      // so the fields reference the surface tags gmsh actually meshes.
+      if (options.localSizing?.length) localSizing = applyLocalSizeFields(gmsh, options.localSizing);
     });
     timePhaseSync(timings, options, "mesh2d", totalStart, () => gmsh.model.mesh.generate(2));
     timePhaseSync(timings, options, "mesh3d", totalStart, () => gmsh.model.mesh.generate(3));
@@ -843,6 +873,7 @@ function meshStepSession(
       ...(geometryRepair !== undefined ? { geometryRepair } : {}),
       ...(multiBodyFusion !== undefined ? { multiBodyFusion } : {}),
       ...(elementOrderFallback !== undefined ? { elementOrderFallback } : {}),
+      ...(localSizing !== undefined ? { localSizing } : {}),
       ...(preferQualityRepair ? { preferQualityRepair: true } : {}),
       ...(qualityMinSICN !== undefined ? { qualityMinSICN } : {})
     };
@@ -1604,6 +1635,116 @@ function addPerSurfacePhysicalGroups(gmsh: GmshApi, bodyNameByVolume?: ReadonlyM
     const physical = gmsh.model.addPhysicalGroup(3, tags, -1);
     gmsh.model.setPhysicalName(3, physical, name);
   }
+}
+
+/** Same 0.45 lower clamp the STEP preset path applies to the global size. */
+const LOCAL_SIZE_MIN_CLAMP_FACTOR = 0.45;
+
+/**
+ * Plan 036 R2.2: one Distance + Threshold field per matched face, combined
+ * with Min and installed as the background mesh field. The threshold grows
+ * linearly from the local size on the face to Mesh.CharacteristicLengthMax
+ * (the global size) over localSizeThresholdDistance(). Rules no finer than
+ * the global size, or whose face cannot be identified, are reported instead
+ * of applied. Requires the OpenCASCADE kernel (areas and centroids).
+ */
+function applyLocalSizeFields(gmsh: GmshApi, targets: readonly LocalSizeTarget[]): LocalSizingReport {
+  const globalSize = gmsh.option.getNumber("Mesh.CharacteristicLengthMax").value;
+  const report: LocalSizingReport = { globalSize, growthRate: LOCAL_MESH_SIZE_GROWTH_RATE, applied: [], unmatched: [] };
+  const finer: LocalSizeTarget[] = [];
+  for (const target of targets) {
+    if (Number.isFinite(target.size) && target.size > 0 && Number.isFinite(globalSize) && target.size >= globalSize) {
+      report.unmatched.push({ targetId: target.id, faceId: target.faceId, reason: "not_finer_than_global" });
+    } else {
+      finer.push(target);
+    }
+  }
+  if (!finer.length) return report;
+
+  const surfaces: LocalSizeSurfaceDescriptor[] = [];
+  const modelBounds = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  for (const tag of entityTags(gmsh, 2)) {
+    try {
+      const center = gmsh.model.occ.getCenterOfMass(2, tag);
+      const bounds = boundsFromGmsh(gmsh.model.getBoundingBox(2, tag));
+      surfaces.push({ tag, area: gmsh.model.occ.getMass(2, tag).mass, centroid: [center.x, center.y, center.z], bounds });
+      for (let axis = 0; axis < 3; axis += 1) {
+        modelBounds.min[axis] = Math.min(modelBounds.min[axis]!, bounds.min[axis]!);
+        modelBounds.max[axis] = Math.max(modelBounds.max[axis]!, bounds.max[axis]!);
+      }
+    } catch {
+      // Built-in .geo kernel surfaces have no OCC mass properties; they cannot be matched.
+    }
+  }
+  const diagonal = Math.hypot(...modelBounds.max.map((value, axis) => value - modelBounds.min[axis]!));
+  const { matches, unmatched } = matchLocalSizeSurfaces(surfaces, finer, diagonal);
+  report.unmatched.push(...unmatched);
+  if (!matches.length) return report;
+
+  const field = gmsh.model.mesh.field;
+  const thresholdTags: number[] = [];
+  const surfaceByTag = new Map(surfaces.map((surface) => [surface.tag, surface]));
+  for (const match of matches) {
+    const faceDiagonal = Math.max(...match.surfaceTags.map((tag) => {
+      const bounds = surfaceByTag.get(tag)!.bounds;
+      return Math.hypot(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2]);
+    }));
+    const distance = field.add("Distance");
+    setFieldNumbers(field, distance, ["SurfacesList", "FacesList"], match.surfaceTags);
+    field.setNumber(distance, "Sampling", localSizeDistanceSampling(faceDiagonal, match.size));
+    const threshold = field.add("Threshold");
+    setFieldNumber(field, threshold, ["InField", "IField"], distance);
+    setFieldNumber(field, threshold, ["SizeMin", "LcMin"], match.size);
+    setFieldNumber(field, threshold, ["SizeMax", "LcMax"], globalSize);
+    field.setNumber(threshold, "DistMin", 0);
+    field.setNumber(threshold, "DistMax", localSizeThresholdDistance(match.size, globalSize));
+    thresholdTags.push(threshold);
+    report.applied.push(match);
+  }
+  const minimum = field.add("Min");
+  field.setNumbers(minimum, "FieldsList", thresholdTags);
+  field.setAsBackgroundMesh(minimum);
+  // Without this, gmsh also interpolates the fine hole-edge curve sizes
+  // linearly across each whole surface and volume, so the refined region is
+  // set by the face layout instead of the threshold distance (measured on the
+  // plate benchmark: 2-5x the threshold band's elements, varying with the
+  // global size). The background field then owns the size everywhere: the
+  // threshold returns the global size beyond its distance, which equals the
+  // preset path's CharacteristicLengthMax.
+  gmsh.option.setNumber("Mesh.CharacteristicLengthExtendFromBoundary", 0);
+  const smallest = Math.min(...matches.map((match) => match.size));
+  const currentMin = gmsh.option.getNumber("Mesh.CharacteristicLengthMin").value;
+  if (!(currentMin <= smallest * LOCAL_SIZE_MIN_CLAMP_FACTOR)) {
+    gmsh.option.setNumber("Mesh.CharacteristicLengthMin", smallest * LOCAL_SIZE_MIN_CLAMP_FACTOR);
+  }
+  return report;
+}
+
+/** Gmsh renamed field options in 4.11 (FacesList → SurfacesList, IField → InField, LcMin → SizeMin); accept either. */
+function setFieldNumber(field: GmshApi["model"]["mesh"]["field"], tag: number, names: readonly string[], value: number): void {
+  let lastError: unknown;
+  for (const name of names) {
+    try {
+      field.setNumber(tag, name, value);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+function setFieldNumbers(field: GmshApi["model"]["mesh"]["field"], tag: number, names: readonly string[], values: number[]): void {
+  let lastError: unknown;
+  for (const name of names) {
+    try {
+      field.setNumbers(tag, name, values);
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 function entityTags(gmsh: GmshApi, dimension: number): number[] {
