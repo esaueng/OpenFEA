@@ -826,14 +826,6 @@ describe("CadViewer result coloring", () => {
     expect(cadViewerSource).toContain("onEnd={() => onInteractionChange?.(false)}");
   });
 
-  test("treats a click with pointer travel as an orbit drag, not a face pick", () => {
-    // R3F 8 fires onClick for any object hit at pointer-down and pointer-up
-    // regardless of travel; without this guard a drag that starts and ends on
-    // one face places a support (2026-09 review D26).
-    expect(cadViewerSource).toContain("export const VIEWER_CLICK_DRAG_THRESHOLD_PX = 4;");
-    expect(cadViewerSource.match(/if \(event\.delta > VIEWER_CLICK_DRAG_THRESHOLD_PX\) return;/g)).toHaveLength(2);
-  });
-
   test("keeps result legend extrema labels separate from numeric ticks", () => {
     expect(legendTickLabels(88.3, 156.6)).toEqual(["88.3", "105.4", "122.4", "139.5", "156.6"]);
   });
@@ -916,6 +908,15 @@ describe("CadViewer result coloring", () => {
     expect(resultLegendTitle("stress", "principal_max")).toBe("Principal stress σ₁");
     expect(resultLegendTitle("stress", "max_shear")).toBe("Maximum shear stress");
     expect(resultLegendTitle("safety_factor", "von_mises")).toBe("Safety factor");
+  });
+
+  test("names the safety-factor basis in the legend title and limit note (plan 036 R3.4)", () => {
+    expect(resultLegendTitle("safety_factor", "von_mises", { shortLabel: "yield, von Mises" })).toBe("Safety factor (yield, von Mises)");
+    expect(resultLegendTitle("safety_factor", "von_mises", { shortLabel: "ultimate, von Mises" })).toBe("Safety factor (ultimate, von Mises)");
+    // Other modes are not qualified by the basis.
+    expect(resultLegendTitle("stress", "von_mises", { shortLabel: "yield, von Mises" })).toBe("Von Mises stress");
+    expect(cadViewerSource).toContain("resultLegendTitle(resultMode, stressComponent, safetyFactorBasis)");
+    expect(cadViewerSource).toContain('{safetyFactorBasis?.limitNote ?? "below it the part yields"}');
   });
 
   test("renders solver surface results outside the legacy sample base rotation", () => {

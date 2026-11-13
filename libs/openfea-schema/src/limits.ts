@@ -1,0 +1,12 @@
+export const MAX_PROJECT_NAME_LENGTH = 128;
+export const MAX_LOAD_CASES = 64;
+export const MAX_LOAD_COMBINATIONS = 64;
+export const MAX_LOAD_COMBINATION_FACTORS = 64;
+export const MAX_DISPLAY_MODEL_FACES = 20_000;
+export const MAX_EMBEDDED_MODEL_BYTES = 32 * 1024 * 1024;
+export const MAX_VISUAL_MESH_BYTES = 8 * 1024 * 1024;
+export const MAX_RESULT_FIELD_VALUES = 500_000;
+export const MAX_RESULT_FIELD_SAMPLES = 50_000;
+export const MAX_RESULT_FIELDS = 8_192;
+export const MAX_RESULT_VARIANTS = 64;
+export const MAX_RESULT_UNIT_LENGTH = 32;

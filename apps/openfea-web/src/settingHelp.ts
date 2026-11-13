@@ -1,3 +1,5 @@
+import { SUPPORT_GEOMETRY_POLICY } from "@openfea/core";
+
 export type SettingHelpVisual =
   | "axis"
   | "dimensions"
@@ -53,7 +55,8 @@ export type SettingHelpId =
   | "simulationSettings"
   | "preconfigured"
   | "modalSettings"
-  | "targetSafetyFactor";
+  | "targetSafetyFactor"
+  | "safetyFactorBasis";
 
 export interface SettingHelp {
   title: string;
@@ -199,7 +202,7 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
   },
   supportType: {
     title: "Support type",
-    body: "Fixed support locks the selected face. Prescribed displacement moves it by a known amount (mm along one axis); zero behaves as a fixed component.",
+    body: `Fixed support locks the selected face in all directions, or only in the X, Y or Z components you choose. Symmetry / roller holds only the motion normal to a flat face that lies within ${SUPPORT_GEOMETRY_POLICY.symmetryAxisToleranceDegrees}° of a global axis, as on a symmetry plane or a frictionless slide. Elastic support rests the face on springs with a normal and a tangential stiffness per unit area (a Winkler foundation: no lift-off, no load spreading). Prescribed displacement moves the face by a known amount (mm along one axis); zero behaves as a fixed component.`,
     visual: "support"
   },
   loadPlacement: {
@@ -290,6 +293,11 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
   targetSafetyFactor: {
     title: "Target safety factor",
     body: "Reverse-checks the current result to estimate the maximum load for the safety factor you want. Higher targets allow less load.",
+    visual: "results"
+  },
+  safetyFactorBasis: {
+    title: "Safety factor basis",
+    body: "Chooses what the safety factor divides by: the material yield strength (default), its ultimate strength, or an allowable stress you enter in the project stress unit. The stress is always von Mises. Changing it re-scales the stored result; it does not re-run the solve.",
     visual: "results"
   }
 };

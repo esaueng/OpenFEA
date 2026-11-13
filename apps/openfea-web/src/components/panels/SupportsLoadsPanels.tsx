@@ -6,23 +6,26 @@ import { Gauge, Plus, ScanLine, Weight, X } from "lucide-react";
 
 import { massKgForPayloadMaterial, payloadMaterialForId, payloadMaterials, type PayloadMaterialCategory } from "@openfea/materials";
 
-import type { Constraint, DisplayFace, DisplayModel, Load, LoadCase, LoadCombination, Study } from "@openfea/schema";
+import { elasticSupportStiffness, fixedSupportComponents, SUPPORT_COMPONENTS, type Constraint, type DisplayFace, type DisplayModel, type Load, type LoadCase, type LoadCombination, type Study, type SupportComponent } from "@openfea/schema";
 import { selectionRefsFor } from "@openfea/study-core";
 
 import { createViewerLoadMarkers, directionLabelForLoad, directionLabelForVector, directionVectorForLabel, equivalentForceForLoad, LOAD_DIRECTION_LABELS, loadMagnitudeError, loadMarkerOrdinalLabel, payloadObjectForLoad, unitsForLoadType, type LoadApplicationPoint, type LoadDirectionLabel, type LoadType, type PayloadLoadMetadata, type PayloadMassMode } from "../../loadPreview";
 import { type PayloadObjectSelection } from "../../workspaceViewTypes";
 
 import { supportDisplayLabel } from "../../supportLabels";
+import { DEFAULT_FOUNDATION_MODULUS_N_PER_M3, displayFacesForEntry, ELASTIC_SUPPORT_APPROXIMATION_NOTE, ELASTIC_SUPPORT_DEVELOPMENT_NOTE, elasticSupportParameters, fixedSupportParameters, foundationModulusDisplayUnit, foundationModulusForDisplay, foundationModulusFromDisplay, isPartialFixedSupport, structuralSupportDescription, SUPPORT_COMPONENT_DEVELOPMENT_NOTE, symmetryCheckForFaces, SYMMETRY_MODAL_NOTE, SYMMETRY_SUPPORT_TOLERANCE_NOTE } from "../../supportDescriptions";
 
 import { formatDensity, formatDisplayNumber, formatMass, formatVolume, lengthForUnits, loadValueForUnits, temperatureForUnits, type UnitSystem } from "../../unitDisplay";
 import { stepFaceLabelForUnits } from "../../stepFaceLabels";
 import { handleRadioGroupKeyDown, radioTabIndex } from "../radioGroupKeyboard";
 
 import type { RightPanelProps } from "./RightPanelProps";
+import { WorkingSelectionBar } from "./NamedSelectionsDialog";
+import { isManagedNamedSelection, selectionFaceIds } from "../../namedSelections";
 import { noopDraftPayloadPreviewChange } from "./RightPanelProps";
 import { Panel, sameLoadDirection, structuralLoadCasesForPanel } from "./PanelChrome";
 import { Callout, Collapsible, EmptyEditableList, HelpLabel, Info, PlacementReadout, SectionTitle, SupportIcon, defaultValueForLoadType, directionOptionLabel, directionPhrase, formatEquivalentForce, formatInputValue, formatNumber, loadTypeLabel, selectionForFace } from "./PanelChrome";
-export function SupportsPanel({ project, displayModel, selectedFace, study, draftSupportTemperature, onDraftSupportTemperatureChange, onAddSupport, onUpdateSupport, onRemoveSupport }: RightPanelProps) {
+export function SupportsPanel({ project, displayModel, selectedFace, study, draftSupportTemperature, onDraftSupportTemperatureChange, onAddSupport, onUpdateSupport, onRemoveSupport, additionalSelectionRefs, onToggleAdditionalSelectionRef, namedSelectionManager }: RightPanelProps) {
   const unitSystem = project.unitSystem;
   const selectedFromViewport = selectedFace ? selectionForFace(study, selectedFace.id) : undefined;
   const thermal = study.type === "steady_state_thermal";
@@ -30,7 +33,7 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
   // Multi-face BCs (Decision 2): the viewer pick seeds the first face;
   // additional faces toggle on from the selection list below. The checklist
   // clears once a support is added, so the next Add starts from one face.
-  const [extraSelectionRefs, toggleExtraRef] = useAdditionalFaces(study.constraints.length);
+  const [extraSelectionRefs, toggleExtraRef] = useAdditionalFaces(study.constraints.length, additionalSelectionRefs, onToggleAdditionalSelectionRef);
   // The draft temperature lives in the workspace so a viewer pick uses the
   // typed value too (2026-09 review D12); fall back to local state for callers
   // that do not supply it. Stored and drafted in °C (the solver's value);
@@ -42,34 +45,78 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
   // study format; the adapter converts to solver units) and entered in the
   // project's length unit. Zero behaves as a fixed component; the solver treats
   // it as a Dirichlet value.
-  const [displacementKind, setDisplacementKind] = useState<"fixed" | "prescribed_displacement">("fixed");
+  const [displacementKind, setDisplacementKind] = useState<StructuralSupportKind>("fixed");
   const [displacementValueMm, setDisplacementValueMm] = useState(0);
   const [displacementComponent, setDisplacementComponent] = useState<"x" | "y" | "z">("z");
+  // Per-component fixed supports (plan 036 R1.4): all three until the user chooses.
+  const [fixedComponents, setFixedComponents] = useState<SupportComponent[]>([...SUPPORT_COMPONENTS]);
+  // Elastic (foundation) support, plan 036 R1.5: stored in N/m^3, entered in
+  // N/mm^3 (SI) or lbf/in^3 (US).
+  const [normalStiffness, setNormalStiffness] = useState(DEFAULT_FOUNDATION_MODULUS_N_PER_M3);
+  const [tangentialStiffness, setTangentialStiffness] = useState(DEFAULT_FOUNDATION_MODULUS_N_PER_M3);
   const prescribedDisplacement = displacementKind === "prescribed_displacement" && !thermal && !modal;
+  const symmetrySupport = displacementKind === "symmetry" && !thermal;
+  const elasticSupport = displacementKind === "elastic_support" && !thermal;
+  const fixedSupport = !thermal && !prescribedDisplacement && !symmetrySupport && !elasticSupport;
   const displacementValid = Number.isFinite(displacementValueMm);
-  const addLabel = thermal ? "Add prescribed temperature" : prescribedDisplacement ? "Add prescribed displacement" : study.constraints.length ? "Add another fixed support" : "Add fixed support";
+  const stiffnessError = elasticSupport ? foundationStiffnessError(normalStiffness, tangentialStiffness) : null;
+  const addLabel = thermal ? "Add prescribed temperature" : prescribedDisplacement ? "Add prescribed displacement" : symmetrySupport ? "Add symmetry support" : elasticSupport ? "Add elastic support" : study.constraints.length ? "Add another fixed support" : "Add fixed support";
   // The panel button used to stack a second support on a face that already
   // had one; the viewer-click path already refused that (2026-09 review D2).
   const existingOnSelection = selectedFromViewport ? study.constraints.find((support) => support.selectionRef === selectedFromViewport.id) : undefined;
   const duplicateSupportError = existingOnSelection
     ? `${thermal ? "A temperature boundary" : "A support"} already exists on ${selectedFromViewport?.name ?? "this face"}. Edit or remove it below.`
     : null;
-  const faceOptions = study.namedSelections.filter((selection) => selection.entityType === "face");
+  const faceOptions = additionalFaceOptions(study);
   // A face checked here and then picked in the viewer is the primary face, not an extra.
   const extraRefsForAdd = extraSelectionRefs.filter((ref) => ref !== selectedFromViewport?.id);
   const appliedRefs = [selectedFromViewport?.id, ...extraRefsForAdd].filter((ref): ref is string => Boolean(ref));
+  // A symmetry face is pre-checked on the display normal; the solve repeats
+  // the check on the solver mesh, which is authoritative.
+  const symmetryCheck = symmetrySupport && selectedFace
+    ? symmetryCheckForFaces([selectedFace, ...displayFacesForEntry(study, displayModel, { selectionRef: "", selectionRefs: extraRefsForAdd })])
+    : undefined;
+  const symmetryError = symmetryCheck && !symmetryCheck.ok ? symmetryCheck.message : null;
+  const componentsError = fixedSupport && fixedComponents.length === 0;
+  const addDisabled = !selectedFromViewport || Boolean(duplicateSupportError) || (thermal && !Number.isFinite(temperature)) || (prescribedDisplacement && !displacementValid) || Boolean(symmetryError) || componentsError || Boolean(stiffnessError);
+  const addOptions = thermal
+    ? { type: "prescribed_temperature" as const, value: temperature }
+    : prescribedDisplacement
+      ? { type: "prescribed_displacement" as const, value: displacementValueMm, component: displacementComponent }
+      : symmetrySupport
+        ? { type: "symmetry" as const }
+        : elasticSupport
+          ? { type: "elastic_support" as const, normalStiffness, tangentialStiffness }
+          : { type: "fixed" as const, components: fixedComponents };
   return (
     <Panel title={thermal ? "Temperature boundaries" : "Supports"} question={thermal ? "Where is the temperature fixed?" : "Where is it held still?"} step="supports" helper={thermal ? "Select a face and prescribe its steady boundary temperature." : "Choose where the part is held fixed. Select a face, or click inside a cylindrical hole to constrain its wall. You can add more than one support."} study={study}>
       <PlacementReadout selectedRef={selectedFromViewport} label={selectedFromViewport ? selectionDisplayName(study, displayModel, selectedFromViewport.id, unitSystem) : undefined} fallbackLabel={selectedFace ? stepFaceLabelForUnits(selectedFace.label, selectedFace.area, unitSystem) : undefined} helpId="supportPlacement" />
       {thermal && <TemperatureField valueCelsius={temperature} unitSystem={unitSystem} onChange={setTemperature} />}
-      {!thermal && !modal && (
+      {!thermal && (
         <label className="field">Support type
-          <select value={displacementKind} onChange={(event) => setDisplacementKind(event.currentTarget.value as "fixed" | "prescribed_displacement")}>
+          <select value={modal && displacementKind === "prescribed_displacement" ? "fixed" : displacementKind} onChange={(event) => setDisplacementKind(event.currentTarget.value as StructuralSupportKind)}>
             <option value="fixed">Fixed support</option>
-            <option value="prescribed_displacement">Prescribed displacement</option>
+            <option value="symmetry">Symmetry / roller</option>
+            <option value="elastic_support">Elastic support (foundation)</option>
+            {!modal && <option value="prescribed_displacement">Prescribed displacement</option>}
           </select>
         </label>
       )}
+      {fixedSupport && <FixedComponentsField components={fixedComponents} onChange={setFixedComponents} />}
+      {elasticSupport && (
+        <>
+          <FoundationStiffnessField label="Normal stiffness" valueNPerM3={normalStiffness} unitSystem={unitSystem} onChange={setNormalStiffness} />
+          <FoundationStiffnessField label="Tangential stiffness" valueNPerM3={tangentialStiffness} unitSystem={unitSystem} onChange={setTangentialStiffness} />
+          <p className="field-note">{ELASTIC_SUPPORT_APPROXIMATION_NOTE}</p>
+          {stiffnessError && <p className="field-error" role="alert">{stiffnessError}</p>}
+        </>
+      )}
+      {symmetrySupport && (
+        <p className="field-note">
+          {symmetryCheck?.ok ? `Holds ${symmetryCheck.component.toUpperCase()}, the face normal. ` : ""}{SYMMETRY_SUPPORT_TOLERANCE_NOTE}{modal ? ` ${SYMMETRY_MODAL_NOTE}` : ""}
+        </p>
+      )}
+      {symmetryError && <p className="field-error" role="alert">{symmetryError}</p>}
       {prescribedDisplacement && (
         <>
           <DisplacementField valueMm={displacementValueMm} unitSystem={unitSystem} onChange={setDisplacementValueMm} />
@@ -90,10 +137,94 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
           onToggle={toggleExtraRef}
         />
       )}
-      <button className="outline-action wide" disabled={!selectedFromViewport || Boolean(duplicateSupportError) || (thermal && !Number.isFinite(temperature)) || (prescribedDisplacement && !displacementValid)} title={duplicateSupportError ?? undefined} onClick={() => selectedFromViewport && !duplicateSupportError && onAddSupport(selectedFromViewport.id, thermal ? { type: "prescribed_temperature", value: temperature } : prescribedDisplacement ? { type: "prescribed_displacement", value: displacementValueMm, component: displacementComponent } : { type: "fixed" }, extraRefsForAdd.length ? { selectionRefs: extraRefsForAdd } : undefined)}><Plus size={18} />{addLabel}{appliedRefs.length > 1 ? ` (${appliedRefs.length} faces)` : ""}</button>
+      {namedSelectionManager && !modal ? <WorkingSelectionBar study={study} manager={namedSelectionManager} /> : null}
+      <button className="outline-action wide" disabled={addDisabled} title={duplicateSupportError ?? symmetryError ?? undefined} onClick={() => selectedFromViewport && !addDisabled && onAddSupport(selectedFromViewport.id, addOptions, extraRefsForAdd.length ? { selectionRefs: extraRefsForAdd } : undefined)}><Plus size={18} />{addLabel}{appliedRefs.length > 1 ? ` (${appliedRefs.length} faces)` : ""}</button>
       <SupportEditorList study={study} displayModel={displayModel} unitSystem={unitSystem} retargetFace={selectedFace} onUpdateSupport={onUpdateSupport} onRemoveSupport={onRemoveSupport} />
-      <Callout>{thermal ? "At least one prescribed temperature is required to make the conduction system unique." : "Fixed supports prevent any motion of the selected face."}</Callout>
+      <Callout>{thermal ? "At least one prescribed temperature is required to make the conduction system unique." : "A fixed support holds the selected face in the chosen directions (all three by default). A symmetry/roller support holds only the face-normal direction. An elastic support rests the face on springs."}</Callout>
+      {!thermal && (symmetrySupport || (fixedSupport && fixedComponents.length < SUPPORT_COMPONENTS.length) || study.constraints.some((support) => support.type === "symmetry" || isPartialFixedSupport(support))) && (
+        <p className="field-note">{SUPPORT_COMPONENT_DEVELOPMENT_NOTE}</p>
+      )}
+      {!thermal && (elasticSupport || study.constraints.some((support) => support.type === "elastic_support")) && (
+        <p className="field-note">{ELASTIC_SUPPORT_DEVELOPMENT_NOTE}</p>
+      )}
     </Panel>
+  );
+}
+
+type StructuralSupportKind = "fixed" | "symmetry" | "elastic_support" | "prescribed_displacement";
+
+/** A foundation modulus entered in the project's unit (N/mm^3 or lbf/in^3) and stored in N/m^3. */
+export function FoundationStiffnessField({ label, valueNPerM3, unitSystem, onChange }: { label: string; valueNPerM3: number; unitSystem: UnitSystem; onChange: (valueNPerM3: number) => void }) {
+  const unit = foundationModulusDisplayUnit(unitSystem);
+  return (
+    <label className="field">{label}<span className="input-with-unit"><input type="number" min={0} aria-label={label} value={formatInputValue(foundationModulusForDisplay(valueNPerM3, unitSystem))} onChange={(event) => onChange(foundationModulusFromDisplay(Number(event.currentTarget.value), unitSystem))} /><span>{unit.label}</span></span></label>
+  );
+}
+
+function foundationStiffnessError(normal: number, tangential: number): string | null {
+  const values = [normal, tangential];
+  if (!values.every((value) => Number.isFinite(value) && value >= 0)) return "Stiffness must be zero or positive.";
+  if (!values.some((value) => value > 0)) return "Give the elastic support a positive normal or tangential stiffness.";
+  return null;
+}
+
+/**
+ * The directions a fixed support holds (plan 036 R1.4). "All" keeps the
+ * classic clamp; "Chosen" holds a subset of the global X, Y and Z components
+ * and leaves the others free, e.g. an antisymmetry plane or a slider.
+ */
+export function FixedComponentsField({ components, onChange }: { components: readonly SupportComponent[]; onChange: (components: SupportComponent[]) => void }) {
+  const [chosen, setChosen] = useState(components.length < SUPPORT_COMPONENTS.length);
+  const mode = chosen ? "chosen" : "all";
+  const options = [
+    { id: "all", label: "All (X, Y, Z)", title: "Hold every displacement component of the face" },
+    { id: "chosen", label: "Chosen components", title: "Hold only the global components you tick; the others stay free" }
+  ] as const;
+  return (
+    <div className="field fixed-components-field">
+      <span id="fixed-components-label">Held directions</span>
+      <div className="segmented" role="radiogroup" aria-labelledby="fixed-components-label" onKeyDown={handleRadioGroupKeyDown}>
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={mode === option.id}
+            tabIndex={radioTabIndex(mode === option.id)}
+            className={mode === option.id ? "active" : ""}
+            title={option.title}
+            onClick={() => {
+              if (option.id === "all") {
+                setChosen(false);
+                onChange([...SUPPORT_COMPONENTS]);
+              } else {
+                setChosen(true);
+              }
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {chosen && (
+        <fieldset className="component-checkboxes">
+          <legend>Components held</legend>
+          {SUPPORT_COMPONENTS.map((component) => (
+            <label className="toggle" key={component}>
+              <input
+                type="checkbox"
+                checked={components.includes(component)}
+                onChange={() => onChange(components.includes(component)
+                  ? components.filter((candidate) => candidate !== component)
+                  : SUPPORT_COMPONENTS.filter((candidate) => candidate === component || components.includes(candidate)))}
+              />
+              <span>{component.toUpperCase()}</span>
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {chosen && components.length === 0 && <p className="field-error" role="alert">Choose at least one component to hold.</p>}
+    </div>
   );
 }
 
@@ -141,10 +272,25 @@ export function additionalFacesReducer(state: AdditionalFacesState, action: Addi
   return { refs: action.count > state.entryCount ? [] : state.refs, entryCount: action.count };
 }
 
-function useAdditionalFaces(entryCount: number): [string[], (ref: string) => void] {
+/**
+ * The checklist state. When the workspace supplies `controlledRefs` and
+ * `onToggle` (plan 036 R1.2), viewer Ctrl/Cmd-click and the checklist share
+ * one list owned by the workspace; otherwise the panel keeps its own.
+ */
+function useAdditionalFaces(entryCount: number, controlledRefs?: readonly string[], onToggle?: (ref: string) => void): [readonly string[], (ref: string) => void] {
   const [state, dispatch] = useReducer(additionalFacesReducer, entryCount, (count): AdditionalFacesState => ({ refs: [], entryCount: count }));
   useEffect(() => dispatch({ type: "entries", count: entryCount }), [entryCount]);
+  if (controlledRefs && onToggle) return [controlledRefs, onToggle];
   return [state.refs, (ref: string) => dispatch({ type: "toggle", ref })];
+}
+
+/**
+ * The faces offered as "Additional faces": the automatic per-face selections.
+ * Managed named selections are reused whole through the manager, not ticked
+ * here face by face.
+ */
+function additionalFaceOptions(study: Study) {
+  return study.namedSelections.filter((selection) => selection.entityType === "face" && !isManagedNamedSelection(selection));
 }
 
 /** Boundary temperature: stored in °C, entered in the project's temperature unit. */
@@ -167,6 +313,10 @@ export function DisplacementField({ valueMm, unitSystem, onChange }: { valueMm: 
 function selectionDisplayName(study: Study, displayModel: DisplayModel, selectionRef: string, unitSystem: UnitSystem): string {
   const selection = study.namedSelections.find((candidate) => candidate.id === selectionRef);
   if (!selection) return "selected face";
+  if (isManagedNamedSelection(selection)) {
+    const count = selectionFaceIds(study, selection.id).length;
+    return `${selection.name} (${count} face${count === 1 ? "" : "s"})`;
+  }
   const geometryRef = selection.geometryRefs[0];
   const label = geometryRef?.label ?? selection.name;
   const face = geometryRef?.entityType === "face" ? displayModel.faces.find((candidate) => candidate.id === geometryRef.entityId) : undefined;
@@ -178,8 +328,25 @@ function selectionDisplayName(study: Study, displayModel: DisplayModel, selectio
  * de-duplication the adapter (and the report's selectionLabels) use.
  */
 function entryFaceNames(study: Study, displayModel: DisplayModel, entry: { selectionRef: string; selectionRefs?: string[] }, unitSystem: UnitSystem): string[] {
-  const names = selectionRefsFor(entry).map((ref) => selectionDisplayName(study, displayModel, ref, unitSystem));
+  const names = selectionRefsFor(entry).flatMap((ref) => {
+    const selection = study.namedSelections.find((candidate) => candidate.id === ref);
+    if (!selection || !isManagedNamedSelection(selection)) return [selectionDisplayName(study, displayModel, ref, unitSystem)];
+    // A reused named selection acts on every face in it.
+    return selection.geometryRefs.filter((geometryRef) => geometryRef.entityType === "face").map((geometryRef) => {
+      const face = displayModel.faces.find((candidate) => candidate.id === geometryRef.entityId);
+      return stepFaceLabelForUnits(geometryRef.label, face?.area, unitSystem);
+    });
+  });
   return names.length ? names : ["selected face"];
+}
+
+/** The managed named selection a support or load reuses, named in its row ("Bolt holes · …"). */
+function entryNamedSelectionPrefix(study: Study, entry: { selectionRef: string; selectionRefs?: string[] }): string {
+  const names = selectionRefsFor(entry)
+    .map((ref) => study.namedSelections.find((candidate) => candidate.id === ref))
+    .filter((selection) => isManagedNamedSelection(selection))
+    .map((selection) => selection!.name);
+  return names.length ? `${names.join(", ")} · ` : "";
 }
 
 function additionalFaceCountLabel(names: readonly string[]): string {
@@ -290,7 +457,10 @@ export function LoadsPanel({
   onUpdateLoad,
   onPreviewLoadEdit,
   onRemoveLoad,
-  onLoadCasesChange
+  onLoadCasesChange,
+  additionalSelectionRefs,
+  onToggleAdditionalSelectionRef,
+  namedSelectionManager
 }: RightPanelProps) {
   const [editingLoadId, setEditingLoadId] = useState<string | null>(null);
   const thermal = study.type === "steady_state_thermal";
@@ -312,8 +482,8 @@ export function LoadsPanel({
   // total force is shared by area over the combined faces while a pressure or
   // traction acts in full on each (see multiFaceLoadNote). The checklist
   // clears once a load is added.
-  const [extraLoadRefs, toggleExtraLoadRef] = useAdditionalFaces(study.loads.length);
-  const faceOptionsForLoad = study.namedSelections.filter((selection) => selection.entityType === "face");
+  const [extraLoadRefs, toggleExtraLoadRef] = useAdditionalFaces(study.loads.length, additionalSelectionRefs, onToggleAdditionalSelectionRef);
+  const faceOptionsForLoad = additionalFaceOptions(study);
   const extraFacesApply = !thermal && draftLoadType !== "gravity" && draftLoadType !== "volume_force" && draftLoadType !== "heat_generation" && draftLoadType !== "bolt_preload";
   const extraLoadRefsForAdd = extraFacesApply ? extraLoadRefs.filter((ref) => ref !== placementSelection?.id) : [];
   const draftMultiFaceNote = multiFaceLoadNote(draftLoadType, extraLoadRefsForAdd.length + 1);
@@ -505,6 +675,7 @@ export function LoadsPanel({
       )}
       </Collapsible>
       {draftMultiFaceNote && <Callout>{draftMultiFaceNote}</Callout>}
+      {namedSelectionManager && extraFacesApply ? <WorkingSelectionBar study={study} manager={namedSelectionManager} /> : null}
       {hasDraftPlacement && draftAddError && <p className="field-error" role="alert">{draftAddError}</p>}
       {hasDraftPlacement && !draftAddError && justAddedNotice && <p className="panel-copy" role="status">{justAddedNotice}</p>}
       <button className="outline-action wide" disabled={!canAddDraftLoad} title={draftAddError ?? justAddedNotice ?? undefined} onClick={() => canAddDraftLoad && onAddLoad(
@@ -793,7 +964,7 @@ function LoadEditorList({ editingId, onEditingIdChange, study, displayModel, uni
         const selectedFace = displayModel.faces.find((candidate) => candidate.id === selection?.geometryRefs[0]?.entityId);
         // Multi-face loads list every face, not only the first (Decision 2).
         const faceNames = entryFaceNames(study, displayModel, load, unitSystem);
-        const label = `${faceNames[0]}${additionalFaceCountLabel(faceNames)}`;
+        const label = `${entryNamedSelectionPrefix(study, load)}${faceNames[0]}${additionalFaceCountLabel(faceNames)}`;
         const payloadObject = payloadObjectForLoad(load);
         const payloadMaterial = load.type === "gravity" && typeof load.parameters.payloadMaterialId === "string" ? payloadMaterialForId(load.parameters.payloadMaterialId).name : "";
         // A face force's picked point is only where its arrow is drawn; the solve
@@ -1064,8 +1235,9 @@ function finiteVector3(value: unknown): LoadApplicationPoint | null {
  * boundary temperature, mm for a prescribed displacement — which is what the
  * adapter reads regardless of the stored `units` text.
  */
-function supportValueLabel(support: Constraint, unitSystem: UnitSystem): string {
-  if (support.type === "fixed") return "Fixed support";
+function supportValueLabel(support: Constraint, unitSystem: UnitSystem, faces: readonly DisplayFace[] = []): string {
+  const structural = structuralSupportDescription(support, faces, unitSystem);
+  if (structural) return structural;
   const value = Number(support.parameters.value ?? 0);
   if (support.type === "prescribed_temperature") {
     const temperature = temperatureForUnits(value, "°C", unitSystem);
@@ -1073,6 +1245,13 @@ function supportValueLabel(support: Constraint, unitSystem: UnitSystem): string 
   }
   const displacement = lengthForUnits(value, "mm", unitSystem);
   return `Prescribed displacement (${formatDisplayNumber(displacement.value)}\u00a0${displacement.units} ${String(support.parameters.component ?? "z")})`;
+}
+
+/** A support that changes type drops the fixed-only component list and the elastic-only stiffnesses. */
+function withoutFixedComponents(parameters: Record<string, unknown>): Record<string, unknown> {
+  const { components: _components, normalStiffness: _normal, tangentialStiffness: _tangential, ...rest } = parameters;
+  if (rest.units === "N/m^3") delete rest.units;
+  return rest;
 }
 
 function multiFaceLoadRowNote(type: LoadType): string | null {
@@ -1097,8 +1276,10 @@ function SupportEditorList({ study, displayModel, unitSystem, retargetFace, onUp
   let fixedSupportCount = 0;
   let prescribedSupportCount = 0;
   let thermalSupportCount = 0;
+  let symmetrySupportCount = 0;
+  let elasticSupportCount = 0;
   const supportItems = study.constraints.map((support) => {
-    const supportOrdinal = support.type === "fixed" ? ++fixedSupportCount : support.type === "prescribed_temperature" ? ++thermalSupportCount : ++prescribedSupportCount;
+    const supportOrdinal = support.type === "fixed" ? ++fixedSupportCount : support.type === "prescribed_temperature" ? ++thermalSupportCount : support.type === "symmetry" ? ++symmetrySupportCount : support.type === "elastic_support" ? ++elasticSupportCount : ++prescribedSupportCount;
     return { support, displayLabel: supportDisplayLabel(support, supportOrdinal) };
   });
 
@@ -1113,8 +1294,8 @@ function SupportEditorList({ study, displayModel, unitSystem, retargetFace, onUp
           <div className="editable-item" key={support.id}>
             <div className="editable-summary">
               <span className="item-icon warning"><SupportIcon /></span>
-              <strong>{displayLabel} · {supportValueLabel(support, unitSystem)}</strong>
-              <small>{faceNames[0]}{additionalFaceCountLabel(faceNames)}</small>
+              <strong>{displayLabel} · {supportValueLabel(support, unitSystem, displayFacesForEntry(study, displayModel, support))}</strong>
+              <small>{entryNamedSelectionPrefix(study, support)}{faceNames[0]}{additionalFaceCountLabel(faceNames)}</small>
               <button className="remove-glyph" type="button" aria-label="Remove support" onClick={() => onRemoveSupport(support.id)}><X size={16} /></button>
             </div>
             <EntryFaceList names={faceNames} />
@@ -1167,6 +1348,10 @@ export function SupportEditForm({ support, study, displayModel, unitSystem, reta
       ? support.parameters.component
       : "z"
   );
+  const [components, setComponents] = useState<SupportComponent[]>(support.type === "fixed" ? fixedSupportComponents(support) : [...SUPPORT_COMPONENTS]);
+  const initialStiffness = elasticSupportStiffness(support);
+  const [normalStiffness, setNormalStiffness] = useState(support.type === "elastic_support" ? initialStiffness.normal : DEFAULT_FOUNDATION_MODULUS_N_PER_M3);
+  const [tangentialStiffness, setTangentialStiffness] = useState(support.type === "elastic_support" ? initialStiffness.tangential : DEFAULT_FOUNDATION_MODULUS_N_PER_M3);
   const selectedRef = study.namedSelections.find((selection) => selection.id === support.selectionRef);
   // Re-targeting (2026-09 review D3): a face picked while editing can become
   // the new target; before, the pick added a second support instead.
@@ -1174,6 +1359,14 @@ export function SupportEditForm({ support, study, displayModel, unitSystem, reta
   const pickedElsewhere = retargetFace && !selectedRef?.geometryRefs.some((ref) => ref.entityId === retargetFace.id) ? retargetFace : null;
   const pickedFaceLabel = pickedElsewhere ? stepFaceLabelForUnits(pickedElsewhere.label, pickedElsewhere.area, unitSystem) : "";
   const targetFace = moveToPicked && pickedElsewhere ? pickedElsewhere : undefined;
+  function savedParameters(): Record<string, unknown> {
+    if (thermal) return { ...support.parameters, value: temperature, units: "°C" };
+    if (type === "prescribed_displacement") return { ...support.parameters, value: displacementValueMm, units: "mm", component: displacementComponent };
+    // Holding all three components stores no list, exactly like a pre-R1.4 support.
+    if (type === "fixed") return fixedSupportParameters(support.parameters, components);
+    if (type === "elastic_support") return elasticSupportParameters(support.parameters, normalStiffness, tangentialStiffness);
+    return withoutFixedComponents(support.parameters);
+  }
   return (
     <div className="edit-form">
       {pickedElsewhere && (
@@ -1189,11 +1382,22 @@ export function SupportEditForm({ support, study, displayModel, unitSystem, reta
             ? <option value="prescribed_temperature">Prescribed temperature</option>
             : <>
               <option value="fixed">Fixed support</option>
-              <option value="prescribed_displacement">Prescribed displacement</option>
+              <option value="symmetry">Symmetry / roller</option>
+              <option value="elastic_support">Elastic support (foundation)</option>
+              {(study.type !== "modal_analysis" || type === "prescribed_displacement") && <option value="prescribed_displacement">Prescribed displacement</option>}
             </>}
         </select>
       </label>
       {thermal && <TemperatureField valueCelsius={temperature} unitSystem={unitSystem} onChange={setTemperature} />}
+      {!thermal && type === "fixed" && <FixedComponentsField components={components} onChange={setComponents} />}
+      {!thermal && type === "symmetry" && <p className="field-note">{SYMMETRY_SUPPORT_TOLERANCE_NOTE}</p>}
+      {!thermal && type === "elastic_support" && (
+        <>
+          <FoundationStiffnessField label="Normal stiffness" valueNPerM3={normalStiffness} unitSystem={unitSystem} onChange={setNormalStiffness} />
+          <FoundationStiffnessField label="Tangential stiffness" valueNPerM3={tangentialStiffness} unitSystem={unitSystem} onChange={setTangentialStiffness} />
+          <p className="field-note">{ELASTIC_SUPPORT_APPROXIMATION_NOTE}</p>
+        </>
+      )}
       {!thermal && type === "prescribed_displacement" && (
         <>
           <DisplacementField valueMm={displacementValueMm} unitSystem={unitSystem} onChange={setDisplacementValueMm} />
@@ -1208,7 +1412,7 @@ export function SupportEditForm({ support, study, displayModel, unitSystem, reta
       )}
       <PlacementReadout selectedRef={selectedRef} label={selectedRef ? selectionDisplayName(study, displayModel, selectedRef.id, unitSystem) : undefined} />
       <div className="edit-actions">
-        <button className="primary" type="button" disabled={(thermal && !Number.isFinite(temperature)) || (!thermal && type === "prescribed_displacement" && !Number.isFinite(displacementValueMm))} onClick={() => onSave({ ...support, type, parameters: thermal ? { ...support.parameters, value: temperature, units: "°C" } : type === "prescribed_displacement" ? { ...support.parameters, value: displacementValueMm, units: "mm", component: displacementComponent } : support.parameters }, targetFace)}>Save</button>
+        <button className="primary" type="button" disabled={(thermal && !Number.isFinite(temperature)) || (!thermal && type === "prescribed_displacement" && !Number.isFinite(displacementValueMm)) || (!thermal && type === "fixed" && components.length === 0) || (!thermal && type === "elastic_support" && Boolean(foundationStiffnessError(normalStiffness, tangentialStiffness)))} onClick={() => onSave({ ...support, type, parameters: savedParameters() }, targetFace)}>Save</button>
         <button className="secondary" type="button" onClick={onCancel}>Cancel</button>
       </div>
     </div>

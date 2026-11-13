@@ -1,19 +1,13 @@
+export { isModalResultSummary, isStructuralResultSummary, isThermalResultSummary } from "./resultKinds";
 import { z } from "zod";
+import { SUPPORT_COMPONENTS, type SupportComponent } from "./supports";
+export { SUPPORT_COMPONENTS, elasticSupportStiffness, fixedSupportComponents } from "./supports";
+export type { SupportComponent } from "./supports";
 import { boundedLocalInput, firstIssueOnly, safeParseLocalPayload } from "./localPayloadValidation";
 export { safeParseLocalPayload } from "./localPayloadValidation";
 
-export const MAX_PROJECT_NAME_LENGTH = 128;
-export const MAX_LOAD_CASES = 64;
-export const MAX_LOAD_COMBINATIONS = 64;
-export const MAX_LOAD_COMBINATION_FACTORS = 64;
-export const MAX_DISPLAY_MODEL_FACES = 20_000;
-export const MAX_EMBEDDED_MODEL_BYTES = 32 * 1024 * 1024;
-export const MAX_VISUAL_MESH_BYTES = 8 * 1024 * 1024;
-export const MAX_RESULT_FIELD_VALUES = 500_000;
-export const MAX_RESULT_FIELD_SAMPLES = 50_000;
-export const MAX_RESULT_FIELDS = 8_192;
-export const MAX_RESULT_VARIANTS = 64;
-export const MAX_RESULT_UNIT_LENGTH = 32;
+import { MAX_PROJECT_NAME_LENGTH, MAX_LOAD_CASES, MAX_LOAD_COMBINATIONS, MAX_LOAD_COMBINATION_FACTORS, MAX_DISPLAY_MODEL_FACES, MAX_EMBEDDED_MODEL_BYTES, MAX_VISUAL_MESH_BYTES, MAX_RESULT_FIELD_VALUES, MAX_RESULT_FIELD_SAMPLES, MAX_RESULT_FIELDS, MAX_RESULT_UNIT_LENGTH } from "./limits";
+export { MAX_PROJECT_NAME_LENGTH, MAX_LOAD_CASES, MAX_LOAD_COMBINATIONS, MAX_LOAD_COMBINATION_FACTORS, MAX_DISPLAY_MODEL_FACES, MAX_EMBEDDED_MODEL_BYTES, MAX_VISUAL_MESH_BYTES, MAX_RESULT_FIELD_VALUES, MAX_RESULT_FIELD_SAMPLES, MAX_RESULT_FIELDS, MAX_RESULT_VARIANTS, MAX_RESULT_UNIT_LENGTH } from "./limits";
 
 const MAX_EMBEDDED_MODEL_BASE64_LENGTH = Math.ceil(MAX_EMBEDDED_MODEL_BYTES / 3) * 4;
 const MAX_VISUAL_MESH_BASE64_LENGTH = Math.ceil(MAX_VISUAL_MESH_BYTES / 3) * 4;
@@ -21,13 +15,32 @@ const boundedId = z.string().min(1).max(256);
 const boundedLabel = z.string().max(512);
 const finiteNumber = z.number();
 
+/**
+ * The solver ran on a lower-order projection of the stored mesh (today only a
+ * local modal Tet10 solve reduced to its corner-node Tet4 topology). DOF counts
+ * are unitless.
+ */
+export const DiagnosticMeshProjectionSchema = z.object({
+  sourceElementOrder: z.enum(["Tet4", "Tet10"]),
+  solveElementOrder: z.enum(["Tet4", "Tet10"]),
+  sourceDofs: z.number().int().nonnegative(),
+  solveDofs: z.number().int().nonnegative(),
+  reason: z.string().max(128)
+});
+
 export const DiagnosticSchema = z.object({
   id: z.string(),
   severity: z.enum(["info", "warning", "error"]),
   source: z.enum(["geometry", "mesh", "solver", "local_job", "validation", "ui"]),
   message: z.string(),
   relatedEntityRef: z.string().optional(),
-  suggestedActions: z.array(z.string()).default([])
+  suggestedActions: z.array(z.string()).default([]),
+  /**
+   * Optional, additive (container stays version 2): diagnostics saved before
+   * it was persisted omit it, and an unreadable payload is dropped rather than
+   * rejecting the result bundle.
+   */
+  meshProjection: DiagnosticMeshProjectionSchema.optional().catch(undefined)
 });
 
 const MaterialPrintProfileSchema = z
@@ -76,6 +89,12 @@ export const MaterialSchema = z.object({
   poissonRatio: z.number().gt(-1).lt(0.5),
   density: z.number().positive(),
   yieldStrength: z.number().positive(),
+  /**
+   * Optional ultimate tensile strength in Pa (plan 036 R3.4). No starter catalog
+   * entry carries one; a custom material may. The "ultimate" safety-factor basis
+   * is offered only when the assigned material has it.
+   */
+  ultimateStrength: z.number().positive().optional(),
   /** Catalog value in W/(m*K); converted explicitly when building mm-based Core models. */
   thermalConductivity: z.number().positive().optional(),
   printProfile: MaterialPrintProfileSchema.optional()
@@ -102,14 +121,56 @@ export const NamedSelectionSchema = z.object({
   fingerprint: z.string()
 });
 
+/** Storage unit of elastic-support stiffness (foundation modulus) in studies. */
+export const ELASTIC_SUPPORT_STIFFNESS_UNITS = "N/m^3";
+
 export const ConstraintSchema = z.object({
   id: z.string(),
-  type: z.enum(["fixed", "prescribed_displacement", "prescribed_temperature"]),
+  /**
+   * `symmetry` (plan 036 R1.4) is a symmetry/roller support: it constrains the
+   * displacement component normal to an axis-aligned face. `elastic_support`
+   * (plan 036 R1.5) is a Winkler foundation with `normalStiffness` and
+   * `tangentialStiffness` in N/m^3. Every older type parses unchanged.
+   */
+  type: z.enum(["fixed", "prescribed_displacement", "prescribed_temperature", "symmetry", "elastic_support"]),
   /** One or more face selection ids the constraint applies to (multi-face BCs, Decision 2). */
   selectionRef: z.string(),
   selectionRefs: z.array(z.string()).optional(),
   parameters: z.record(z.string(), z.unknown()),
   status: z.enum(["not_started", "ready", "warning", "complete"])
+}).superRefine((constraint, context) => {
+  if (constraint.type === "elastic_support") {
+    const { normalStiffness, tangentialStiffness, units } = constraint.parameters;
+    const values = [normalStiffness, tangentialStiffness];
+    if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0) || !values.some((value) => typeof value === "number" && value > 0)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["parameters"],
+        message: "Elastic support stiffnesses must be finite, non-negative numbers in N/m^3, with at least one positive."
+      });
+    }
+    if (units !== undefined && units !== ELASTIC_SUPPORT_STIFFNESS_UNITS) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["parameters", "units"], message: `Elastic support stiffness is stored in ${ELASTIC_SUPPORT_STIFFNESS_UNITS}.` });
+    }
+    return;
+  }
+  // Per-component fixed supports (plan 036 R1.4): an optional, non-empty set
+  // of distinct global components. Absent means all three, so every fixed
+  // support saved before the field existed still holds x, y and z.
+  if (constraint.type !== "fixed" || constraint.parameters.components === undefined) return;
+  const components = constraint.parameters.components;
+  if (
+    !Array.isArray(components) ||
+    components.length === 0 ||
+    components.some((component) => !SUPPORT_COMPONENTS.includes(component as SupportComponent)) ||
+    new Set(components).size !== components.length
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["parameters", "components"],
+      message: "Fixed support components must be a non-empty list of distinct x, y and z."
+    });
+  }
 });
 
 export const LoadSchema = z.object({
@@ -345,10 +406,33 @@ export const MeshQualityMetricsSchema = z.object({
   worstElements: z.array(z.number().int().min(0)).max(256)
 });
 
+/** Upper bound on local size rules per study; mirrors MAX_LOCAL_MESH_SIZE_RULES in @openfea/mesh-intake. */
+export const MAX_MESH_LOCAL_SIZES = 64;
+
+/**
+ * One local element size on a STEP B-rep face (plan 036 R2.2). `faceId` is
+ * the registry id (`step-face-<k>`) and `fingerprint` its quantized
+ * area/centroid/normal digest (`stepface:...`), so a re-numbered import can
+ * be re-matched and a changed face is reported instead of silently refined.
+ * An empty fingerprint means the registry was unavailable when the rule was
+ * made; it then resolves by face id alone. `sizeMm` is in STEP model space,
+ * which OpenCASCADE always imports in millimetres.
+ */
+export const MeshLocalSizeSchema = z.object({
+  id: z.string().min(1).max(128),
+  faceId: z.string().min(1).max(128),
+  fingerprint: z.string().max(256),
+  label: z.string().max(256).optional(),
+  sizeMm: finiteNumber.positive()
+});
+
 export const MeshSettingsSchema = z.object({
   preset: MeshQualitySchema,
   status: z.enum(["not_started", "ready", "warning", "complete"]),
   meshRef: z.string().optional(),
+  // Optional and additive: projects saved before local sizing have none. An
+  // unreadable list is dropped rather than failing the whole project load.
+  localSizing: z.array(MeshLocalSizeSchema).max(MAX_MESH_LOCAL_SIZES).optional().catch(undefined),
   summary: z
     .object({
       nodes: z.number(),
@@ -442,12 +526,37 @@ const StudyBaseSchema = z.object({
   loadCombinations: z.array(LoadCombinationSchema).max(MAX_LOAD_COMBINATIONS).optional()
 });
 
+/**
+ * What a structural study's safety factor divides by (plan 036 R3.4). The
+ * solver always computes yield strength over element-peak von Mises; the web
+ * app re-bases that stored field for display, report and export, so changing
+ * the basis never re-solves. `allowableStress` is in Pa and is kept when the
+ * basis moves away from "allowable", so switching back restores it.
+ */
+export const SafetyFactorStrengthSchema = z.enum(["yield", "ultimate", "allowable"]);
+export const SafetyFactorBasisSchema = z.object({
+  strength: SafetyFactorStrengthSchema,
+  allowableStress: z.number().positive().optional()
+}).refine((basis) => basis.strength !== "allowable" || basis.allowableStress !== undefined, {
+  message: "An allowable-stress safety factor basis needs a positive allowableStress in Pa.",
+  path: ["allowableStress"]
+});
+
+/**
+ * Optional on every structural study. Absent (every project saved before
+ * R3.4) reads as yield over von Mises; an unreadable value also reads as
+ * absent instead of rejecting the project.
+ */
+const StructuralResultSettingsSchema = z.object({
+  safetyFactorBasis: SafetyFactorBasisSchema.optional().catch(undefined)
+});
+
 const StructuralVariantSchema = z.object({
   loadCases: z.array(LoadCaseSchema).min(1).max(MAX_LOAD_CASES).optional(),
   loadCombinations: z.array(LoadCombinationSchema).max(MAX_LOAD_COMBINATIONS).optional()
 });
 
-const StaticStudyBaseSchema = StudyBaseSchema.merge(StructuralVariantSchema).extend({
+const StaticStudyBaseSchema = StudyBaseSchema.merge(StructuralVariantSchema).merge(StructuralResultSettingsSchema).extend({
   type: z.literal("static_stress"),
   solverSettings: z.object({
     backend: SolverBackendSchema.optional(),
@@ -456,7 +565,7 @@ const StaticStudyBaseSchema = StudyBaseSchema.merge(StructuralVariantSchema).ext
 });
 export const StaticStudySchema = StaticStudyBaseSchema.superRefine((study, context) => validateStructuralVariants(study, context, true));
 
-const DynamicStudyBaseSchema = StudyBaseSchema.merge(StructuralVariantSchema).extend({
+const DynamicStudyBaseSchema = StudyBaseSchema.merge(StructuralVariantSchema).merge(StructuralResultSettingsSchema).extend({
   type: z.literal("dynamic_structural"),
   solverSettings: DynamicSolverSettingsSchema
 });
@@ -916,7 +1025,8 @@ export type SimulationFidelity = z.infer<typeof SimulationFidelitySchema>;
 export type DynamicSolverSettings = z.infer<typeof DynamicSolverSettingsSchema>;
 export type ModalSolverSettings = z.infer<typeof ModalSolverSettingsSchema>;
 export type MeshConnection = z.infer<typeof MeshConnectionSchema>;
-export type Material = z.infer<typeof MaterialSchema>;
+export type MeshLocalSize = z.infer<typeof MeshLocalSizeSchema>;
+export type Material =z.infer<typeof MaterialSchema>;
 export type CustomMaterial = z.infer<typeof CustomMaterialSchema>;
 export type GeometryReference = z.infer<typeof GeometryReferenceSchema>;
 export type NamedSelection = z.infer<typeof NamedSelectionSchema>;
@@ -952,6 +1062,8 @@ export type Study = z.infer<typeof StudySchema>;
 export type Project = z.infer<typeof ProjectSchema>;
 export type RunEvent = z.infer<typeof RunEventSchema>;
 export type FailureAssessment = NonNullable<StructuralResultSummary["failureAssessment"]>;
+export type SafetyFactorStrength = z.infer<typeof SafetyFactorStrengthSchema>;
+export type SafetyFactorBasis = z.infer<typeof SafetyFactorBasisSchema>;
 
 export type RunTimingEstimate = Pick<RunEvent, "elapsedMs" | "estimatedDurationMs" | "estimatedRemainingMs">;
 
@@ -1007,7 +1119,25 @@ export interface LoadCapacityEstimate {
   loadUnits: string;
 }
 
-export function assessResultFailure(summary: Pick<StructuralResultSummary, "safetyFactor" | "maxStress" | "maxStressUnits">): FailureAssessment {
+/**
+ * The verdict wording per safety-factor basis (plan 036 R3.4). The yield entry
+ * is the wording every result carried before the basis existed.
+ */
+const FAILURE_ASSESSMENT_WORDING: Record<SafetyFactorStrength, { limit: string; failTitle: string; passTitle: string }> = {
+  yield: { limit: "the assigned material yield limit", failTitle: "Likely to fail", passTitle: "Unlikely to yield" },
+  ultimate: { limit: "the assigned material ultimate strength", failTitle: "Likely to fail", passTitle: "Below ultimate strength" },
+  allowable: { limit: "the allowable stress", failTitle: "Exceeds allowable stress", passTitle: "Within allowable stress" }
+};
+
+/**
+ * `strength` names what the summary's safety factor divides by; callers pass
+ * the study's basis after re-basing the summary. It defaults to yield.
+ */
+export function assessResultFailure(
+  summary: Pick<StructuralResultSummary, "safetyFactor" | "maxStress" | "maxStressUnits">,
+  strength: SafetyFactorStrength = "yield"
+): FailureAssessment {
+  const wording = FAILURE_ASSESSMENT_WORDING[strength] ?? FAILURE_ASSESSMENT_WORDING.yield;
   const safetyFactor = Number(summary.safetyFactor);
   if (!Number.isFinite(safetyFactor) || safetyFactor <= 0) {
     return {
@@ -1021,8 +1151,8 @@ export function assessResultFailure(summary: Pick<StructuralResultSummary, "safe
   if (safetyFactor < 1) {
     return {
       status: "fail",
-      title: "Likely to fail",
-      message: `Peak stress is ${stressText}, which exceeds the assigned material yield limit.`
+      title: wording.failTitle,
+      message: `Peak stress is ${stressText}, which exceeds ${wording.limit}.`
     };
   }
 
@@ -1036,8 +1166,8 @@ export function assessResultFailure(summary: Pick<StructuralResultSummary, "safe
 
   return {
     status: "pass",
-    title: "Unlikely to yield",
-    message: `Safety factor is ${formatAssessmentNumber(safetyFactor)}. Peak stress is below the assigned material yield limit.`
+    title: wording.passTitle,
+    message: `Safety factor is ${formatAssessmentNumber(safetyFactor)}. Peak stress is below ${wording.limit}.`
   };
 }
 
@@ -1084,18 +1214,6 @@ export function estimateAllowableLoadForSafetyFactor(
     loadScale: roundAssessmentNumber(loadScale),
     loadUnits: summary.reactionForceUnits
   };
-}
-
-export function isModalResultSummary(summary: ResultSummary): summary is ModalResultSummary {
-  return "analysisType" in summary && summary.analysisType === "modal_analysis";
-}
-
-export function isThermalResultSummary(summary: ResultSummary): summary is ThermalResultSummary {
-  return "analysisType" in summary && summary.analysisType === "steady_state_thermal";
-}
-
-export function isStructuralResultSummary(summary: ResultSummary): summary is StructuralResultSummary {
-  return !isModalResultSummary(summary) && !isThermalResultSummary(summary);
 }
 
 function roundAssessmentNumber(value: number): number {

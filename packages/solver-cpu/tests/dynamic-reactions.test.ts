@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { OPENFEA_MODEL_SCHEMA_VERSION, type OpenFEAModelJson } from "@openfea/core";
+import { extractBoundarySurfaceFacets, OPENFEA_MODEL_SCHEMA_VERSION, type OpenFEAModelJson } from "@openfea/core";
 import { solveDynamicLinearTetMDOF } from "../src";
 
 /** The unit tetrahedron has one uncoupled axial tip DOF: k=200 N/m, m=1/24 kg. */
@@ -24,6 +24,29 @@ function supportZ(reaction: Float64Array): number {
 }
 
 describe("dynamic support reactions", () => {
+  test.each([0, 0.03])("foundation reactions balance inertia and applied force with Rayleigh beta %s", (rayleighBeta) => {
+    const model = stepLoadedTet();
+    model.surfaceFacets = extractBoundarySurfaceFacets(model);
+    const base = model.surfaceFacets.find((facet) => facet.nodes.every((node) => node < 3))!;
+    model.surfaceSets = [{ name: "foundationFace", facets: [base.id] }];
+    model.boundaryConditions = [{ name: "foundation", type: "elasticSupport", surfaceSet: "foundationFace", normalStiffness: 1000, tangentialStiffness: 1000 }];
+    model.steps = [{ name: "step", type: "dynamicLinear", boundaryConditions: ["foundation"], loads: ["force"],
+      startTime: 0, endTime: 0.02, timeStep: 0.001, outputInterval: 0.001, loadProfile: "step", dampingRatio: 0 }];
+    const rayleighAlpha = 1.2;
+    const solved = solveDynamicLinearTetMDOF(model, { rayleighAlpha, rayleighBeta });
+    expect(solved.ok, solved.ok ? undefined : solved.error.message).toBe(true);
+    if (!solved.ok) return;
+    const sumZ = (values: Float64Array) => values[2]! + values[5]! + values[8]! + values[11]!;
+    // Unit tet volume 1/6 and density 1 give each node a lumped mass of 1/24.
+    const massPerNode = 1 / 24;
+    for (const frame of solved.result.frames) {
+      const inertiaAndMassDamping = massPerNode * (sumZ(frame.acceleration.values) + rayleighAlpha * sumZ(frame.velocity.values));
+      expect(sumZ(frame.reactionForce!) + 100 - inertiaAndMassDamping).toBeCloseTo(0, 8);
+    }
+    expect(Math.abs(sumZ(solved.result.frames.at(-1)!.reactionForce!))).toBeGreaterThan(1);
+    expect(solved.diagnostics.reactionBalance.every((entry) => entry.relativeImbalance < 1e-10)).toBe(true);
+  });
+
   test("reports the evolving constrained reaction rather than summing free inertial forces", () => {
     const solved = solveDynamicLinearTetMDOF(stepLoadedTet());
     expect(solved.ok, solved.ok ? undefined : solved.error.message).toBe(true);

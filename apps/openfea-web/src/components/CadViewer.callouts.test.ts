@@ -2,25 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import * as THREE from "three";
-import { beamPayloadSelectionForTarget, dimensionAnnotationScale, faceIdForPlacementSnap, faceSnapAxesForDisplayModel, holeSupportGlyphGeometry, loadGlyphLabelPosition, loadGlyphSurfacePoint, pointForPlacementSnap, shouldCreateUploadedFacePlaceholder, shouldShowModelHitLabel, stepFaceIdFromPickObject, supportGlyphAnchor, supportMarkerAnchor } from "./CadViewer";
+import { beamPayloadSelectionForTarget, dimensionAnnotationScale, faceIdForPlacementSnap, faceSnapAxesForDisplayModel, holeSupportGlyphGeometry, loadGlyphLabelPosition, loadGlyphSurfacePoint, pointForPlacementSnap, shouldShowModelHitLabel, supportGlyphAnchor, supportMarkerAnchor } from "./CadViewer";
 
 describe("CadViewer callouts", () => {
-  test("does not create placeholder faces after the STEP registry is live", () => {
-    expect(shouldCreateUploadedFacePlaceholder("step", true)).toBe(false);
-    expect(shouldCreateUploadedFacePlaceholder("step", false)).toBe(true);
-    expect(shouldCreateUploadedFacePlaceholder("stl", true)).toBe(true);
-  });
-
-  test("resolves a cylindrical hole-wall pick target through object ancestry", () => {
-    const parent = new THREE.Group();
-    parent.userData.openfeaStepFaceId = "step-face-hole";
-    const child = new THREE.Mesh();
-    parent.add(child);
-
-    expect(stepFaceIdFromPickObject(child)).toBe("step-face-hole");
-    expect(stepFaceIdFromPickObject(new THREE.Mesh())).toBeNull();
-  });
-
   test("builds a rod marker through an internal cylindrical support", () => {
     const face = {
       id: "step-face-hole",

@@ -65,7 +65,6 @@ pnpm --filter @openfea/core build
 pnpm --filter @openfea/examples build
 pnpm --filter @openfea/solver-cpu build
 pnpm --filter @openfea/solver-webgpu build
-pnpm --filter @openfea/viewer build
 pnpm --filter "./packages/*" --if-present test
 node scripts/verify-cloudflare-config.mjs
 pnpm typecheck
@@ -82,6 +81,8 @@ pnpm verify:offline-pwa
 ```
 
 The last three run in CI's separate `browser-proof` job. The proof build includes the URL mesh harness, so rebuild normally (`pnpm build:cloudflare`) before any deploy or bundle check.
+
+`packages/viewer` was removed (plan 036 item 0.10); the app's solver-surface render path is guarded by `apps/openfea-web/src/components/solverSurfaceRenderParity.test.ts`. The pinned `fleet-ci.yml` still runs `pnpm --filter @openfea/viewer build`, which now matches no project and exits 0; drop that line in a later `fleet-ci.yml` PR and re-pin `ci.yml` to its squash commit, per the pinning invariant below.
 
 `verify:step-selection-browser` requires Chrome or Chromium and free local ports 5198 and 9336; set `CHROME_BIN` when auto-detection cannot find the browser. The cloud-retirement guard re-run and the bundle check read `apps/openfea-web/dist`, so they must follow `build:cloudflare` (`pnpm test` skips the guard's bundle scan when `dist` is absent).
 

@@ -4,6 +4,8 @@ import type { Project, ResultField, ResultSummary, Study } from "@openfea/schema
 import { buildReportData, coverContextLine, suggestedReportFilename } from "./reportData";
 import { formatDeformationFactor, resolvedDeformation } from "../resultDeformation";
 import { TET4_BENDING_LOCKING_NOTE } from "../runAdvisories";
+import { rebaseSafetyFactorSummary, resolveSafetyFactorBasis } from "../safetyFactorBasis";
+import { stressPascalsFromProjectUnits } from "../unitDisplay";
 
 const productionSummary: ResultSummary = {
   maxStress: 142,
@@ -362,7 +364,7 @@ describe("buildReportData", () => {
 
     expect(data.loadCapacity).toEqual([
       { label: "Current applied load", value: "500 N" },
-      { label: "Max theoretical load (at FoS 1.0)", value: "900 N" },
+      { label: "Max theoretical load (at FoS 1.0, yield, von Mises)", value: "900 N" },
       { label: "Target factor of safety", value: "2" },
       { label: "Max load at target FoS", value: "450 N (0.9x current)" }
     ]);
@@ -536,6 +538,29 @@ describe("buildReportData", () => {
 
     expect(data.supports.rows[0]?.[1]).toContain("+");
   });
+
+  test("lists the components each fixed and symmetry support holds (plan 036 R1.4)", () => {
+    const project = { ...bracketDemoProject, studies: bracketDemoProject.studies.map((study) => ({ ...study })) };
+    const study = project.studies[0]!;
+    const [first] = study.constraints;
+    study.constraints = [
+      { ...first!, parameters: { ...first!.parameters, components: ["y"] } },
+      { ...first!, id: "sym", type: "symmetry", parameters: {} }
+    ];
+    const data = report({ project, study });
+
+    expect(data.supports.rows[0]?.[0]).toBe("Fixed support (Y; X, Z free)");
+    expect(data.supports.rows[1]?.[0]).toMatch(/^Symmetry \/ roller \(holds (X|Y|Z|the face normal)/);
+    const classic = report().supports.rows[0]?.[0];
+    expect(classic).toBe("Fixed support (X, Y, Z)");
+  });
+
+  test("lists elastic support stiffnesses in the report's units (plan 036 R1.5)", () => {
+    const project = { ...bracketDemoProject, studies: bracketDemoProject.studies.map((study) => ({ ...study })) };
+    const study = project.studies[0]!;
+    study.constraints = [{ ...study.constraints[0]!, type: "elastic_support", parameters: { normalStiffness: 5e7, tangentialStiffness: 1e7, units: "N/m^3" } }];
+    expect(report({ project, study }).supports.rows[0]?.[0]).toBe("Elastic support (normal 0.05 N/mm³, tangential 0.01 N/mm³)");
+  });
 });
 
 describe("suggestedReportFilename", () => {
@@ -650,5 +675,36 @@ describe("solver diagnostic payloads in Diagnostics & limitations", () => {
     for (const unitSystem of ["SI", "US"] as const) {
       expect(report({ resultSummary: summary, unitSystem }).diagnostics).toContain(projectionLine);
     }
+  });
+});
+
+describe("safety factor basis in the report (plan 036 R3.4)", () => {
+  test("the default report states the yield basis without changing the number or verdict", () => {
+    const data = report();
+    expect(data.keyResults).toContainEqual({ label: "Min safety factor (yield, von Mises)", value: "1.8" });
+    expect(data.results).toContainEqual({ label: "Min safety factor (yield, von Mises)", value: "1.8" });
+    expect(data.results).toContainEqual({ label: "Safety factor basis", value: "Yield strength over von Mises stress" });
+    expect(data.failureAssessment.title).toBe("Unlikely to yield");
+    expect(data.loadCapacityNote).toBe("Estimated by linearly scaling the current result against the material yield limit; verify with a run at the target load.");
+  });
+
+  test("an allowable basis re-bases the summary and says so in every safety-factor line", () => {
+    const study = { ...bracketDemoProject.studies[0]!, safetyFactorBasis: { strength: "allowable" as const, allowableStress: 138e6 } } as Study;
+    const basis = resolveSafetyFactorBasis({ study, displayModel: bracketDisplayModel, unitSystem: "SI" });
+    // Aluminum 6061 yields at 276 MPa, so 138 MPa halves every safety factor.
+    expect(basis.factor).toBe(0.5);
+    const data = report({ study, resultSummary: rebaseSafetyFactorSummary(productionSummary, basis.factor), safetyFactorBasis: basis });
+    expect(data.keyResults).toContainEqual({ label: "Min safety factor (allowable 138 MPa, von Mises)", value: "0.9" });
+    expect(data.results).toContainEqual({ label: "Safety factor basis", value: "Allowable stress (138 MPa) over von Mises stress" });
+    expect(data.failureAssessment).toMatchObject({ status: "fail", title: "Exceeds allowable stress" });
+    expect(data.failureAssessment.message).toContain("exceeds the allowable stress");
+    expect(data.loadCapacityNote).toContain("against the allowable stress");
+  });
+
+  test("a US report quotes the allowable in ksi", () => {
+    const study = { ...bracketDemoProject.studies[0]!, safetyFactorBasis: { strength: "allowable" as const, allowableStress: stressPascalsFromProjectUnits(20, "US") } } as Study;
+    const basis = resolveSafetyFactorBasis({ study, displayModel: bracketDisplayModel, unitSystem: "US" });
+    const data = report({ study, unitSystem: "US", resultSummary: rebaseSafetyFactorSummary(productionSummary, basis.factor), safetyFactorBasis: basis });
+    expect(data.results).toContainEqual({ label: "Safety factor basis", value: "Allowable stress (20 ksi) over von Mises stress" });
   });
 });

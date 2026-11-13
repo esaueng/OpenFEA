@@ -1,9 +1,11 @@
+import { elasticSupportStiffness, fixedSupportComponents, SUPPORT_COMPONENTS } from "@openfea/schema/supports";
 import {
   connectedComponents,
   deriveFixedSupportNodeSetFromSurface,
   elevateTet4MeshToTet10,
   finiteExtrema,
   solverSurfaceMeshFromModel,
+  symmetrySupportAxisForFacets,
   validateModelJson,
   volumeMeshToModelJson,
   OPENFEA_MODEL_SCHEMA_VERSION,
@@ -15,7 +17,7 @@ import {
   type SurfaceSetJson
 } from "@openfea/core";
 import { solveSteadyStateThermal, type DynamicLoadProfile } from "@openfea/solver-cpu";
-import { pressureToPascals, pressureToSolverStress } from "@openfea/units";
+import { foundationModulusToSolverUnits, pressureToPascals, pressureToSolverStress } from "@openfea/units";
 import { CPU_TET_DOF_THRESHOLD, MAX_WEBGPU_TET4_DOFS, WEBGPU_TET4_AUTOMATIC_ENABLED, solveStaticTet4ModelWebGpu } from "@openfea/solver-webgpu";
 import {
   BROWSER_SOLVE_LIMITS,
@@ -34,6 +36,7 @@ import {
   resolveMaterial
 } from "@openfea/materials";
 import {
+  type Constraint,
   type CustomMaterial,
   type Diagnostic,
   type DisplayModel,
@@ -46,7 +49,8 @@ import {
   type LoadCombination,
   type RunVariantResult,
   type RunVariantRef,
-  type Study
+  type Study,
+  type SupportComponent
 } from "@openfea/schema";
 import { inferGlobalCriticalPrintAxis, selectionRefsFor } from "@openfea/study-core";
 import {
@@ -269,6 +273,23 @@ export function displayPointToSolverFrame(point: Vec3, displayModel: DisplayMode
   return [physical[0], dimensions[2] - physical[2], physical[1]];
 }
 
+/**
+ * Support components are chosen in the display-model frame, like load
+ * directions. Legacy sample models solve in an upright frame, so their display
+ * Y and Z swap; uploaded geometry keeps its axes.
+ */
+export function displayComponentToSolverFrame(component: SupportComponent, displayModel: DisplayModel | undefined): SupportComponent {
+  const unit: Vec3 = component === "x" ? [1, 0, 0] : component === "y" ? [0, 1, 0] : [0, 0, 1];
+  const mapped = displayDirectionToSolverFrame(unit, displayModel);
+  return mapped[0] !== 0 ? "x" : mapped[1] !== 0 ? "y" : "z";
+}
+
+/** A fixed support's solver-frame components, in x, y, z order (all three when the study names none). */
+function solverFixedSupportComponents(constraint: Pick<Constraint, "type" | "parameters">, displayModel: DisplayModel | undefined): SupportComponent[] {
+  const mapped = new Set(fixedSupportComponents(constraint).map((component) => displayComponentToSolverFrame(component, displayModel)));
+  return SUPPORT_COMPONENTS.filter((component) => mapped.has(component));
+}
+
 function negated(value: number): number {
   return value === 0 ? 0 : -value;
 }
@@ -282,6 +303,9 @@ export function studyForCoreGeometryDispatch(study: Study, displayModel: Display
   if (!displayModel || !displayModelUsesUprightSolverFrame(displayModel)) return study;
   return {
     ...study,
+    constraints: study.constraints.map((constraint) => constraint.type === "fixed" && constraint.parameters.components !== undefined
+      ? { ...constraint, parameters: { ...constraint.parameters, components: solverFixedSupportComponents(constraint, displayModel) } }
+      : constraint),
     loads: study.loads.map((load) => {
       const direction = vector3(load.parameters.direction);
       const remotePoint = vector3(load.parameters.remotePoint);
@@ -355,8 +379,15 @@ export function openFeaCoreEligibility(
     if (study.loads.some((load) => load.type !== "heat_flux" && load.type !== "heat_generation")) return { ok: false, reason: "Steady thermal studies accept heat flux and heat generation only." };
     return { ok: true };
   }
-  if (!study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement")) {
-    return { ok: false, reason: "OpenFEA Core requires at least one fixed or prescribed-displacement support." };
+  if (!study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement" || constraint.type === "symmetry" || constraint.type === "elastic_support")) {
+    return { ok: false, reason: "OpenFEA Core requires at least one fixed, symmetry, elastic or prescribed-displacement support." };
+  }
+  const elasticOnly = !study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement" || constraint.type === "symmetry");
+  if (elasticOnly && !study.constraints.some((constraint) => {
+    const stiffness = elasticSupportStiffness(constraint);
+    return stiffness.normal > 0 && stiffness.tangential > 0;
+  })) {
+    return { ok: false, reason: "An elastic support with only normal or only tangential stiffness cannot hold the part on its own. Give one elastic support both stiffnesses, or add a fixed support." };
   }
   if (study.type === "dynamic_structural" && study.loads.some((load) => load.type === "bolt_preload")) {
     return { ok: false, reason: "Equivalent bolt preload is supported for static studies only." };
@@ -839,7 +870,7 @@ export function buildOpenFeaCoreModelForStudy(
   const coreLoadNameByStudyLoadId = new Map<string, string>();
 
   for (const [index, constraint] of study.constraints.entries()) {
-    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement") {
+    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement" && constraint.type !== "symmetry" && constraint.type !== "elastic_support") {
       throw new Error(
         `OpenFEA Core browser solve does not support ${constraint.type} constraints yet (constraint ${constraint.id}). Change it to a fixed support or remove it.`
       );
@@ -853,6 +884,20 @@ export function buildOpenFeaCoreModelForStudy(
       constraintRefs,
       surfaceSets
     );
+    if (constraint.type === "elastic_support") {
+      // Elastic (Winkler foundation) support, plan 036 R1.5: study values are
+      // N/m^3; the Core model takes its solver unit (N/mm^3 for mm models).
+      const solverUnits = model.coordinateSystem?.solverUnits ?? "m-N-s-Pa";
+      const stiffness = elasticSupportStiffness(constraint);
+      boundaryConditions.push({
+        name: `elasticSupport${index}`,
+        type: "elasticSupport",
+        surfaceSet: surfaceSet.name,
+        normalStiffness: foundationModulusToSolverUnits(stiffness.normal, solverUnits),
+        tangentialStiffness: foundationModulusToSolverUnits(stiffness.tangential, solverUnits)
+      });
+      continue;
+    }
     const nodeSet = deriveFixedSupportNodeSetFromSurface(`fixedNodes${index}`, surfaceSet.name, { ...model, surfaceSets });
     if (!nodeSet.nodes.length) throw new Error(`OpenFEA Core Local could not map boundary ${constraintRefs.join(", ")} to mesh nodes.`);
     nodeSets.push(nodeSet);
@@ -874,9 +919,21 @@ export function buildOpenFeaCoreModelForStudy(
       });
       continue;
     }
+    if (constraint.type === "symmetry") {
+      // Symmetry/roller (plan 036 R1.4): the solver-frame face normal picks
+      // the constrained component; a face off every axis is rejected.
+      const facetById = new Map((model.surfaceFacets ?? []).map((facet) => [facet.id, facet]));
+      const axis = symmetrySupportAxisForFacets(
+        model.nodes.coordinates,
+        surfaceSet.facets.flatMap((facetId) => facetById.get(facetId) ?? [])
+      );
+      if (!axis.ok) throw new Error(`${supportErrorLabel(constraint)}: ${axis.message}`);
+      boundaryConditions.push({ name: `symmetrySupport${index}`, type: "fixed", nodeSet: nodeSet.name, components: [axis.component] });
+      continue;
+    }
     boundaryConditions.push(constraint.type === "prescribed_temperature"
       ? { name: `prescribedTemperature${index}`, type: "prescribedTemperature", nodeSet: nodeSet.name, value: Number(constraint.parameters.value ?? 20) }
-      : { name: `fixedSupport${index}`, type: "fixed", nodeSet: nodeSet.name, components: ["x", "y", "z"] });
+      : { name: `fixedSupport${index}`, type: "fixed", nodeSet: nodeSet.name, components: solverFixedSupportComponents(constraint, displayModel) });
   }
 
   const density = coreMaterial.density ?? material.material.density;
@@ -1081,6 +1138,11 @@ export function buildOpenFeaCoreModelForStudy(
   };
 }
 
+function supportErrorLabel(constraint: Pick<Constraint, "id" | "parameters">): string {
+  const label = constraint.parameters.label;
+  return `Support ${typeof label === "string" && label.trim() ? label.trim() : constraint.id}`;
+}
+
 export function coreMeshStatisticsForStudy(
   study: Study,
   displayModel?: DisplayModel,
@@ -1138,6 +1200,11 @@ function ensureSurfaceSetForSelection({
   selectionRef: string;
   surfaceSets: SurfaceSetJson[];
 }): SurfaceSetJson {
+  // A named selection of several faces (plan 036 R1.2) resolves as a union of
+  // its faces, never through the single-face alias the mesher stores under it.
+  if (faceRefCount(study, selectionRef) > 1) {
+    return ensureSurfaceSetForSelections(model, renderNodePoints, displayModel, study, [selectionRef], surfaceSets);
+  }
   const existing = surfaceSets.find((set) => set.name === selectionRef);
   if (existing?.facets.length) return existing;
 
@@ -1172,13 +1239,19 @@ function ensureSurfaceSetForSelections(
   surfaceSets: SurfaceSetJson[]
 ): SurfaceSetJson {
   const refs = [...new Set(selectionRefs.filter((ref) => typeof ref === "string" && ref.length > 0))];
-  if (refs.length === 1) {
+  if (refs.length === 1 && faceRefCount(study, refs[0]!) <= 1) {
     return ensureSurfaceSetForSelection({ model, renderNodePoints, displayModel, study, selectionRef: refs[0]!, surfaceSets });
   }
-  const name = refs.join("+");
+  // The mesher stores a single-face alias under a selection's own id, so a
+  // lone multi-face selection gets a distinct union name.
+  const name = refs.length === 1 ? `${refs[0]!}:faces` : refs.join("+");
   const existing = surfaceSets.find((set) => set.name === name);
   if (existing?.facets.length) return existing;
-  const facets = facetsForDisplaySelections(model.surfaceFacets ?? [], renderNodePoints, displayModel, study, refs);
+  // Prefer the faces' B-rep identity (facets attributed to each STEP face);
+  // fall back to the display-face plane heuristic only when some face has no
+  // attributed facets, e.g. procedural sample meshes.
+  const facets = facetsForSelectionSourceFaces(model.surfaceFacets ?? [], study, refs)
+    ?? facetsForDisplaySelections(model.surfaceFacets ?? [], renderNodePoints, displayModel, study, refs);
   if (!facets.length) throw new Error(`OpenFEA Core Local could not map selections ${refs.join(", ")} to Core surface facets.`);
   const next = { name, facets: [...new Set(facets)].sort((left, right) => left - right) };
   surfaceSets.push(next);
@@ -1221,6 +1294,35 @@ function normalizedSelectionName(value: string): string {
   while (start < end && collapsed.charCodeAt(start) === 0x5f) start += 1;
   while (end > start && collapsed.charCodeAt(end - 1) === 0x5f) end -= 1;
   return collapsed.slice(start, end);
+}
+
+function faceRefCount(study: Study, selectionRef: string): number {
+  return study.namedSelections.find((candidate) => candidate.id === selectionRef)?.geometryRefs.filter((ref) => ref.entityType === "face").length ?? 0;
+}
+
+/**
+ * Union of the facets attributed to every face of every selection, by the
+ * selection id (`sourceSelectionRef`) or by each face's B-rep id
+ * (`sourceFaceId`). Returns null unless every face resolved, so a partial
+ * attribution never silently drops a face.
+ */
+function facetsForSelectionSourceFaces(surfaceFacets: SurfaceFacetJson[], study: Study, selectionRefs: string[]): number[] | null {
+  const result = new Set<number>();
+  for (const selectionRef of selectionRefs) {
+    const bySelection = surfaceFacets.filter((facet) => facet.sourceSelectionRef === selectionRef);
+    if (bySelection.length) {
+      for (const facet of bySelection) result.add(facet.id);
+      continue;
+    }
+    const selection = study.namedSelections.find((candidate) => candidate.id === selectionRef);
+    const faceIds = selection?.geometryRefs.filter((ref) => ref.entityType === "face").map((ref) => ref.entityId) ?? [];
+    for (const faceId of faceIds.length ? faceIds : [selectionRef]) {
+      const byFace = surfaceFacets.filter((facet) => facet.sourceFaceId === faceId);
+      if (!byFace.length) return null;
+      for (const facet of byFace) result.add(facet.id);
+    }
+  }
+  return result.size ? [...result] : null;
 }
 
 function facetsForDisplaySelections(
@@ -1337,16 +1439,27 @@ function modalDiagnosticSummary(entries: readonly unknown[]): { diagnostics?: Di
   if (!modal) return {};
   const { precisionLimitWarning, meshProjection } = modal as {
     precisionLimitWarning?: string;
-    meshProjection?: { sourceElementOrder: string; solveElementOrder: string; reason: string };
+    meshProjection?: { sourceElementOrder: string; solveElementOrder: string; sourceDofs?: unknown; solveDofs?: unknown; reason: string };
   };
   const diagnostics: Diagnostic[] = [];
   if (precisionLimitWarning) diagnostics.push(solverWarning("modal-precision-limit", precisionLimitWarning));
   if (meshProjection) {
-    const { sourceElementOrder, solveElementOrder, reason } = meshProjection;
-    diagnostics.push(solverWarning("modal-mesh-projection",
-      `Mesh projection for solve: ${sourceElementOrder} → ${solveElementOrder} (${reason}). Results are computed on the projected mesh.`));
+    const { sourceElementOrder, solveElementOrder, sourceDofs, solveDofs, reason } = meshProjection;
+    diagnostics.push({
+      ...solverWarning("modal-mesh-projection",
+        `Mesh projection for solve: ${sourceElementOrder} → ${solveElementOrder} (${reason}). Results are computed on the projected mesh.`),
+      // The structured payload persists with the summary (schema field
+      // `meshProjection`), so a reopened project still knows the solved order.
+      ...(sourceElementOrder === "Tet10" && solveElementOrder === "Tet4" && isNonNegativeInteger(sourceDofs) && isNonNegativeInteger(solveDofs)
+        ? { meshProjection: { sourceElementOrder, solveElementOrder, sourceDofs, solveDofs, reason } }
+        : {})
+    });
   }
   return diagnostics.length ? { diagnostics } : {};
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function runVariantFromCoreResult({ id, name, kind, caseId, combinationId, result, runId, convergenceInputs = [] }: {
@@ -1659,7 +1772,8 @@ function meshStatisticsForCoreModel(coreModel: CoreStudyModel): CoreMeshStatisti
   const componentIndex = new Map([["x", 0], ["y", 1], ["z", 2]] as const);
   const constrained = new Set<number>();
   for (const boundaryCondition of model.boundaryConditions) {
-    if (!activeBoundaryConditions.has(boundaryCondition.name)) continue;
+    // Elastic supports add stiffness, not constrained DOFs.
+    if (!activeBoundaryConditions.has(boundaryCondition.name) || boundaryCondition.type === "elasticSupport") continue;
     const constrainedNodes = typeof boundaryCondition.nodeSet === "string"
       ? nodeSetByName.get(boundaryCondition.nodeSet)
       : boundaryCondition.type === "fixed" && typeof boundaryCondition.surfaceSet === "string"

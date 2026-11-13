@@ -1,11 +1,11 @@
 // Self-contained runner for scripts/verify-wasm-mesh-browser.mjs: serves the
 // browser-proof build with `vite preview`, starts headless Chrome, and runs
-// the bracket, STEP and mesh-then-solve proofs against it in turn.
+// the bracket, STEP, mesh-then-solve and local sizing proofs against it in turn.
 //
 // Usage (Node >= 22, Chrome installed):
 //   VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build
 //   node scripts/run-wasm-mesh-browser.mjs
-// Env: PORT (5196), CDP_PORT (9333), CHROME_BIN, PROOFS (bracket,step,run),
+// Env: PORT (5196), CDP_PORT (9333), CHROME_BIN, PROOFS (bracket,step,run,localsizing),
 // PROOF_TIMEOUT_MS (passed through; 180000 per proof).
 // Exit code: the first failing proof's code (1 gate failed, 2 timeout), else 0.
 import { spawn, spawnSync } from "node:child_process";
@@ -16,8 +16,8 @@ import { fileURLToPath } from "node:url";
 
 const PORT = Number(process.env.PORT ?? 5196);
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9333);
-const PROOFS = (process.env.PROOFS ?? "bracket,step,run").split(",").map((proof) => proof.trim()).filter(Boolean);
-const QUERY = { bracket: "1", step: "step", run: "run" };
+const PROOFS = (process.env.PROOFS ?? "bracket,step,run,localsizing").split(",").map((proof) => proof.trim()).filter(Boolean);
+const QUERY = { bracket: "1", step: "step", run: "run", localsizing: "localsizing" };
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const profileDir = mkdtempSync(join(tmpdir(), "openfea-meshproof-"));
 const children = [];

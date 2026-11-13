@@ -12,7 +12,9 @@ import {
   type ManufacturingProcess
 } from "@openfea/materials";
 import { inferGlobalCriticalPrintAxis } from "@openfea/study-core";
+import { YIELD_SAFETY_FACTOR_BASIS, safetyFactorLabelWithBasis, safetyFactorLimitPhrase, type ResolvedSafetyFactorBasis } from "../safetyFactorBasis";
 import { supportDisplayLabel } from "../supportLabels";
+import { displayFacesForEntry, structuralSupportDescription } from "../supportDescriptions";
 import type { SolverMeshSummary } from "../resultFields";
 import { meshQualityElementLabel, meshQualityReportRows } from "../meshQualityDisplay";
 import { formatDeformationFactor, type ResolvedDeformation } from "../resultDeformation";
@@ -112,6 +114,8 @@ export interface ReportData {
   };
   results: ReportRow[];
   loadCapacity: ReportRow[];
+  /** The reverse-check caveat, naming the safety-factor basis it scales against. */
+  loadCapacityNote?: string;
   transientResults: ReportRow[];
   /** Modal effective mass per global direction; absent for other analyses and older modal results. */
   massParticipation?: ReportTable;
@@ -147,6 +151,11 @@ export interface BuildReportDataInput {
   bodyIds?: readonly string[];
   /** Reverse-check target from the results panel; defaults to 1.5 like the panel. */
   targetSafetyFactor?: number;
+  /**
+   * What `resultSummary.safetyFactor` divides by (plan 036 R3.4). The caller
+   * passes the summary already re-based to it; absent means the solver's yield basis.
+   */
+  safetyFactorBasis?: ResolvedSafetyFactorBasis;
   /** Mesh-convergence ladder records for this project (newest last); the report renders the latest. */
   convergenceRecords?: MeshConvergenceRecord[];
 }
@@ -159,7 +168,8 @@ export function buildReportData(input: BuildReportDataInput): ReportData {
   const fields = input.resultFields.map((field) => resultFieldForUnits(field, input.unitSystem));
   if (isModalResultSummary(summary)) return buildModalReportData(input, summary, fields);
   if (isThermalResultSummary(summary)) return buildThermalReportData(input, summary, fields);
-  const assessment = assessResultFailure(summary);
+  const basis = input.safetyFactorBasis ?? YIELD_SAFETY_FACTOR_BASIS;
+  const assessment = assessResultFailure(summary, basis.strength);
   const provenance = summary.provenance;
   const provenanceTier = classifyResultProvenance(provenance);
   const stressField = fieldForReport(fields, "stress", input.captures.stress);
@@ -195,7 +205,7 @@ export function buildReportData(input: BuildReportDataInput): ReportData {
     keyResults: [
       { label: "Max von Mises stress", value: formatResultMetric(summary.maxStress, summary.maxStressUnits) },
       { label: "Max displacement", value: formatResultMetric(summary.maxDisplacement, summary.maxDisplacementUnits) },
-      { label: "Safety factor", value: formatResultNumber(summary.safetyFactor) },
+      { label: safetyFactorLabelWithBasis("Min safety factor", basis), value: formatResultNumber(summary.safetyFactor) },
       { label: "Reaction force", value: formatResultMetric(summary.reactionForce, summary.reactionForceUnits) }
     ],
     failureAssessment: assessment,
@@ -211,7 +221,7 @@ export function buildReportData(input: BuildReportDataInput): ReportData {
     },
     materials: materialTable(input.study, input.unitSystem, criticalLayerAxis, input.project.customMaterials, input.bodyIds),
     manufacturing: manufacturingTable(input.study, input.project.customMaterials, input.bodyIds),
-    supports: supportTable(input.study),
+    supports: supportTable(input.study, input.displayModel, input.unitSystem),
     loads: loadTable(input.study, input.unitSystem),
     boundaryFigure: boundaryFigureData(input.study, input.captures.boundary),
     mesh: [
@@ -229,8 +239,9 @@ export function buildReportData(input: BuildReportDataInput): ReportData {
       stress: figureData("Von Mises stress", stressField, input.captures.stress, fields, input),
       displacement: figureData("Displacement magnitude", displacementField, input.captures.displacement, fields, input)
     },
-    results: resultRows(input.project, input.study, summary, input.displayModel),
+    results: resultRows(input.project, input.study, summary, input.displayModel, basis),
     loadCapacity: loadCapacityRows(input, summary, fields),
+    loadCapacityNote: `Estimated by linearly scaling the current result against ${safetyFactorLimitPhrase(basis.strength)}; verify with a run at the target load.`,
     transientResults: transientRows(summary),
     diagnostics,
     includeSmoothingDisclaimer: provenance?.kind === "opencae_core_fea",
@@ -294,7 +305,7 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
     },
     materials: materialTable(input.study, input.unitSystem, criticalLayerAxis, input.project.customMaterials, input.bodyIds),
     manufacturing: manufacturingTable(input.study, input.project.customMaterials, input.bodyIds),
-    supports: supportTable(input.study),
+    supports: supportTable(input.study, input.displayModel, input.unitSystem),
     loads: { headers: ["Load", "Magnitude", "Direction", "Target"], rows: [], emptyMessage: "Applied loads are not used in modal analysis." },
     boundaryFigure: boundaryFigureData(input.study, input.captures.boundary),
     mesh: [
@@ -371,7 +382,7 @@ function buildThermalReportData(input: BuildReportDataInput, summary: ThermalRes
     },
     materials: thermalMaterialTable(input.study, input.project.customMaterials, input.bodyIds),
     manufacturing: manufacturingTable(input.study, input.project.customMaterials, input.bodyIds),
-    supports: supportTable(input.study),
+    supports: supportTable(input.study, input.displayModel, input.unitSystem),
     loads: loadTable(input.study, input.unitSystem),
     boundaryFigure: boundaryFigureData(input.study, input.captures.boundary),
     mesh: [
@@ -605,11 +616,13 @@ function manufacturingSettingsLabel(process: ManufacturingProcess, parameters: M
   return process.description;
 }
 
-function supportTable(study: Study): ReportTable {
+function supportTable(study: Study, displayModel: DisplayModel | null, unitSystem: UnitSystem): ReportTable {
   return {
     headers: ["Support", "Target"],
     rows: study.constraints.map((constraint) => [
-      constraint.type === "fixed" ? "Fixed support" : constraint.type === "prescribed_temperature" ? `Prescribed temperature (${Number(constraint.parameters.value ?? 0)} ${String(constraint.parameters.units ?? "°C")})` : `Prescribed displacement (${Number(constraint.parameters.value ?? 0)} ${String(constraint.parameters.units ?? "mm")} ${String(constraint.parameters.component ?? "z")})`,
+      // Fixed supports name the components they hold; symmetry supports name
+      // the face-normal axis (plan 036 R1.4).
+      structuralSupportDescription(constraint, displayFacesForEntry(study, displayModel ?? undefined, constraint), unitSystem) ?? (constraint.type === "prescribed_temperature" ? `Prescribed temperature (${Number(constraint.parameters.value ?? 0)} ${String(constraint.parameters.units ?? "°C")})` : `Prescribed displacement (${Number(constraint.parameters.value ?? 0)} ${String(constraint.parameters.units ?? "mm")} ${String(constraint.parameters.component ?? "z")})`),
       selectionLabels(study, constraint.selectionRef, constraint.selectionRefs)
     ]),
     emptyMessage: "No supports recorded."
@@ -703,9 +716,9 @@ function solverRows(input: BuildReportDataInput, summary: ResultSummary): Report
   return rows;
 }
 
-function resultRows(project: Project, study: Study, summary: StructuralResultSummary, displayModel: DisplayModel | null): ReportRow[] {
+function resultRows(project: Project, study: Study, summary: StructuralResultSummary, displayModel: DisplayModel | null, basis: ResolvedSafetyFactorBasis): ReportRow[] {
   const provenance = summary.provenance;
-  const assessment = assessResultFailure(summary);
+  const assessment = assessResultFailure(summary, basis.strength);
   return [
     { label: "Result source", value: formatResultProvenanceLabel(provenance) },
     { label: "Core solver version", value: provenance?.solverVersion ?? provenance?.solverCpuVersion ?? provenance?.coreVersion ?? MISSING },
@@ -716,7 +729,8 @@ function resultRows(project: Project, study: Study, summary: StructuralResultSum
     { label: "Local fallback", value: "none" },
     { label: "Max stress", value: formatResultMetric(summary.maxStress, summary.maxStressUnits) },
     { label: "Max displacement", value: formatResultMetric(summary.maxDisplacement, summary.maxDisplacementUnits) },
-    { label: "Safety factor", value: formatResultNumber(summary.safetyFactor) },
+    { label: safetyFactorLabelWithBasis("Min safety factor", basis), value: formatResultNumber(summary.safetyFactor) },
+    { label: "Safety factor basis", value: basis.description },
     { label: "Failure check", value: assessment.title },
     { label: "Reaction force", value: formatResultMetric(summary.reactionForce, summary.reactionForceUnits) }
   ];
@@ -738,7 +752,7 @@ function loadCapacityRows(input: BuildReportDataInput, summary: StructuralResult
   }
   return [
     { label: "Current applied load", value: formatResultMetric(atTarget.currentLoad, atTarget.loadUnits) },
-    { label: "Max theoretical load (at FoS 1.0)", value: formatResultMetric(atYield.allowableLoad, atYield.loadUnits) },
+    { label: `Max theoretical load (at FoS 1.0, ${(input.safetyFactorBasis ?? YIELD_SAFETY_FACTOR_BASIS).shortLabel})`, value: formatResultMetric(atYield.allowableLoad, atYield.loadUnits) },
     { label: "Target factor of safety", value: formatResultNumber(target) },
     { label: "Max load at target FoS", value: `${formatResultMetric(atTarget.allowableLoad, atTarget.loadUnits)} (${formatResultNumber(atTarget.loadScale)}x current)` }
   ];

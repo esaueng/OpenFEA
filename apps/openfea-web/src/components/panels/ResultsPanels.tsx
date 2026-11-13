@@ -30,6 +30,8 @@ import type { RightPanelProps } from "./RightPanelProps";
 import { Panel, formatProbeReading, themedPortalRoot } from "./PanelChrome";
 import { STRESS_EXAGGERATION_COMMIT_DELAY_MS, stressComponentLabel } from "./RightPanelProps";
 import { Callout, Collapsible, Headline, HelpLabel, Info, SectionTitle, formatLoadCapacity, interpolatedFrameTimeSeconds, peakDisplacementFrame } from "./PanelChrome";
+import { SafetyFactorBasisControl } from "./SafetyFactorBasisControl";
+import { YIELD_SAFETY_FACTOR_BASIS, safetyFactorLimitPhrase, type ResolvedSafetyFactorBasis } from "../../safetyFactorBasis";
 export function ResultsPanel(props: RightPanelProps) {
   if (!props.resultSummary) {
     return (
@@ -509,7 +511,10 @@ function ResultExportMenu({ items }: { items: ResultExportItem[] }) {
 
 export function ResultsPanelContent({
   footerSlot,
+  project,
   displayModel,
+  safetyFactorBasis: safetyFactorBasisProp,
+  onSafetyFactorBasisChange,
   resultControlsBusy = false,
   resultsOutdated = false,
   resultMode,
@@ -565,7 +570,10 @@ export function ResultsPanelContent({
   const [draftScaleMax, setDraftScaleMax] = useState(() => String(resultColorScaleControl?.displayMax ?? 1));
   const stressExaggerationCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const committedStressExaggerationRef = useRef(stressExaggeration);
-  const assessment = assessResultFailure(resultSummary);
+  // Callers re-base the summary and fields to the study's basis before they get here;
+  // without one (older embeddings, tests) the solver's yield basis is what they hold.
+  const safetyFactorBasis: ResolvedSafetyFactorBasis = safetyFactorBasisProp ?? YIELD_SAFETY_FACTOR_BASIS;
+  const assessment = assessResultFailure(resultSummary, safetyFactorBasis.strength);
   const loadCapacity = estimateAllowableLoadForSafetyFactor(resultSummary, targetSafetyFactor);
   const loadCapacityAtOne = estimateAllowableLoadForSafetyFactor(resultSummary, 1);
   const blockPreviewResults = shouldBlockPreviewResultsForDisplayModel(displayModel, resultSummary, resultFields, study);
@@ -586,7 +594,7 @@ export function ResultsPanelContent({
   const currentFrameNumber = frames.length ? Math.min(frames.length, Math.max(1, Math.floor(sliderPosition) + 1)) : 0;
   const peakDisplacement = peakDisplacementFrame(resultFields, resultSummary);
   // A dynamic summary holds peaks over time, not the frame being scrubbed.
-  const headlineLabels = structuralHeadlineLabels(resultSummary);
+  const headlineLabels = structuralHeadlineLabels(resultSummary, safetyFactorBasis.shortLabel);
   const peakMarkerPercent = peakDisplacement && hasPlayback ? playbackPeakMarkerPercent(frames, peakDisplacement.timeSeconds) : null;
   const peakMarkerLabel = peakDisplacement ? `Peak displacement at ${peakDisplacement.timeSeconds.toFixed(4)} s` : "";
   const resultProvenance = resultSummary.provenance;
@@ -763,7 +771,7 @@ export function ResultsPanelContent({
         {resultFields.some((field) => field.type === "acceleration") && <button type="button" className={resultMode === "acceleration" ? "active" : ""} aria-pressed={resultMode === "acceleration"} disabled={resultControlsBusy} onClick={() => onResultModeChange("acceleration")}>Acceleration</button>}
         <button type="button" className={resultMode === "safety_factor" ? "active" : ""} aria-pressed={resultMode === "safety_factor"} disabled={resultControlsBusy} onClick={() => onResultModeChange("safety_factor")}>Safety factor</button>
       </div>
-      <p className="panel-copy">{resultModeExplanation(resultMode)}</p>
+      <p className="panel-copy">{resultModeExplanation(resultMode, safetyFactorBasis)}</p>
       {blockPreviewResults && <p className="panel-warning">{PREVIEW_GEOMETRY_WARNING}</p>}
       {legacyResultWarning && <p className="panel-warning">{legacyResultWarning}</p>}
       {reactionForceInvalid && <p className="panel-warning">{INVALID_REACTION_WARNING}</p>}
@@ -867,10 +875,11 @@ export function ResultsPanelContent({
       <label className="toggle"><input type="checkbox" aria-label="Deformed shape" checked={showDeformed && !blockPreviewResults} disabled={blockPreviewResults} onChange={onToggleDeformed} /> <HelpLabel helpId="deformedShape">Deformed shape</HelpLabel></label>
       <div className="legend"><small>Low</small><span style={resultColorScale ? { background: resultScaleCssGradient(resultColorScale) } : undefined} /><small>High</small></div>
       </Collapsible>
+      {safetyFactorBasisProp && <SafetyFactorBasisControl basis={safetyFactorBasisProp} unitSystem={project.unitSystem} onChange={onSafetyFactorBasisChange} />}
       {canEstimateLoad && (
         <Collapsible title="Reverse check" subtitle="Load for a target safety factor" helpId="targetSafetyFactor">
           {/* The linearity caveat used to appear only in the PDF (2026-09 review F9). */}
-          <p className="muted">Linear scaling of this result against the material yield limit. Verify with a run at the target load.</p>
+          <p className="muted">{`Linear scaling of this result against ${safetyFactorLimitPhrase(safetyFactorBasis.strength)}. Verify with a run at the target load.`}</p>
           <div className="load-capacity-tool">
             <label className="field">
               <HelpLabel helpId="targetSafetyFactor">Target factor of safety</HelpLabel>
@@ -1009,9 +1018,13 @@ export function playbackPeakMarkerPercent(frames: Array<{ frameIndex: number; ti
   return 0;
 }
 
-export function resultModeExplanation(resultMode: ResultMode): string {
+export function resultModeExplanation(resultMode: ResultMode, basis?: Pick<ResolvedSafetyFactorBasis, "strength" | "shortLabel">): string {
   // Safety factor uses fixed absolute bands (SAFETY_FACTOR_BANDS), not a low-to-high ramp.
-  if (resultMode === "safety_factor") return "Red areas yield (safety factor below 1). Orange and yellow areas have a thin margin (1 to 2). Blue areas are safe (2 or more).";
+  if (resultMode === "safety_factor") {
+    if (!basis || basis.strength === "yield") return "Red areas yield (safety factor below 1). Orange and yellow areas have a thin margin (1 to 2). Blue areas are safe (2 or more).";
+    const exceeded = basis.strength === "ultimate" ? "exceed the ultimate strength" : "exceed the allowable stress";
+    return `Safety factor basis: ${basis.shortLabel}. Red areas ${exceeded} (safety factor below 1). Orange and yellow areas have a thin margin (1 to 2). Blue areas are safe (2 or more).`;
+  }
   const field = resultMode === "displacement"
     ? "displacement magnitude"
     : resultMode === "velocity"

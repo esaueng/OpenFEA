@@ -132,7 +132,26 @@ export type PhysicalGroupJson = {
   material?: string;
 };
 
-export type BoundaryConditionJson = FixedBoundaryConditionJson | PrescribedDisplacementBoundaryConditionJson | PrescribedTemperatureBoundaryConditionJson;
+export type BoundaryConditionJson =
+  | FixedBoundaryConditionJson
+  | PrescribedDisplacementBoundaryConditionJson
+  | PrescribedTemperatureBoundaryConditionJson
+  | ElasticSupportBoundaryConditionJson;
+
+/**
+ * Elastic (Winkler foundation) support on a surface, plan 036 R1.5. Linear
+ * springs per unit area along the facet normal and in its tangent plane.
+ * Stiffnesses are a foundation modulus (force per area per displacement):
+ * N/m^3 for m-N-s-Pa models, N/mm^3 for mm-N-s-MPa models. Both are
+ * non-negative and at least one is positive. Structural steps only.
+ */
+export type ElasticSupportBoundaryConditionJson = {
+  name: string;
+  type: "elasticSupport";
+  surfaceSet: string;
+  normalStiffness: number;
+  tangentialStiffness: number;
+};
 
 export type FixedBoundaryConditionJson = {
   name: string;

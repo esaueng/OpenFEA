@@ -483,6 +483,142 @@ describe("load rows and the add flow agree with the form that created them (live
   });
 });
 
+describe("per-component fixed and symmetry supports (plan 036 R1.4)", () => {
+  const partial: Study["constraints"][number] = { id: "fs-partial", type: "fixed", selectionRef: namedSelections[0]!.id, parameters: { label: "FS 1", components: ["x", "z"] }, status: "complete" };
+  const symmetry: Study["constraints"][number] = { id: "sym-1", type: "symmetry", selectionRef: namedSelections[1]!.id, parameters: { label: "SYM 1" }, status: "complete" };
+
+  test("support rows describe the components each support holds, and label them development-grade", () => {
+    const html = renderPanel("supports", { study: { ...study, constraints: [partial, symmetry] } });
+    expect(html).toContain("FS 1 · Fixed support (X, Z; Y free)");
+    expect(html).toContain("SYM 1 · Symmetry / roller (holds Z, the face normal)");
+    expect(html).toContain("development-grade");
+    const classic = renderPanel("supports", { study: { ...study, constraints: [{ ...partial, parameters: { label: "FS 1" } }] } });
+    expect(classic).toContain("FS 1 · Fixed support (X, Y, Z)");
+    expect(classic).not.toContain("development-grade");
+  });
+
+  test("the add form offers symmetry, and held directions as a radio group defaulting to all three", () => {
+    const html = renderPanel("supports", { selectedFace: displayModel.faces[0]! });
+    expect(html).toContain('<option value="symmetry">Symmetry / roller</option>');
+    const group = html.match(/<div class="segmented" role="radiogroup" aria-labelledby="fixed-components-label"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+    const radios = group.match(/<button[^>]*role="radio"[^>]*>[^<]*/g) ?? [];
+    expect(radios).toHaveLength(2);
+    expect(radios.filter((radio) => radio.includes('aria-checked="true"') && radio.includes('tabindex="0"'))).toEqual([expect.stringContaining("All (X, Y, Z)")]);
+    expect(html).not.toContain("Components held");
+  });
+
+  test("a modal study offers symmetry but not prescribed displacement", () => {
+    const modal = { ...study, type: "modal_analysis", solverSettings: { modeCount: 6 } } as unknown as Study;
+    const html = renderPanel("supports", { study: modal, selectedFace: displayModel.faces[0]! });
+    expect(html).toContain('<option value="symmetry">Symmetry / roller</option>');
+    expect(html).not.toContain('<option value="prescribed_displacement">');
+  });
+
+  test("editing a partial fixed support shows its held components", () => {
+    const html = renderToStaticMarkup(<SupportEditForm support={partial} study={{ ...study, constraints: [partial] }} displayModel={displayModel} unitSystem="SI" onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).toMatch(/role="radio" aria-checked="true" tabindex="0"[^>]*>Chosen components/);
+    expect(html).toContain("Components held");
+    const boxes = html.match(/<input type="checkbox"[^>]*\/><span>[XYZ]<\/span>/g) ?? [];
+    expect(boxes.map((box) => [box.slice(-8, -7), box.includes('checked=""')])).toEqual([["X", true], ["Y", false], ["Z", true]]);
+  });
+
+  test("editing a symmetry support states the axis tolerance", () => {
+    const html = renderToStaticMarkup(<SupportEditForm support={symmetry} study={{ ...study, constraints: [symmetry] }} displayModel={displayModel} unitSystem="SI" onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).toContain('<option value="symmetry" selected="">Symmetry / roller</option>');
+    expect(html).toContain("within 1° of the global X, Y or Z axis");
+    expect(html).not.toContain("Held directions");
+  });
+});
+
+describe("elastic (foundation) supports (plan 036 R1.5)", () => {
+  const elastic: Study["constraints"][number] = {
+    id: "es-1",
+    type: "elastic_support",
+    selectionRef: namedSelections[0]!.id,
+    parameters: { label: "ES 1", normalStiffness: 5e7, tangentialStiffness: 2.5e7, units: "N/m^3" },
+    status: "complete"
+  };
+
+  test("rows show both stiffnesses in project units and label the approximation and grade", () => {
+    const metric = renderPanel("supports", { project: metricProject, study: { ...study, constraints: [elastic] } });
+    expect(metric).toContain("ES 1 · Elastic support (normal 0.05 N/mm³, tangential 0.025 N/mm³)");
+    expect(metric).toContain("Elastic supports are development-grade");
+    expect(renderPanel("supports", { study: { ...study, constraints: [elastic] } })).toMatch(/ES 1 · Elastic support \(normal 184(\.\d+)? lbf\/in³/);
+    expect(renderPanel("supports", { selectedFace: displayModel.faces[0]! })).toContain('<option value="elastic_support">Elastic support (foundation)</option>');
+  });
+
+  test("the edit form enters stiffness in the project unit and states the Winkler approximation", () => {
+    const html = renderToStaticMarkup(<SupportEditForm support={elastic} study={{ ...study, constraints: [elastic] }} displayModel={displayModel} unitSystem="SI" onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).toContain('<option value="elastic_support" selected="">Elastic support (foundation)</option>');
+    expect(html).toMatch(/aria-label="Normal stiffness" value="0.05"/);
+    expect(html).toMatch(/aria-label="Tangential stiffness" value="0.025"/);
+    expect(html).toContain("<span>N/mm³</span>");
+    expect(html).toContain("Winkler foundation");
+    expect(html).toContain("no lift-off");
+  });
+});
+
 function sameVector(left: readonly number[], right: readonly number[]) {
   return left.every((value, index) => Math.abs(value - right[index]!) < 1e-9);
 }
+
+describe("named selections in the Supports and Loads panels (plan 036 R1.2)", () => {
+  const boltHoles: Study["namedSelections"][number] = {
+    id: "selection-named-bolt-holes",
+    name: "Bolt holes",
+    entityType: "face",
+    geometryRefs: [namedSelections[0]!.geometryRefs[0]!, namedSelections[2]!.geometryRefs[0]!],
+    fingerprint: 'faceset:v1:["step-face-1","step-face-3"]'
+  };
+  const reusedStudy: Study = {
+    ...study,
+    namedSelections: [...namedSelections, boltHoles],
+    constraints: [{ id: "fs-1", type: "fixed", selectionRef: boltHoles.id, parameters: {}, status: "complete" }],
+    loads: [{ id: "load-1", type: "pressure", selectionRef: boltHoles.id, parameters: { value: 1, units: "MPa", direction: [0, 0, -1], directionMode: "-Z" }, status: "complete" }]
+  };
+  const manager = {
+    selectedFaceNames: ["+Z planar face F1 (645 mm²)", "-Z planar face F2 (1,290 mm²)"],
+    boundSelectionId: null,
+    onCreate: vi.fn(() => null),
+    onRename: vi.fn(() => null),
+    onDelete: vi.fn(() => null),
+    onUse: vi.fn()
+  };
+
+  test("a support and a load reusing one named selection name it and list every face", () => {
+    const supports = renderPanel("supports", { study: reusedStudy });
+    expect(supports).toContain("<small>Bolt holes · +Z planar face F1 (1 in²) +1 face</small>");
+    expect(supports).toContain("Faces (2): +Z planar face F1 (1 in²) + Cylindrical hole wall F3 (3 in²)");
+    const loads = renderPanel("loads", { study: reusedStudy });
+    expect(loads).toContain("Bolt holes · +Z planar face F1 (1 in²) +1 face");
+    expect(loads).toContain("Faces (2): +Z planar face F1 (1 in²) + Cylindrical hole wall F3 (3 in²)");
+  });
+
+  test("the Additional faces checklist offers faces, not named selections", () => {
+    const html = renderPanel("supports", { study: reusedStudy, selectedFace: displayModel.faces[0]! });
+    expect(html).toContain("Additional faces");
+    expect(html).toContain("<span>-Z planar face F2 (2 in²)</span>");
+    expect(html).not.toContain("<span>Bolt holes");
+  });
+
+  test("viewer Ctrl/Cmd-click picks arrive as checked Additional faces through the workspace", () => {
+    const html = renderPanel("supports", {
+      selectedFace: displayModel.faces[0]!,
+      additionalSelectionRefs: [namedSelections[1]!.id],
+      onToggleAdditionalSelectionRef: vi.fn()
+    });
+    expect(html).toContain('<input type="checkbox" checked=""/><span>-Z planar face F2 (2 in²)</span>');
+    expect(html).toContain('<input type="checkbox"/><span>Cylindrical hole wall F3 (3 in²)</span>');
+    expect(html).toContain("1 selected");
+    expect(html).toContain("Add fixed support (2 faces)");
+  });
+
+  test("the manager entry shows the face count and opens a dialog", () => {
+    const html = renderPanel("supports", { selectedFace: displayModel.faces[0]!, namedSelectionManager: manager });
+    expect(html).toContain('<span class="working-selection-count">2 faces selected</span>');
+    expect(html).toContain('aria-haspopup="dialog"');
+    expect(html).toContain("Named selections…");
+    // Not offered for body loads, which act on the whole part.
+    expect(renderPanel("loads", { draftLoadType: "volume_force", namedSelectionManager: manager })).not.toContain("Named selections…");
+  });
+});

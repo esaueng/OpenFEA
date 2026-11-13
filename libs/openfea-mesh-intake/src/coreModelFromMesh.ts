@@ -21,11 +21,19 @@
 //  6. Pressure and surface-traction magnitudes are emitted in the solver stress
 //     unit (Pa for m-N-s-Pa, MPa for mm-N-s-MPa) via @openfea/units. Upstream
 //     always emitted Pa, which overloaded mm-N-s-MPa models by 1e6.
+//  7. Supports (plan 036 R1.4): a fixed support may hold a subset of x/y/z
+//     (`parameters.components`, all three when absent), and a `symmetry`
+//     support holds the component normal to its axis-aligned face. Both
+//     emit Core `fixed` conditions; upstream always held x, y and z.
+//  8. Elastic supports (plan 036 R1.5) emit Core `elasticSupport` conditions
+//     on the mapped surface set, with N/m^3 study stiffnesses converted to the
+//     mesh's solver unit via @openfea/units.
 import {
   OPENFEA_MODEL_SCHEMA,
   OPENFEA_MODEL_SCHEMA_VERSION,
   nodeSetFromSurfaceSet,
   preflightCoreModel,
+  symmetrySupportAxisForFacets,
   validateModelJson,
   type BoundaryConditionJson,
   type IsotropicLinearElasticMaterialJson,
@@ -48,7 +56,7 @@ import {
   starterMaterials,
   type PrintStrengthContext
 } from "@openfea/materials";
-import { pressureToSolverStress, STANDARD_GRAVITY, type SolverUnitSystem } from "@openfea/units";
+import { foundationModulusToSolverUnits, pressureToSolverStress, STANDARD_GRAVITY, type SolverUnitSystem } from "@openfea/units";
 import type { CloudAnalysisType, CloudStudyLike, CoreVolumeMeshArtifact } from "./types";
 
 type BuildCoreModelInput = {
@@ -125,7 +133,7 @@ export function buildCoreModelFromCloudMesh(rawInput: BuildCoreModelInput): Open
   const meshConnections: NonNullable<OpenFEAModelJson["meshConnections"]> = [];
 
   for (const [index, constraint] of (input.study?.constraints ?? []).entries()) {
-    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement") {
+    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement" && constraint.type !== "symmetry" && constraint.type !== "elastic_support") {
       throw new Error(
         `OpenFEA Core browser solve does not support ${constraint.type} constraints yet (constraint ${constraint.id ?? index}). Change it to a fixed support or remove it.`
       );
@@ -139,6 +147,17 @@ export function buildCoreModelFromCloudMesh(rawInput: BuildCoreModelInput): Open
       role: "fixed_support",
       diagnostics: input.mappingDiagnostics
     }, surfaceSets);
+    if (constraint.type === "elastic_support") {
+      const solverUnits = input.volumeMesh.coordinateSystem.solverUnits;
+      boundaryConditions.push({
+        name: `elasticSupport${index}`,
+        type: "elasticSupport",
+        surfaceSet: surfaceSet.name,
+        normalStiffness: foundationModulusToSolverUnits(positiveNumber(constraint.parameters?.normalStiffness), solverUnits),
+        tangentialStiffness: foundationModulusToSolverUnits(positiveNumber(constraint.parameters?.tangentialStiffness), solverUnits)
+      });
+      continue;
+    }
     const nodeSetName = ensureNodeSetForSurfaceSet(nodeSets, surfaceSet, input.volumeMesh.surfaceFacets);
     if (constraint.type === "prescribed_displacement") {
       const mm = input.volumeMesh.coordinateSystem.solverUnits === "mm-N-s-MPa";
@@ -154,6 +173,16 @@ export function buildCoreModelFromCloudMesh(rawInput: BuildCoreModelInput): Open
       });
       continue;
     }
+    if (constraint.type === "symmetry") {
+      const facetById = new Map(input.volumeMesh.surfaceFacets.map((facet) => [facet.id, facet]));
+      const axis = symmetrySupportAxisForFacets(
+        input.volumeMesh.nodes.coordinates,
+        surfaceSet.facets.flatMap((facetId) => facetById.get(facetId) ?? [])
+      );
+      if (!axis.ok) throw new Error(`${supportErrorLabel(constraint, index)}: ${axis.message}`);
+      boundaryConditions.push({ name: `symmetrySupport${index}`, type: "fixed", nodeSet: nodeSetName, components: [axis.component] });
+      continue;
+    }
     boundaryConditions.push(constraint.type === "prescribed_temperature" ? {
       name: `prescribedTemperature${index}`,
       type: "prescribedTemperature",
@@ -163,7 +192,7 @@ export function buildCoreModelFromCloudMesh(rawInput: BuildCoreModelInput): Open
       name: `fixedSupport${index}`,
       type: "fixed",
       nodeSet: nodeSetName,
-      components: ["x", "y", "z"]
+      components: fixedComponents(constraint.parameters?.components)
     });
   }
 
@@ -819,6 +848,25 @@ function clamp(value: number, min: number, max: number): number {
  * two supports picked on one face must not emit duplicate node-set names
  * (model validation rejects them with "Names must be unique").
  */
+function positiveNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/** Components held by a fixed support; absent (every older study) means all three. */
+function fixedComponents(raw: unknown): Array<"x" | "y" | "z"> {
+  if (!Array.isArray(raw) || raw.length === 0) return ["x", "y", "z"];
+  const components = (["x", "y", "z"] as const).filter((component) => raw.includes(component));
+  if (components.length !== new Set(raw).size) {
+    throw new Error("Fixed support components must be a non-empty list of distinct x, y and z.");
+  }
+  return components;
+}
+
+function supportErrorLabel(constraint: { id?: string; parameters?: Record<string, unknown> }, index: number): string {
+  const label = constraint.parameters?.label;
+  return `Support ${typeof label === "string" && label.trim() ? label.trim() : constraint.id ?? index + 1}`;
+}
+
 function ensureNodeSetForSurfaceSet(nodeSets: NodeSetJson[], surfaceSet: SurfaceSetJson, surfaceFacets: SurfaceFacetJson[]): string {
   const name = `${surfaceSet.name}_nodes`;
   if (!nodeSets.some((set) => set.name === name)) {

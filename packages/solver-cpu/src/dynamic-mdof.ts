@@ -643,6 +643,11 @@ function recoverDynamicEquilibrium(
 ): { reactionForce: Float64Array; relativeImbalance: number } {
   const internalForce = csrMatVec(system.fullStiffness, displacement);
   const stiffnessDamping = rayleighBeta === 0 ? undefined : csrMatVec(system.fullStiffness, velocity);
+  // Elastic supports (plan 036 R1.5) act at free DOFs too; their force on the
+  // body, -K_found u - beta K_found v, is part of the support reaction,
+  // including the stiffness-proportional damping already used by the integrator.
+  const foundationForce = system.supportStiffness ? csrMatVec(system.supportStiffness, displacement) : undefined;
+  const foundationDamping = system.supportStiffness && rayleighBeta !== 0 ? csrMatVec(system.supportStiffness, velocity) : undefined;
   const reactionForce = new Float64Array(internalForce.length);
   let freeIndex = 0;
   let residualSquared = 0;
@@ -656,8 +661,9 @@ function recoverDynamicEquilibrium(
     const damping = rayleighAlpha * mass * velocity[i] + rayleighBeta * (stiffnessDamping?.[i] ?? 0);
     const applied = loadScale * system.fullLoad[i];
     const residual = internalForce[i] + inertia + damping - applied;
+    if (foundationForce) reactionForce[i] -= foundationForce[i] + rayleighBeta * (foundationDamping?.[i] ?? 0);
     if (constrained) {
-      reactionForce[i] = residual;
+      reactionForce[i] += residual;
     } else {
       residualSquared += residual * residual;
       const reference = Math.max(Math.abs(internalForce[i]), Math.abs(inertia), Math.abs(damping), Math.abs(applied));

@@ -5,6 +5,7 @@ export type {
   BodyGravityLoadJson,
   CoordinateSystemJson,
   DisplacementComponent,
+  ElasticSupportBoundaryConditionJson,
   DynamicLinearStepJson,
   DynamicLoadProfileJson,
   DynamicStepJson,
@@ -132,6 +133,8 @@ export {
   relativeBalanceError,
   remoteGramPivotTolerance
 } from "./load-policy";
+export type { GlobalAxisAlignment, SymmetryAxisFacet, SymmetryAxisResolution } from "./support-policy";
+export { nearestGlobalAxis, SUPPORT_GEOMETRY_POLICY, symmetrySupportAxisForFacets } from "./support-policy";
 export type {
   CoreModelPreflightDiagnostics,
   CoreModelPreflightOptions,

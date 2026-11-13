@@ -89,6 +89,24 @@ The approximately 100,000-DOF Chromium/WebKit benchmark is the existing cross-br
 
 "Apparent convergence" requires all three rungs to complete with strictly increasing actual DOF. The symmetric last-step change from medium to fine must be at most 5% for probe displacement and 10% for raw peak stress. Three successful increasing rungs outside either threshold are `unconverged`; missing, skipped, failed, or non-increasing rungs are `inconclusive`. This is a mesh-ladder indicator, not a proof of asymptotic convergence.
 
+## Local Mesh Sizing
+
+Plan 036 R2.2 sizes chosen STEP faces with gmsh Distance + Threshold fields (size grows from the local size on the face to the preset size at distance (preset − local) / 0.5). Status: the plan 036 development-grade label was lifted on this branch once all four gates below passed (Node and a local headless-Chromium run; the CI `browser-proof` job runs the same browser proof):
+
+- **Kt at equal DOF** (`apps/openfea-web/src/workers/localSizingKt.test.ts`): the plan 013 plate (W = 60, L = 120, t = 6, d = 15 mm, d/W = 0.25, 1 kN tension, fixed end) through the production STEP path (OCC-exported STEP, occt face registry, persisted rule on the hole wall resolved by face id + fingerprint, pre-mesh preflight, Tet10 mesh, facet attribution, browser solve pipeline). Oracle: Heywood/Howland Kt_net = 2 + (1 − d/W)³ = 2.422, a plane-stress value. The compared quantity is therefore the hole-edge hoop stress σxx at θ = ±90° averaged through the thickness (generalized plane stress), interpolated linearly along the solved surface. The 3D midplane peak is a few percent above the plane-stress value and the free faces below it, so a raw peak would not measure discretization error against this oracle. Measured (Node, gmsh-wasm 0.4.0, Tet10, 2026-11-13):
+
+  | Mesh | Total DOF | Kt (thickness-averaged hoop) | Error vs 2.422 |
+  | --- | --- | --- | --- |
+  | Uniform 3.8 mm | 25,920 | 2.347 | 3.1% |
+  | Local 1 mm on the hole wall, 6 mm elsewhere | 26,310 (+1.5%) | 2.464 | 1.7% |
+
+  The gate requires equal DOF within ±10%, a smaller error with local sizing, a local error below 3%, reaction balance within 1% and the pre-mesh DOF estimate within ±30% (22,077 estimated vs 26,310). Context from the exploration runs: uniform 4 mm (22,791 DOF) 2.323 (4.1%), uniform 2.5 mm (75,009 DOF) 2.375 (1.9%), local 1 mm under 8 mm (20,640 DOF) 2.457 (1.5%). The raw 3D peaks (hole-wall surface von Mises 2.36–2.51, raw element peak 2.41–2.54) lie above the plane-stress oracle once the hole is resolved, as expected for t/r = 0.8, and are not the gated quantity.
+- **mm vs m** (`libs/openfea-mesh-intake/src/wasmMesherLocalSizing.test.ts`): the same plate meshed from an OCC `.geo` in mm and in m with the size field scaled by 1/1000 gives element and node counts within 3% (gmsh has absolute tolerances), the same local/uniform refinement ratio within 3%, and the same meshed volume within 0.1%. The estimate and the face matcher are exactly scale invariant (unit tests).
+- **Pre-mesh estimate** (APPROXIMATION): against real gmsh counts on the plate, elements and nodes are within ±30% (measured within 12%) for global sizes up to the wall thickness, and only err high above it, so the preflight errs toward blocking. Fitted constants and their ranges are documented in `localSizing.ts`.
+- **Browser**: `pnpm verify:wasm-mesh-browser` includes a `localsizing` proof (box-with-bore STEP, 1.5 mm on the bore wall under the 6 mm preset): the rule must reach gmsh, refine the mesh by more than 1.5×, pass the preflight, produce no inverted elements and land the element estimate within ±30%. Passed locally on 2026-11-13 in headless Chromium after `VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build`: 1,446 uniform → 4,203 local elements, estimate 3,857 (0.92×), rule applied, no inverted elements; the bracket, STEP and run proofs still pass.
+
+Limits: faces only (the STEP face registry has no B-rep edge ids); a face split or merged by a multi-body fuse is matched only when its pieces lie inside the face's bounds and sum to its area, otherwise it is reported unmatched; the convergence ladder stays uniform.
+
 ## OpenFEA Core Modal Support
 
 Modal studies require positive density for every solved material, a generated mesh, and enough supports to make the constrained stiffness matrix nonsingular. They do not require or apply loads. The solver requests 1–10 modes (default 6) and uses deterministic block shift-invert subspace iteration with a block size of `min(modeCount + 2, freeDOFs)`.
@@ -101,12 +119,57 @@ is at most `1e-6`. The solver returns only converged modes and reports requested
 
 That tolerance can lie below what double precision can resolve. A vector stored in doubles cannot have a computed residual much below its rounding floor `gamma_n ||(|K||phi| + |lambda| M|phi|)|| / max(||K phi||, |lambda| ||M phi||)`, where `gamma_n = n u / (1 - n u)`, `u = eps / 2`, and `n` is the longest stiffness row plus two. For the lowest bending modes of slender, finely meshed parts this floor grows roughly with `(L/H)^2 (L/h)^2`. Inner shift-invert CG solves therefore stop at each vector's representation floor (`eps` times the same ratio) rather than at a fixed `1e-9`. Driving the recursive CG residual past that floor only widened the gap to the true residual, which is why the slender 30k-DOF solve-ladder pair stalled at 2.5e-6 / 2.0e-6. A mode is also accepted when its residual is within its own floor and the last subspace pass shrank it by less than half. The measured residual is still exported unchanged. The mode is listed in `precisionLimitedModes` with its floor, and `precisionLimitWarning` names it in the result warning. On well-conditioned parts the floor is far below `1e-6`, so the criterion is unchanged there. Inner CG non-convergence or singular constrained systems must produce an explicit insufficient-supports error naming the Supports step. A raw CG error is not an acceptable user diagnostic.
 
+## Per-Component Fixed and Symmetry Supports (plan 036 R1.4)
+
+Development-grade. The closed-form, unit-equivalence and balance gates below pass in `pnpm test`; the browser run that exercises a symmetry half model in the app was manual and is not part of CI yet. In that run (Chromium, 2026-11-13) the `box-with-bore.step` fixture got a fixed −X face, a symmetry support added through the Supports panel on the −Y face (the panel and row both reported "holds Y"), and a 500 N load on the +X face; it meshed with gmsh-wasm and solved in the browser with a 500 N reaction and no page errors.
+
+- A fixed support holds any non-empty subset of the global X, Y and Z displacement components. Without a stored component list it holds all three, exactly as before.
+- A symmetry/roller support holds only the component normal to its face. Version 1 has no local coordinate systems: every solver surface facet of the face must lie within `SUPPORT_GEOMETRY_POLICY.symmetryAxisToleranceDegrees` (1°) of the same global axis (`packages/core/src/support-policy.ts`). A curved, tilted or multi-axis selection is rejected with an explicit error naming the measured angle; it is never snapped to the nearest axis. Skew symmetry waits for local coordinate systems (R1.7).
+- Both become Core `fixed` boundary conditions with a component list, so reactions, provenance and result fields are unchanged.
+- In a modal study a symmetry plane admits only modes that are symmetric about it; antisymmetric modes need the full model or an antisymmetry support.
+- Symmetry supports on fewer than three orthogonal planes do not stop rigid-body motion on their own; the model still needs a fixed or other restraining support.
+
+Gate (`apps/openfea-web/src/workers/symmetrySupports.test.ts`): the 180 x 24 x 24 mm steel cantilever (Tet10, 500 N tip load) meshed mirror-symmetrically about both mid-planes, so a cut model is exactly the retained part of the full mesh.
+
+| Case | Supports | Tolerance | Measured |
+| --- | --- | --- | --- |
+| Half model, vertical tip load F/2 | Fixed root, symmetry on y = 0 | `SYMMETRY_MODEL_RELATIVE_TOLERANCE` 1e-6 | tip 0.176840 mm, peak 45.842 MPa; relative error 1.2e-13 and 4.7e-13 |
+| Quarter model, vertical tip load F/4 | Fixed root, symmetry on y = 0, antisymmetry on the z = 0 neutral plane (fixed X and Y only) | 1e-6 | relative error 1.3e-12 and 2.1e-12 |
+| Quarter model, axial tip load F/4 | Fixed root, symmetry on y = 0 and z = 0 | 1e-6 | relative error 2.7e-11 and 4.8e-11 |
+| Half model in mm-N-s-MPa vs m-N-s-Pa | As above | `UNIT_EQUIVALENCE_RELATIVE_TOLERANCE` 1e-6 | 9.5e-14 (tip), 1.3e-12 (stress), 2.2e-11 (reaction) |
+| Reaction balance | Full, half and quarter | `REACTION_BALANCE_RELATIVE_TOLERANCE` 1e-6 | |sum of reactions| = F, F/2, F/4 to within 1.3e-11 |
+
+A vertical load is antisymmetric about the neutral plane, so the quarter model needs the antisymmetry condition (in-plane components held, normal free) there, not a symmetry support. The full model's tip deflection is within 0.8% of Timoshenko beam theory (0.1782 mm); its peak stress includes the clamped-root corner concentration.
+
+## Elastic (Foundation) Supports (plan 036 R1.5)
+
+Development-grade. The closed-form, unit-equivalence, balance and modal gates below pass in `pnpm test`; the in-app browser run was manual and is not part of CI yet. In that run (Chromium, 2026-11-13) the `box-with-bore.step` fixture, held only by an elastic support added through the Supports panel on its −Z face (0.05 and 0.02 N/mm³), meshed with gmsh-wasm and solved in the browser under a 500 N load with a 500 N reaction and no page errors.
+
+- Model: a Winkler foundation. Each support face carries independent linear springs per unit area: `normalStiffness` along each facet's normal and `tangentialStiffness` in its tangent plane (N/m³ in `m-N-s-Pa`, N/mm³ in `mm-N-s-MPa`). The springs pull as well as push (no lift-off or contact) and do not spread load through the foundation.
+- Assembly (`packages/solver-cpu/src/elastic-support.ts`): the consistent face matrix k∫NᵀN dA ⊗ (k_n nnᵀ + k_t (I − nnᵀ)) per facet, exact for Tri3 and straight-sided Tri6 facets (A/12 and A/180 closed forms; Tri6 corner rows sum to 0 and midside rows to A/3, matching the consistent load vector). It is symmetric and positive semidefinite per facet and positive definite on the face DOFs when both stiffnesses are positive, so a part held only by such a face has no rigid-body modes. Static, dynamic and modal solves include it; the WebGPU matrix-free path rejects it.
+- Reactions: the reported support reaction includes the foundation force −K_found·u, so a part held only by springs reports the full reaction.
+- A study held only by elastic supports needs one with both stiffnesses positive; otherwise validation and eligibility refuse it before solving.
+
+Gates (`packages/solver-cpu/tests/elastic-support.test.ts`, `apps/openfea-web/src/workers/elasticSupport.test.ts`): a 100 x 100 x 50 mm steel block (ν = 0, so the state is exactly uniaxial) on k_n = 2e8 N/m³, k_t = 1e8 N/m³ under a 1 kN top load.
+
+| Case | Tolerance | Measured |
+| --- | --- | --- |
+| Base settles F/(k_n A) = 0.5 mm, top adds F h/(E A) (Tet4 and Tet10, solver level) | `FOUNDATION_CLOSED_FORM_RELATIVE_TOLERANCE` 1e-6 | worst nodal error 5.9e-11 |
+| Product path (mesh-intake → adapter → browser solver, Tet10): top 0.500025 mm | 1e-6 | 2.1e-11 |
+| mm-N-s-MPa (k in N/mm³) vs m-N-s-Pa | `UNIT_EQUIVALENCE_RELATIVE_TOLERANCE` 1e-6 | 2.2e-11 (displacement), 4.6e-11 (stress), 2.6e-11 (reaction) |
+| Reaction balance, block held only by the foundation | `REACTION_BALANCE_RELATIVE_TOLERANCE` 1e-6 (1e-8 at solver level) | 2.1e-12 |
+| Modal, foundation only: six modes, none near zero; bounce mode √(k_n A / m)/2π = 113.61 Hz | every mode > 0.1 × bounce; bounce within 1% | 62.9, 63.0, 79.1, 113.61, 125.8, 127.1 Hz (bounce error 8e-6) |
+
+The pre-R1.5 fixture (`pre-elastic-supports-study.json`: base held in Z, symmetry on x0 and y0) reads unchanged and compresses exactly F h/(E A) (error 7.9e-11).
+
 ## Benchmark Matrix
 
 | Case | Model | Material | Load and support | Expected behavior |
 | --- | --- | --- | --- | --- |
 | Simple cantilever static | Connected Tet4 block | Linear elastic validation material | Fixed left face and transverse right-face force | Reaction force balances applied force, displacement/stress are finite and positive, safety factor is finite, fields are non-empty, and the solver surface mesh is connected. |
 | Simple cantilever dynamic | Same connected Tet4 block | Linear elastic validation material with density | Fixed left face and ramp or step right-face force | Dynamic frame count matches the requested cadence, frames are unique, velocity/acceleration fields are present, fields are non-empty, and no frame is reused as a fake response. |
+| Cantilever symmetry half/quarter models | Mirror-symmetric Tet10 cantilever and its cut halves/quarters | Steel (E 200 GPa, ν 0.29) | Fixed root plus symmetry (and, for a vertical load, antisymmetry) supports on the cut planes | Tip deflection and peak stress match the full model within 1e-6; reactions balance the applied share of the load; a face more than 1° off an axis is rejected. |
+| Block on elastic foundation | Structured Tet4/Tet10 block | Steel, ν = 0 | Elastic support (k_n, k_t) on the base, total load on the top; also modal with no load | Settlement F/(k_n A) and compression F h/(E A) within 1e-6; mm/m equivalence; reaction equals F; modal has no zero-frequency modes and the bounce mode matches √(k_n A / m). |
 | Simple cantilever modal | Connected Tet10 beam | Linear elastic validation material with density | Fixed left face; no loads | First bending frequency is within 10% of Euler–Bernoulli theory, returned shapes are M-orthogonal, and every returned scaled residual is at most `1e-6`. |
 | Pressure patch | Connected Tet4 block | Linear elastic validation material | Pressure on right face with explicit direction | Reaction force balances `pressure * surface area`; result provenance is computed production provenance. |
 | Surface traction patch | Connected Tet4/Tet10 block | Linear elastic validation material | Vector traction on one surface | Tri3/Tri6 integration balances `traction * surface area` and conserves direction. |

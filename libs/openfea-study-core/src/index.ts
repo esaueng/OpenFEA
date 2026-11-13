@@ -66,7 +66,7 @@ export function validateStaticStressStudy(study: Study, customMaterials: readonl
   diagnostics.push(...materialProcessDiagnostics(study, customMaterials));
   diagnostics.push(...bodyMaterialDiagnostics(study, context));
   if (study.constraints.length === 0) diagnostics.push(issue("validation-support", "Choose where the part is held fixed."));
-  diagnostics.push(...prescribedDisplacementDiagnostics(study));
+  diagnostics.push(...structuralSupportDiagnostics(study));
   // A study driven only by nonzero imposed motion needs no applied loads;
   // a zero-valued displacement behaves as a fixed component, not a driver.
   const drivenByImposedMotion = study.constraints.some(
@@ -160,7 +160,7 @@ export function validateModalStudy(study: Extract<Study, { type: "modal_analysis
   diagnostics.push(...materialProcessDiagnostics(study, customMaterials));
   diagnostics.push(...bodyMaterialDiagnostics(study, context));
   if (study.constraints.length === 0) diagnostics.push(issue("validation-modal-support", "Add at least one support for modal analysis."));
-  diagnostics.push(...prescribedDisplacementDiagnostics(study));
+  diagnostics.push(...structuralSupportDiagnostics(study));
   if (study.meshSettings.status !== "complete") diagnostics.push(issue("validation-mesh", "Generate the mesh before running."));
   if (!Number.isInteger(settings.modeCount) || settings.modeCount < 1 || settings.modeCount > 10) {
     diagnostics.push(issue("validation-modal-mode-count", "Modal mode count must be from 1 through 10."));
@@ -202,7 +202,7 @@ export function validateDynamicStructuralStudy(study: Study, customMaterials: re
   if (study.constraints.length === 0 && solverSettings.allowFreeMotion !== true) {
     diagnostics.push(issue("validation-dynamic-support", "Add at least one support or enable free motion for the dynamic run."));
   }
-  diagnostics.push(...prescribedDisplacementDiagnostics(study));
+  diagnostics.push(...structuralSupportDiagnostics(study));
   if (!(solverSettings.endTime > solverSettings.startTime)) {
     diagnostics.push(issue("validation-dynamic-end-time", "Dynamic end time must be greater than start time."));
   }
@@ -235,9 +235,13 @@ export function selectionRefsFor(entry: { selectionRef: string; selectionRefs?: 
   return [...new Set(refs.filter((ref) => typeof ref === "string" && ref.length > 0))];
 }
 
-function prescribedDisplacementDiagnostics(study: Study): Diagnostic[] {
+function structuralSupportDiagnostics(study: Study): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
+  diagnostics.push(...elasticSupportDiagnostics(study));
   for (const constraint of study.constraints) {
+    if (constraint.type === "fixed" && constraint.parameters.components !== undefined && !fixedSupportComponentsAreValid(constraint.parameters.components)) {
+      diagnostics.push(issue(`validation-support-components-${constraint.id}`, `Support ${constraint.id} must hold at least one of x, y and z.`));
+    }
     if (constraint.type !== "prescribed_displacement") continue;
     const value = constraint.parameters.value;
     if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -249,6 +253,37 @@ function prescribedDisplacementDiagnostics(study: Study): Diagnostic[] {
     }
   }
   return diagnostics;
+}
+
+/**
+ * Elastic (foundation) supports, plan 036 R1.5. Each needs finite,
+ * non-negative stiffnesses with one positive. A study held only by elastic
+ * supports needs one with both normal and tangential stiffness: a normal-only
+ * (or tangential-only) foundation on its own leaves rigid-body motion free.
+ */
+function elasticSupportDiagnostics(study: Study): Diagnostic[] {
+  const elastic = study.constraints.filter((constraint) => constraint.type === "elastic_support");
+  if (!elastic.length) return [];
+  const diagnostics: Diagnostic[] = [];
+  for (const constraint of elastic) {
+    const values = [constraint.parameters.normalStiffness, constraint.parameters.tangentialStiffness];
+    if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0) || !values.some((value) => typeof value === "number" && value > 0)) {
+      diagnostics.push(issue(`validation-support-stiffness-${constraint.id}`, `Elastic support ${constraint.id} needs a positive normal or tangential stiffness.`));
+    }
+  }
+  const restrained = study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement" || constraint.type === "symmetry");
+  const holdsAllDirections = elastic.some((constraint) => Number(constraint.parameters.normalStiffness) > 0 && Number(constraint.parameters.tangentialStiffness) > 0);
+  if (!restrained && !holdsAllDirections) {
+    diagnostics.push(issue("validation-elastic-support-rigid-body", "An elastic support with only normal or only tangential stiffness cannot hold the part on its own. Give one elastic support both stiffnesses, or add a fixed support."));
+  }
+  return diagnostics;
+}
+
+function fixedSupportComponentsAreValid(components: unknown): boolean {
+  return Array.isArray(components) &&
+    components.length > 0 &&
+    components.every((component) => component === "x" || component === "y" || component === "z") &&
+    new Set(components).size === components.length;
 }
 
 function structuralVariantDiagnostics(study: Study): Diagnostic[] {

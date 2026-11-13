@@ -1,8 +1,8 @@
 import { finiteExtrema, type FiniteExtrema } from "@openfea/core";
-import { isModalResultSummary, isStructuralResultSummary, isThermalResultSummary } from "@openfea/schema";
+import { isModalResultSummary, isStructuralResultSummary, isThermalResultSummary } from "@openfea/schema/resultKinds";
 import type { DisplayFace, ResultField, ResultSummary, StructuralResultSummary } from "@openfea/schema";
 import { semanticResultFieldKey, stressComponentForField } from "./resultSelection";
-import { formatDisplayNumber } from "./unitDisplay";
+import { formatDisplayNumber } from "./formatDisplayNumber";
 import type { ResultMode } from "./workspaceViewTypes";
 
 export type ResultFieldMode = "stress" | "displacement" | "safety_factor" | "velocity" | "acceleration" | "mode_shape" | "temperature" | "heat_flux";
@@ -1120,8 +1120,8 @@ export function formatResultValue(value: number) {
   return formatDisplayNumber(value);
 }
 
-const SAFETY_FACTOR_DISPLAY_CAP = 10000;
-const SAFETY_FACTOR_DISPLAY_FLOOR = 0.01;
+export const SAFETY_FACTOR_DISPLAY_CAP = 10000;
+export const SAFETY_FACTOR_DISPLAY_FLOOR = 0.01;
 
 type SolverResultBundle = {
   summary?: ResultSummary | null;

@@ -6,6 +6,15 @@ import { isTroikaTextModule, stripTroikaFallbackFontResolver, TROIKA_FALLBACK_FO
 
 const require = createRequire(import.meta.url);
 const troikaEsmPath = join(dirname(require.resolve("troika-three-text/package.json")), "dist/troika-three-text.esm.js");
+const dreiRequire = createRequire(require.resolve("@react-three/drei/package.json"));
+
+describe("scene label text runtime", () => {
+  test("configures the same Troika instance that drei uses to render labels", () => {
+    // SceneLabelText disables workers to satisfy the production CSP. Configuring
+    // a second copy leaves drei's Text using a blocked worker and suspends the viewer.
+    expect(require.resolve("troika-three-text")).toBe(dreiRequire.resolve("troika-three-text"));
+  });
+});
 
 describe("troika fallback font resolver stub", () => {
   test("removes the CDN font resolver from the installed troika build", () => {

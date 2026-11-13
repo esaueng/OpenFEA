@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
+  foundationModulusFromNewtonsPerCubicMetre,
+  foundationModulusToNewtonsPerCubicMetre,
+  foundationModulusToSolverUnits,
   meshVolumeM3FromTriangles,
   PASCALS_PER_PSI,
   pressureToPascals,
@@ -26,6 +29,18 @@ function binaryStl(vertices: [number, number, number][]): Uint8Array {
   }
   return bytes;
 }
+
+describe("foundation modulus (elastic supports, plan 036 R1.5)", () => {
+  test("converts N/m^3 to each solver system and display unit", () => {
+    expect(foundationModulusToSolverUnits(5e7, "m-N-s-Pa")).toBe(5e7);
+    // 1 N/mm^3 = 1e9 N/m^3: force/area/length scales by 1e-3 cubed.
+    expect(foundationModulusToSolverUnits(5e7, "mm-N-s-MPa")).toBeCloseTo(0.05, 15);
+    expect(foundationModulusToNewtonsPerCubicMetre(0.05, "N/mm^3")).toBeCloseTo(5e7, 6);
+    // 1 lbf/in^3 (pci) = 271,447.14 N/m^3.
+    expect(foundationModulusToNewtonsPerCubicMetre(1, "lbf/in^3")).toBeCloseTo(271_447.14, 1);
+    expect(foundationModulusFromNewtonsPerCubicMetre(foundationModulusToNewtonsPerCubicMetre(123, "lbf/in^3"), "lbf/in^3")).toBeCloseTo(123, 9);
+  });
+});
 
 describe("STL dimensions", () => {
   test("reads binary STL extents without normalizing display scale", () => {

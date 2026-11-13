@@ -4652,6 +4652,47 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
+/* Local mesh sizing (plan 036 R2.2): face label, size input with its unit, remove. */
+.local-sizing-card {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.local-sizing-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.local-sizing-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.local-sizing-row > span {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.local-sizing-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.local-sizing-value input {
+  width: 6.5em;
+}
+
+.local-sizing-add {
+  display: grid;
+  gap: var(--sp-2);
+}
+
 .load-combination-row > .load-combination-delete,
 .combination-factor {
   grid-column: 1 / -1;
@@ -5017,6 +5058,33 @@ button:disabled {
   color: var(--color-error);
   font-size: var(--fs-xs);
   line-height: var(--lh-loose);
+}
+
+/* Support notes (plan 036 R1.4): symmetry tolerance and development-grade labels. */
+.field-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-loose);
+}
+
+.component-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.component-checkboxes legend {
+  padding: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.component-checkboxes .toggle {
+  margin: var(--sp-2) 0 0;
 }
 
 input[aria-invalid="true"] {
@@ -6702,6 +6770,96 @@ input[aria-invalid="true"] {
 .geometry-replace-body .panel-warning > svg {
   flex: none;
   margin-top: 2px;
+}
+
+/* Plan 036 R1.2: working face selection and the named-selection manager. */
+.working-selection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.viewer-a11y-faces-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--color-text);
+}
+
+.named-selections-dialog {
+  max-width: 560px;
+}
+
+.named-selections-body {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  overflow-y: auto;
+}
+
+.named-selections-body h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.named-selection-create {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: start;
+}
+
+.named-selection-create .field {
+  width: 100%;
+}
+
+.named-selection-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.named-selection-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--card-pad);
+  background: var(--color-surface-2);
+  border: var(--border-thin);
+  border-radius: var(--card-radius);
+}
+
+.named-selection-summary {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.named-selection-summary small {
+  color: var(--color-text-muted);
+}
+
+.named-selection-actions,
+.named-selection-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.named-selection-rename {
+  width: 100%;
+}
+
+.named-selection-rename input {
+  flex: 1 1 160px;
 }
 
 /* 2026-09 review D23: the start screen shows the workspace loading. */

@@ -15,6 +15,7 @@ import { StudySchema } from "@openfea/schema";
 import { SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../geometryFormats";
 import type { StepGeometryMetadata } from "../lib/api";
 import { createLocalSampleProject } from "../localProjectFactory";
+import { rebaseSafetyFactorSummary, resolveSafetyFactorBasis } from "../safetyFactorBasis";
 
 const workspaceAppSource = readFileSync(resolve(__dirname, "../WorkspaceApp.tsx"), "utf8").replace(/\r\n/g, "\n");
 const rightPanelSource = [
@@ -2528,7 +2529,7 @@ describe("select-then-act and re-targeting (2026-09 review F1, D3, F3)", () => {
     expect(rightPanelSource.match(/const pickedFaceLabel = pickedElsewhere \? stepFaceLabelForUnits\(pickedElsewhere\.label, pickedElsewhere\.area, unitSystem\) : "";/g)).toHaveLength(2);
     expect(rightPanelSource).not.toContain("Move to {pickedElsewhere.label}");
     expect(rightPanelSource).toContain("onSave(previewLoad, targetFace)");
-    expect(rightPanelSource).toContain("support.parameters }, targetFace)");
+    expect(rightPanelSource).toContain("onSave({ ...support, type, parameters: savedParameters() }, targetFace)");
   });
 
   test("the in-panel Next commits a previewed material selection", () => {
@@ -2797,5 +2798,43 @@ describe("live review follow-ups: mesh tick, outdated verdict, thermal wording, 
     expect(confirmUnlessRepeatClick({ detail: 1 }, onConfirm)).toBe(true);
     expect(confirmUnlessRepeatClick({ detail: 0 }, onConfirm)).toBe(true); // keyboard activation
     expect(onConfirm).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("safety factor basis in the Results panel (plan 036 R3.4)", () => {
+  const aluminumStudy: Study = { ...study, materialAssignments: [{ id: "assign-al", materialId: "mat-aluminum-6061", selectionRef: "selection-top", parameters: {}, status: "complete" }] };
+  const solved: ResultSummary = { ...resultSummary, maxStress: 142, safetyFactor: 1.8, maxDisplacement: 0.184, reactionForce: 500 };
+
+  test("states the yield basis in the headline and explains why ultimate is unavailable", () => {
+    const basis = resolveSafetyFactorBasis({ study: aluminumStudy, unitSystem: "SI" });
+    const html = renderPanel("results", { study: aluminumStudy, resultSummary: solved, safetyFactorBasis: basis, onSafetyFactorBasisChange: vi.fn() });
+    expect(html).toContain("Min safety factor (yield, von Mises)");
+    expect(html).toContain("Unlikely to yield");
+    expect(html).toContain("Safety factor basis");
+    expect(html).toMatch(/<option value="ultimate" disabled="">Ultimate strength \(unavailable\)<\/option>/);
+    expect(html).toContain("Aluminum 6061 has no ultimate strength on file");
+  });
+
+  test("an allowable basis shows its value in the project stress unit and re-words the verdict", () => {
+    for (const unitSystem of ["SI", "US"] as const) {
+      const allowableStudy = { ...aluminumStudy, safetyFactorBasis: { strength: "allowable" as const, allowableStress: 138e6 } } as Study;
+      const basis = resolveSafetyFactorBasis({ study: allowableStudy, unitSystem });
+      const html = renderPanel("results", {
+        project: { ...project, unitSystem },
+        study: allowableStudy,
+        resultSummary: rebaseSafetyFactorSummary(solved, basis.factor),
+        safetyFactorBasis: basis,
+        onSafetyFactorBasisChange: vi.fn()
+      });
+      expect(html).toContain("Exceeds allowable stress");
+      expect(html).toContain(unitSystem === "SI" ? "Min safety factor (allowable 138 MPa, von Mises)" : "Min safety factor (allowable 20.02 ksi, von Mises)");
+      expect(html).toMatch(unitSystem === "SI" ? /value="138"[^>]*\/><span>MPa<\/span>/ : /value="20.0152"[^>]*\/><span>ksi<\/span>/);
+    }
+  });
+
+  test("without a basis (older embeddings) the panel keeps the solver's yield wording and hides the control", () => {
+    const html = renderPanel("results", { resultSummary: solved });
+    expect(html).toContain("Unlikely to yield");
+    expect(html).not.toContain("Divide by");
   });
 });

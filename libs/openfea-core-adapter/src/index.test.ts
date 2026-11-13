@@ -8,6 +8,7 @@ import {
   bracketMeshSizeMmForPreset,
   buildOpenFeaCoreModelForStudy,
   geometrySourceForStudy,
+  displayComponentToSolverFrame,
   displayDirectionToSolverFrame,
   explicitSolverBackend,
   openFeaCoreEligibility,
@@ -184,6 +185,26 @@ describe("display to solver frame conversion", () => {
     expect(dispatched.loads[0]?.parameters.value).toBe(500);
     // The original study must stay in display space for the viewer and local solves.
     expect(study.loads[0]?.parameters.direction).toEqual([0, -1, 0]);
+  });
+
+  test("maps per-component fixed supports into the solver frame like load directions (plan 036 R1.4)", () => {
+    const sample = cantileverDisplayModel();
+    expect(["x", "y", "z"].map((component) => displayComponentToSolverFrame(component as "x" | "y" | "z", sample))).toEqual(["x", "z", "y"]);
+    expect(displayComponentToSolverFrame("y", { ...sample, id: "display-uploaded" })).toBe("y");
+
+    const study = studyFixture({
+      constraints: [
+        { id: "partial", type: "fixed", selectionRef: "selection-fixed-face", parameters: { components: ["y"] }, status: "complete" },
+        { id: "all", type: "fixed", selectionRef: "selection-fixed-face", parameters: {}, status: "complete" }
+      ]
+    });
+    const dispatched = studyForCoreGeometryDispatch(study, sample);
+    expect(dispatched.constraints[0]?.parameters.components).toEqual(["z"]);
+    expect(dispatched.constraints[1]?.parameters).toEqual({});
+    expect(study.constraints[0]?.parameters.components).toEqual(["y"]);
+
+    const { model } = buildOpenFeaCoreModelForStudy(study, sample);
+    expect(model.boundaryConditions.map((condition) => "components" in condition ? condition.components : undefined)).toEqual([["z"], ["x", "y", "z"]]);
   });
 });
 
@@ -789,6 +810,43 @@ describe("per-model solver backend resolution", () => {
     // Before the fix the mm model received 20e6 "MPa" and both ratios were 1e6.
     expect(millimetres.displacementMm / metres.displacementMm).toBeCloseTo(1, 6);
     expect(millimetres.stressMpa / metres.stressMpa).toBeCloseTo(1, 6);
+  });
+
+  test("maps a multi-face named selection and multi-face extras by B-rep face identity (plan 036 R1.2)", () => {
+    const groupId = "selection-named-both-ends";
+    const storedModel = actualCoreModelFixture();
+    // Facets attributed by B-rep face only, as the STEP mesher writes them, plus
+    // the single best-matching face the mesher stores under a selection's id.
+    storedModel.surfaceFacets = storedModel.surfaceFacets.map(({ sourceSelectionRef: _selection, ...facet }) => facet);
+    storedModel.surfaceSets = [{ name: groupId, facets: [0] }];
+    const base = autoStudy();
+    const group = {
+      id: groupId,
+      name: "Both ends",
+      entityType: "face" as const,
+      geometryRefs: base.namedSelections.flatMap((selection) => selection.geometryRefs),
+      fingerprint: 'faceset:v1:["fixed-face","load-face"]'
+    };
+    const nodesFor = (study: Study) => {
+      const model = buildOpenFeaCoreModelForStudy(study, cantileverDisplayModel()).model;
+      return { model, nodes: [...(model.nodeSets.find((set) => set.name === "fixedNodes0")?.nodes ?? [])].sort((left, right) => left - right) };
+    };
+
+    const reused = nodesFor(autoStudy({
+      namedSelections: [...base.namedSelections, group],
+      constraints: [{ id: "constraint-group", type: "fixed", selectionRef: groupId, parameters: {}, status: "complete" }],
+      meshSettings: actualMeshSettings(storedModel)
+    }));
+    expect(reused.model.surfaceSets?.find((set) => set.name === `${groupId}:faces`)?.facets).toEqual([0, 1]);
+    // Both faces' nodes: the single-face alias alone would give [0, 2, 3].
+    expect(reused.nodes).toEqual([0, 1, 2, 3]);
+
+    const extras = nodesFor(autoStudy({
+      constraints: [{ id: "constraint-extras", type: "fixed", selectionRef: "selection-fixed-face", selectionRefs: ["selection-load-face"], parameters: {}, status: "complete" }],
+      meshSettings: actualMeshSettings(storedModel)
+    }));
+    expect(extras.model.surfaceSets?.find((set) => set.name === "selection-fixed-face+selection-load-face")?.facets).toEqual([0, 1]);
+    expect(extras.nodes).toEqual([0, 1, 2, 3]);
   });
 
   test("rejects unverifiable index-only mappings from pre-alias mesh artifacts", () => {
