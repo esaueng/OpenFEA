@@ -1,4 +1,4 @@
-import { bracketSolidVolumeMm3, type BracketGeometryDescriptor } from "@openfea/mesh-intake";
+import { bracketSolidVolumeMm3, type BracketGeometryDescriptor } from "@openfea/mesh-intake/bracketGeo";
 import type { DisplayModel } from "@openfea/schema";
 
 export interface ModelPanelProjectState {

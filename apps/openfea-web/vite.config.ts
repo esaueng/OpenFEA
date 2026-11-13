@@ -206,6 +206,15 @@ export default defineConfig({
   build: {
     modulePreload: false,
     rolldownOptions: {
+      // Keep Rolldown's chunk merging off. It used to be disabled implicitly:
+      // the gmsh Emscripten glue (gmsh-core.mjs) has a top-level await, and
+      // while the main build bundled a copy of it, Rolldown skipped these
+      // optimizations for the whole graph. With the glue now worker-only, the
+      // optimizer would fold the shared solver/results chunks into the
+      // workspace chunk and push it past the lazy-chunk raw budget. The
+      // VITE_BROWSER_PROOF build (mesh harness, gmsh on the main thread)
+      // gets the same layout either way.
+      experimental: { chunkOptimization: false },
       output: {
         codeSplitting: {
           groups: [

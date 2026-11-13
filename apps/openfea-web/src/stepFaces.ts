@@ -19,7 +19,8 @@
 // stepPreview's shared importer and caches registries per STEP content.
 import type { OcctMesh } from "occt-import-js";
 import type { DisplayFace } from "@openfea/schema";
-import { buildStepAttributionTessellation, type StepAttributionTessellation, type StepBodyBounds } from "@openfea/mesh-intake";
+import type { StepBodyBounds } from "@openfea/mesh-intake";
+import { buildStepAttributionTessellation, type StepAttributionTessellation } from "@openfea/mesh-intake/facetFaceAttribution";
 import {
   loadStepSurfacePreviewFallback,
   occtMeshesFromStepSurfacePreview,
