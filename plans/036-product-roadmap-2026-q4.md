@@ -8,6 +8,8 @@ accepted the same day and R0 started.
 Progress re-verified on 2026-11-12 against `main` at `12cf5fa`: R0 is done
 except 0.10 (`packages/viewer`). R1.3, R2.1 and R3.1 are done. R5.1 is
 partial (Chromium only). Each item below carries its commits and PR.
+On 2026-11-13, 0.10 was closed by deleting `packages/viewer` after parity
+tests (`apps/openfea-web/src/components/solverSurfaceRenderParity.test.ts`), so R0 is done.
 
 This plan supersedes the ordering in plan 024 and reopens the deferred
 decisions 032 and 033 with a recommendation. Plans 024 (Releases 6–8) and
@@ -33,7 +35,7 @@ saying so. That index is corrected in the same change as this plan.
 | Results | Stress measures, displacement, safety factor (yield over von Mises), probes, one axis-aligned section, envelopes, playback, PDF, HTML viewer, CSV/VTU of the selected state. Modal mass participation per direction (`cc90be1`, #196). | No error indicator, linearized stress, run comparison or design sweep. |
 | Geometry | STEP/STP solvable; STL/OBJ preview-only by decision 031B; four parametric parts. | No IGES. No defeaturing. |
 | Scale | 150k DOF guarded ceiling. SSOR CG for static and thermal, Jacobi for modal and dynamic. The ceiling is benchmarked in Chromium (`docs/validation/solve-ladder.md`, `4f9541b`, #197). | No WebKit numbers and no CI smoke rung. Slender solves stop short of the true residual and slender modal can drop modes (see Unscheduled findings). WebGPU automatic routing is off because the CG loop is not GPU-resident. |
-| Code health | Dependencies current (React 19, Vite 8, Vitest 5, Zod 4). Backend fallbacks removed from the browser. Reference backend deleted (`88b5975`, #193). Type-aware ESLint in CI (`76653ba`, `ed3ad4f`, #195). | `CadViewer.tsx` 7,699 lines and `WorkspaceApp.tsx` 3,484 lines. Unused `packages/viewer` (R0.10). |
+| Code health | Dependencies current (React 19, Vite 8, Vitest 5, Zod 4). Backend fallbacks removed from the browser. Reference backend deleted (`88b5975`, #193). Type-aware ESLint in CI (`76653ba`, `ed3ad4f`, #195). | `CadViewer.tsx` 7,699 lines and `WorkspaceApp.tsx` 3,484 lines. `packages/viewer` deleted after parity tests (R0.10). |
 
 ## Principles
 
@@ -70,7 +72,7 @@ Each numbered item is one PR unless it says otherwise.
 | 0.7 | ~~Fix the status-bar Feedback URL.~~ Closed: the maintainer kept the current `opencae-feedback` form. | No change. |
 | 0.8 | Add `verify-wasm-mesh-browser` and `verify-offline-pwa` to the CI browser job, or record why they stay manual. Delete or wire the orphaned `trusted-ci.yml`. **CI change; review.** **Done:** both proofs run in the `browser-proof` job (`568913a`); `trusted-ci.yml` deleted (`032ba58`); #194. | Offline meshing is a headline feature with no CI gate. |
 | 0.9 (M) | Plan 024 Release 3B: delete `apps/openfea-api`, the API-only services, `libs/openfea-db`, `-jobs`, `-storage` and `runners/openfea-runner-local`. Split browser-safe samples out of `db` first. **Deletes ~4.5k lines; review.** **Done:** `88b5975` (#193). | Removes a second code path before new schemas multiply it. |
-| 0.10 | Adopt `packages/viewer` during the R1 viewer extraction, or delete it. **Open:** still unimported at `12cf5fa`; the pinned CI workflow still builds it. | It is built and tested in CI but nothing imports it. |
+| 0.10 | Adopt `packages/viewer` during the R1 viewer extraction, or delete it. **Done (deleted):** parity tests (`apps/openfea-web/src/components/solverSurfaceRenderParity.test.ts`) showed the app reproduces every viewer buffer (positions, indices, nodeMap, values, min/max, displacement vectors) for Tet4/Tet10 in m and mm, and adds normals, colours, deformation and non-stress contours. The viewer's output is frozen as a fixture. The pinned `fleet-ci.yml` still runs `pnpm --filter @openfea/viewer build` (matches nothing, exits 0) until its next re-pin. | It is built and tested in CI but nothing imports it. |
 | 0.11 (M) | Add lint: ESLint flat config with `typescript-eslint`, starting with `no-floating-promises`, `no-misused-promises` and `eqeqeq`, then a CI step. **New dev dependencies; flag.** **Done:** `76653ba`, `ed3ad4f` (#195). | Async UI and solver orchestration have no static guard today. |
 
 ### R1 — Model the real part (next; highest product leverage)
@@ -105,7 +107,7 @@ solver capability that already exists.
 | 3.1 | Modal mass participation and cumulative effective mass per direction. **Done:** `cc90be1` (#196). | S | Γᵢ = φᵢᵀMr with mass-normalized φ. Report the projected-model caveat when the Tet10 → Tet4 projection applied. Gate: the sum approaches the total mass as the number of modes grows on a free-free bar. Prerequisite for harmonic (R6). |
 | 3.2 | Path plots and linearized stress (membrane + bending along a stress classification line). | M | Interpolate with the existing probe evaluation. Integrate along the path with a stated quadrature. Gate: pure tension and pure bending of a block recover the closed-form membrane and bending values. |
 | 3.3 | Run and study comparison: a KPI table across studies, and a difference field only when two results share topology. | M | No cross-mesh interpolated differences in v1, to avoid hidden mapping error. |
-| 3.4 | Safety factor basis choice: yield or ultimate, plus a user allowable, stated in the legend and report. **Done on this branch** (`claude/release-b-safety-factor-basis`): per-study `safetyFactorBasis`, re-scaled from the stored yield-basis result without re-solving; ultimate offered only for a material with an ultimate strength (no catalog entry has one) and only for single-material models. | S | Default unchanged (yield over von Mises). |
+| 3.4 | Safety factor basis choice: yield or ultimate, plus a user allowable, stated in the legend and report. **Done** (#223): per-study `safetyFactorBasis`, re-scaled from the stored yield-basis result without re-solving; ultimate offered only for a material with an ultimate strength (no catalog entry has one) and only for single-material models. | S | Default unchanged (yield over von Mises). |
 | 3.5 | Report preview and offscreen figure capture (plan 028 D15/S7). | M | Removes the dependence on viewer state during report capture. |
 | 3.6 | Parametric design sweep: one parametric-part dimension × N values → batch mesh and solve → KPI curves. | L | Each point respects the DOF cap and cancellation, and every point keeps its own provenance. |
 

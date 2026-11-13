@@ -67,7 +67,7 @@ describe("Cloudflare deployment config guard (post cloud retirement)", () => {
   });
 
   test("OpenFEA Core packages are in-repo and sibling bootstrap files stay deleted", () => {
-    for (const packageDir of ["core", "examples", "solver-cpu", "solver-webgpu", "viewer"]) {
+    for (const packageDir of ["core", "examples", "solver-cpu", "solver-webgpu"]) {
       expect(existsSync(resolve(rootDir, "packages", packageDir, "package.json")), packageDir).toBe(true);
     }
     for (const retiredPath of [

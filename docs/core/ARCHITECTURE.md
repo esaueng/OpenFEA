@@ -23,7 +23,7 @@ geometry / saved project
                       local result fields + solver provenance
                                      |
                                      v
-                              @openfea/viewer
+               web app solver-surface renderer (CadViewer)
 ```
 
 The Cloudflare Worker hosts the static application and may support unrelated
@@ -43,8 +43,12 @@ geometry, mesh, load, or result is sent to a server for computation.
   Gmsh geometry-to-volume-mesh execution. (This is the only WebAssembly
   subsystem: the never-implemented `@openfea/solver-wasm` placeholder package
   was removed in July 2026.)
-- `@openfea/viewer` and the web application render the returned solver surface
-  mesh and aligned result fields.
+- The web application (`apps/openfea-web`, `CadViewer.tsx` and
+  `solverSurfaceFields.ts`) renders the returned solver surface mesh and
+  aligned result fields. The unused `@openfea/viewer` package was removed in
+  November 2026 after parity tests
+  (`apps/openfea-web/src/components/solverSurfaceRenderParity.test.ts`)
+  showed the app reproduces its buffers.
 
 ## Solver routing
 

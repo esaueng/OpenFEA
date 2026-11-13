@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "pnpm --filter @openfea/web dev",
     "build": "pnpm build:core && pnpm --filter @openfea/web build",
-    "build:core": "pnpm --filter @openfea/core build && pnpm --filter @openfea/examples build && pnpm --filter @openfea/solver-cpu build && pnpm --filter @openfea/solver-webgpu build && pnpm --filter @openfea/viewer build",
+    "build:core": "pnpm --filter @openfea/core build && pnpm --filter @openfea/examples build && pnpm --filter @openfea/solver-cpu build && pnpm --filter @openfea/solver-webgpu build",
     "build:cloudflare": "pnpm build:core && pnpm --filter @openfea/web build",
     "verify:perf": "pnpm build:core && pnpm --filter @openfea/web build && node scripts/verify-web-performance.mjs",
     "verify:step-selection-browser": "node scripts/verify-step-selection-browser.mjs",
