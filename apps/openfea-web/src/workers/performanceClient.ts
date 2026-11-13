@@ -11,6 +11,7 @@ import {
   type PerformanceWorkerResults
 } from "./performanceProtocol";
 import { fallbackSolveLocalStudy } from "./localSolve";
+import { reportFailureDiagnostic } from "../diagnosticSink";
 import { workerClientError } from "./workerClientError";
 
 type PendingRequest<Operation extends PerformanceWorkerOperation = PerformanceWorkerOperation> = {
@@ -83,6 +84,7 @@ function handlePerformanceWorkerMessage(event: MessageEvent<PerformanceWorkerRes
 }
 
 function handlePerformanceWorkerError(event: ErrorEvent) {
+  reportFailureDiagnostic("error_worker");
   const error = new Error(event.message || "Performance worker failed.");
   for (const pending of pendingRequests.values()) {
     pending.reject(error);

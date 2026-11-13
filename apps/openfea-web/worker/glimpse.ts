@@ -48,7 +48,10 @@ export async function handleGlimpseUsage(request: Request, env: GlimpseEnv): Pro
     const value = parseUsage(JSON.parse(new TextDecoder().decode(bytes)));
     if (!value) return reply(400);
     // Constructed RPC contains no client headers, app override, URL, or identity.
-    await collector.record(value);
+    // A collector failure, including an older Glimpse that does not yet accept a
+    // newer diagnostic code, is dropped: best-effort counts never surface as a
+    // client error and are not retried. No payload logging.
+    try { await collector.record(value); } catch { /* dropped */ }
     return reply(204);
   } catch { return reply(400); }
 }

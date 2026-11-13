@@ -19,6 +19,12 @@ export const DIAGNOSTICS = [
   "error_storage",
   "error_feature",
   "error_render",
+  // Glimpse privacy review approved 13 Nov 2026 (glimpse docs/PRIVACY.md); within the v2
+  // consent description. Fixed codes only: never durations, sizes, names or messages.
+  "error_unresponsive", // main thread blocked for 5 s or more
+  "error_gpu_lost", // WebGPU/WebGL device or context lost
+  "error_out_of_memory", // allocation failure or out-of-memory signal
+  "error_worker", // a Web Worker failed or terminated unexpectedly
 ] as const;
 export const CAD_OPERATIONS = [
   "transaction",

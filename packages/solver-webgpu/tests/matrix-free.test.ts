@@ -1,6 +1,40 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { singleTetStaticFixture } from "@openfea/examples";
-import { automaticTetSolverBackend, buildTet4DofAdjacency, buildTet4ElementData, solveStaticTet4ModelWebGpu, solveTet4MatrixFreeWebGpu, tet4MatrixFreeInternalForce, tet4MatrixFreeMatVec, type Tet4MatrixFreeData } from "../src";
+import { automaticTetSolverBackend, buildTet4DofAdjacency, buildTet4ElementData, solveStaticTet4ModelWebGpu, solveTet4MatrixFreeWebGpu, tet4MatrixFreeInternalForce, tet4MatrixFreeMatVec, WEBGPU_DEVICE_LOST_CODE, WEBGPU_OUT_OF_MEMORY_CODE, type Tet4MatrixFreeData } from "../src";
+
+function singleTetData(): { data: Tet4MatrixFreeData; rhs: Float32Array } {
+  const connectivity = new Uint32Array([0, 1, 2, 3]);
+  const coordinates = new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  const element = buildTet4ElementData({ coordinates, connectivity, youngModulus: new Float64Array([200e9]), poissonRatio: new Float64Array([0.29]) });
+  const constrained = new Uint32Array(12);
+  for (let dof = 0; dof < 9; dof += 1) constrained[dof] = 1;
+  const rhs = new Float32Array(12);
+  rhs[11] = 1000;
+  return { data: { dofs: 12, connectivity, ...element, ...buildTet4DofAdjacency(connectivity, 12), constrained }, rhs };
+}
+
+/** Minimal GPUDevice fake: records allocations and lets a test drive loss, OOM and readback. */
+function fakeGpu(options: { lostReason?: string; oom?: boolean; mapAsync?: () => Promise<void> }) {
+  let resolveLost: (info: { reason: string; message: string }) => void = () => undefined;
+  const destroyed = vi.fn();
+  const device = {
+    lost: new Promise<{ reason: string; message: string }>((resolve) => { resolveLost = resolve; }),
+    pushErrorScope: vi.fn(),
+    popErrorScope: vi.fn(async () => (options.oom ? { message: "GPU adapter detail that must not escape" } : null)),
+    createBuffer: vi.fn(() => ({ destroy: vi.fn(), mapAsync: options.mapAsync ?? (async () => undefined), getMappedRange: () => new ArrayBuffer(48), unmap: vi.fn() })),
+    queue: { writeBuffer: vi.fn(), submit: vi.fn(() => { if (options.lostReason) resolveLost({ reason: options.lostReason, message: "driver detail" }); }) },
+    createShaderModule: vi.fn(() => ({})),
+    createComputePipeline: vi.fn(() => ({ getBindGroupLayout: () => ({}) })),
+    createBindGroup: vi.fn(() => ({})),
+    createCommandEncoder: vi.fn(() => ({
+      beginComputePass: () => ({ setPipeline: vi.fn(), setBindGroup: vi.fn(), dispatchWorkgroups: vi.fn(), end: vi.fn() }),
+      copyBufferToBuffer: vi.fn(),
+      finish: vi.fn()
+    })),
+    destroy: vi.fn(() => { destroyed(); resolveLost({ reason: "destroyed", message: "" }); })
+  };
+  return { device, destroyed, navigator: { gpu: { requestAdapter: async () => ({ requestDevice: async () => device }) } } };
+}
 
 describe("matrix-free Tet4 backend", () => {
   test("keeps the readback-heavy WebGPU CG route out of automatic execution", () => {
@@ -83,5 +117,31 @@ describe("matrix-free Tet4 backend", () => {
         message: "Model has 12 DOFs, which exceeds maxDofs 3."
       }
     });
+  });
+
+  test("reports an unexpected WebGPU device loss as a fixed code without driver text", async () => {
+    const { data, rhs } = singleTetData();
+    const gpu = fakeGpu({ lostReason: "unknown", mapAsync: () => Promise.reject(new DOMException("Device lost: driver detail", "OperationError")) });
+    const solved = await solveTet4MatrixFreeWebGpu(data, rhs, { navigator: gpu.navigator });
+    expect(solved).toMatchObject({ ok: false, error: { code: WEBGPU_DEVICE_LOST_CODE } });
+    expect(JSON.stringify(solved)).not.toContain("driver detail");
+    expect(gpu.destroyed).toHaveBeenCalledOnce();
+  });
+
+  test("does not classify our own destroy() or other readback failures as device loss", async () => {
+    const { data, rhs } = singleTetData();
+    const gpu = fakeGpu({ lostReason: "destroyed", mapAsync: () => Promise.reject(new Error("readback failed")) });
+    await expect(solveTet4MatrixFreeWebGpu(data, rhs, { navigator: gpu.navigator })).rejects.toThrow("readback failed");
+  });
+
+  test("reports GPU buffer allocation failure from the out-of-memory error scope", async () => {
+    const { data, rhs } = singleTetData();
+    const gpu = fakeGpu({ oom: true });
+    const solved = await solveTet4MatrixFreeWebGpu(data, rhs, { navigator: gpu.navigator });
+    expect(gpu.device.pushErrorScope).toHaveBeenCalledWith("out-of-memory");
+    expect(solved).toMatchObject({ ok: false, error: { code: WEBGPU_OUT_OF_MEMORY_CODE } });
+    expect(JSON.stringify(solved)).not.toContain("adapter detail");
+    expect(gpu.destroyed).toHaveBeenCalledOnce();
+    expect(gpu.device.createShaderModule).not.toHaveBeenCalled();
   });
 });
