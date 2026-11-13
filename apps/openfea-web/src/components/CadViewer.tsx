@@ -26,6 +26,7 @@ import { shouldBlockPreviewResultsForDisplayModel } from "../resultProvenance";
 import { stepPreviewFromBase64 } from "../stepPreview";
 import { tryNormalizedStlGeometryFromBuffer } from "../stlPreview";
 import { lengthForUnits, stressForUnits, type UnitSystem } from "../unitDisplay";
+import { stepFaceLabelForUnits } from "../stepFaceLabels";
 import { loadMarkerViewportPresentation } from "../loadPreview";
 import { highlightPayloadObjectMeshes } from "../payloadObjectHighlight";
 import { layoutOutsideModelLabels, payloadMassLabelOffset, type LabelAnchor } from "../calloutLabelLayout";
@@ -411,7 +412,7 @@ export function CadViewer(props: CadViewerProps) {
   }, [props.displayModel, props.onResultRenderBoundsChange, uploadedPreviewBounds]);
   // The pick the setup steps act on, named on the canvas where the eye already is.
   const selectedFaceChip = (props.activeStep === "supports" || props.activeStep === "loads") && props.selectedFaceId
-    ? props.displayModel.faces.find((face) => face.id === props.selectedFaceId)?.label ?? null
+    ? viewerFaceLabelForId(props.displayModel.faces, props.selectedFaceId, props.unitSystem)
     : null;
 
   return (
@@ -575,7 +576,7 @@ export function CadViewer(props: CadViewerProps) {
               aria-pressed={face.id === props.selectedFaceId}
               onClick={() => props.onSelectFace(face, face.center)}
             >
-              {face.label || face.id}
+              {face.label ? viewerFaceLabel(face, props.unitSystem) : face.id}
             </button>
           ))}
           {props.displayModel.faces.length > MAX_A11Y_FACE_BUTTONS ? <span>Use pointer selection for additional faces.</span> : null}
@@ -2002,7 +2003,7 @@ function BracketModel({
           scene (MeshPreviewSurface); the decorative wireframe boxes that used to
           stand in for it were removed (2026-09 review D13). */}
       {placementMode && !isResultView && <SnapVisualization result={snapResult} mode={activeStep === "supports" ? "supports" : "loads"} />}
-      {showModelHitLabel && hoveredHit && <ModelHitLabel hit={hoveredHit} active={hoveredHit.face.id === selectedFaceId} />}
+      {showModelHitLabel && hoveredHit && <ModelHitLabel hit={hoveredHit} active={hoveredHit.face.id === selectedFaceId} unitSystem={unitSystem} />}
       {showBoundaryMarkers && loadMarkers.map((marker) => {
         const face = displayModel.faces.find((item) => item.id === marker.faceId);
         if (!face) return null;
@@ -6755,9 +6756,28 @@ function UserResultProbeMarker({ reading, point, index }: { reading: ResolvedRes
   );
 }
 
-function ModelHitLabel({ hit, active }: { hit: ModelSelectionHit; active: boolean }) {
+/**
+ * A face name as the viewer shows it, in the project's units. STEP face labels
+ * store their area suffix in mm²; a US project shows it in in², through the same
+ * helper the side panels use.
+ */
+export function viewerFaceLabel(face: Pick<DisplayFace, "label" | "area">, unitSystem: UnitSystem): string {
+  return stepFaceLabelForUnits(face.label, face.area, unitSystem);
+}
+
+function viewerFaceLabelForId(faces: DisplayFace[], faceId: string, unitSystem: UnitSystem): string | null {
+  const face = faces.find((candidate) => candidate.id === faceId);
+  return face ? viewerFaceLabel(face, unitSystem) : null;
+}
+
+/** Text of the hover/pick label drawn next to the pointer on the model. */
+export function modelHitLabelText(hit: Pick<ModelSelectionHit, "face" | "payloadObject">, unitSystem: UnitSystem): string {
+  return hit.payloadObject?.label ?? compactFaceLabel(viewerFaceLabel(hit.face, unitSystem));
+}
+
+function ModelHitLabel({ hit, active, unitSystem }: { hit: ModelSelectionHit; active: boolean; unitSystem: UnitSystem }) {
   const anchor = hit.payloadObject?.center ?? hit.point;
-  const label = hit.payloadObject?.label ?? compactFaceLabel(hit.face.label);
+  const label = modelHitLabelText(hit, unitSystem);
   const labelPosition = new THREE.Vector3(...anchor).add(new THREE.Vector3(0, 0.12, 0.12));
   return (
     <group>

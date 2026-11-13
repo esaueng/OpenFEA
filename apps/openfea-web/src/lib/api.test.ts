@@ -946,7 +946,11 @@ describe("api", () => {
       materialAssignments: [{ id: "assign-1", materialId: "mat-aluminum-6061", selectionRef: "selection-body-1", status: "complete" }],
       constraints: [{ id: "constraint-1", type: "fixed", selectionRef: "selection-face-1", parameters: {}, status: "complete" }],
       loads: [{ id: "load-1", type: "force", selectionRef: "selection-face-1", parameters: { value: 500, units: "N", direction: [0, -1, 0] }, status: "complete" }],
-      meshSettings: { preset: "ultra", status: "complete", meshRef: "project-1/mesh/mesh-summary.json" },
+      // This checks routing and the result contract, not mesh density. The ultra
+      // preset (~24k DOFs, 100 Newmark steps) took ~43 s and timed out under CI
+      // load; the coarse grid runs the same real local dynamic path end to end,
+      // with the same 100 steps and 21 output frames, in a few seconds.
+      meshSettings: { preset: "coarse", status: "complete", meshRef: "project-1/mesh/mesh-summary.json" },
       solverSettings: {
         backend: "opencae_core_local",
         fidelity: "ultra",
