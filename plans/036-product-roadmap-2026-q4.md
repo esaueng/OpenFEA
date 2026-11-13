@@ -10,6 +10,7 @@ except 0.10 (`packages/viewer`). R1.3, R2.1 and R3.1 are done. R5.1 is
 partial (Chromium only). Each item below carries its commits and PR.
 On 2026-11-13, 0.10 was closed by deleting `packages/viewer` after parity
 tests (`apps/openfea-web/src/components/solverSurfaceRenderParity.test.ts`), so R0 is done.
+R2.2 (local sizing per face) is done (#227); its Kt, mm vs m and browser gates pass.
 
 This plan supersedes the ordering in plan 024 and reopens the deferred
 decisions 032 and 033 with a recommendation. Plans 024 (Releases 6–8) and
@@ -28,7 +29,7 @@ saying so. That index is corrected in the same change as this plan.
 | Elements | Tet4 and Tet10 only. | No shells or beams. Thin parts cost DOF. |
 | Supports | Fixed (always x, y and z), prescribed displacement (one component per constraint), prescribed temperature. | No symmetry, roller, per-component fixed, elastic or remote-displacement support. (The unreachable "Coming soon" menu was removed in `d020bba`, #191.) |
 | Loads | Force, pressure, traction, volume force, gravity/payload, remote force (distributed wrench), equivalent bolt preload (static), heat flux, heat generation. Tri6 loads are consistent and area-weighted. | No bearing load. No local coordinate systems. |
-| Selection | Multi-face supports and loads through an "Additional faces" checklist. Ctrl/Cmd-click multi-pick and a named-selection manager on this branch (R1.2). | — |
+| Selection | Multi-face supports and loads through an "Additional faces" checklist. Ctrl/Cmd-click multi-pick and a named-selection manager (#225; R1.2). | — |
 | Materials | 22 isotropic linear materials, custom project materials, AM print settings applied as homogenized isotropic scale factors. Per-body material assignments mapped to element blocks (`27722d0`, `4edeae6`, #203). | No CTE and no orthotropy. |
 | Contact | Tie, fuse, and frictionless linear penalty contact that starts closed and stays closed. | No separation, gap or friction. |
 | Meshing | Gmsh WASM with coarse to ultra presets, automatic quality floor, Tet10 elevation, static convergence ladder. Mesh quality metrics in the Mesh panel, viewer and report (`9b3a3fd`, `f15ea2b`, #198). | No local sizing per face or edge. |
@@ -96,7 +97,7 @@ solver capability that already exists.
 | # | Item | Effort | Method and gate |
 | - | - | - | - |
 | 2.1 | Show mesh quality: scaled Jacobian or SICN and aspect-ratio histograms, worst-element highlight, and Tet10 det J > 0 at quadrature points (curved meshes). **Done:** `9b3a3fd`, `f15ea2b` (#198). | S–M | Computed in a worker from the existing volume mesh. Labeled thresholds. Shown in the Mesh panel and the report. |
-| 2.2 | Local sizing per face or edge, persisted by B-rep face ID. | M | Gmsh Distance + Threshold size fields. The DOF preflight runs before the mesh. Gate: the plate-with-hole Kt error improves at equal total DOF. |
+| 2.2 | Local sizing per face or edge, persisted by B-rep face ID. **Done (#227):** faces only (the STEP registry has no B-rep edge ids); `meshSettings.localSizing` stores face id + fingerprint + size in mm; Mesh panel add/edit/remove in project units; pre-mesh estimate and DOF preflight. | M | Gmsh Distance + Threshold size fields. The DOF preflight runs before the mesh. Gate: the plate-with-hole Kt error improves at equal total DOF. Measured on this branch (thickness-averaged hole-edge hoop stress vs Kt_net = 2.422): uniform 3.8 mm, 25,920 DOF, Kt 2.347 (3.1% error); 1 mm on the hole wall under 6 mm, 26,310 DOF, Kt 2.464 (1.7%). mm vs m and estimate-band gates pass; browser proof: see `docs/validation/README.md`. |
 | 2.3 | Element error indicator: Zienkiewicz–Zhu recovered-stress energy-norm indicator per element. | M | Labeled an *indicator*, not an error bound. Feeds 2.4. Gate: on the plate-with-hole, the indicator ranks the hole-edge elements highest. |
 | 2.4 | Adaptive refinement loop: indicator → size field → remesh, two or three passes, under the DOF cap. | L | Reuses the convergence-ladder UI. Each pass is reported. It must not replace the working mesh without confirmation. |
 

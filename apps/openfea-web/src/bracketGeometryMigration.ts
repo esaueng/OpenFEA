@@ -1,4 +1,5 @@
 import type { DisplayModel, Project } from "@openfea/schema";
+import { meshSettingsWithoutMesh } from "./meshLocalSizing";
 
 /**
  * The current procedural solver geometry for the Bracket Demo sample. Lives
@@ -92,7 +93,7 @@ function isBracketSampleGeometry(geometry: Project["geometryFiles"][number]): bo
 function invalidateStoredMesh(study: Project["studies"][number]): Project["studies"][number] {
   const meshSettings = study.meshSettings;
   if (meshSettings.status === "not_started" && !meshSettings.meshRef && !meshSettings.summary) return study;
-  return { ...study, meshSettings: { preset: meshSettings.preset, status: "not_started" } };
+  return { ...study, meshSettings: meshSettingsWithoutMesh(meshSettings) };
 }
 
 function deepEquals(a: unknown, b: unknown): boolean {

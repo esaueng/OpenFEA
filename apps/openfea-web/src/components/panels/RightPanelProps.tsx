@@ -2,7 +2,7 @@
    Panels import from here; they never import each other. */
 import { useEffect, useLayoutEffect } from "react";
 
-import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, LoadCase, LoadCombination, MeshConnection, MeshQuality, ModalSolverSettings, Project, ResultField, ResultSummary, RunTimingEstimate, RunVariantRef, SafetyFactorBasis, Study } from "@openfea/schema";
+import type { Constraint, CustomMaterial, DisplayFace, DisplayModel, DynamicSolverSettings, Load, LoadCase, LoadCombination, MeshConnection, MeshLocalSize, MeshQuality, ModalSolverSettings, Project, ResultField, ResultSummary, RunTimingEstimate, RunVariantRef, SafetyFactorBasis, Study } from "@openfea/schema";
 import type { ResolvedSafetyFactorBasis } from "../../safetyFactorBasis";
 
 import type { ModelBody } from "../../modelBodies";
@@ -155,6 +155,8 @@ export interface RightPanelProps {
   onLoadCasesChange?: (loadCases: LoadCase[], loadCombinations: LoadCombination[]) => void;
   onGenerateMesh: (preset: MeshQuality) => void;
   onConnectionsChange?: (connections: MeshConnection[]) => void;
+  /** Plan 036 R2.2: replace the study's local element sizes per B-rep face (the stored mesh is discarded). */
+  onMeshLocalSizingChange?: (localSizing: MeshLocalSize[]) => void;
   onCancelMesh?: () => void;
   meshPhaseProgress?: WasmMeshPhaseProgress | null;
   /** Mesh view highlights the summary's worst elements (plan 036 R2.1). */

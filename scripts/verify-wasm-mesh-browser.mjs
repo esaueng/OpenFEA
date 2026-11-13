@@ -17,17 +17,25 @@
 //   node scripts/verify-wasm-mesh-browser.mjs            # bracket proof
 //   PROOF=step node scripts/verify-wasm-mesh-browser.mjs # STEP proof
 //   PROOF=run node scripts/verify-wasm-mesh-browser.mjs  # mesh-then-solve run proof (A-M4)
+//   PROOF=localsizing node scripts/verify-wasm-mesh-browser.mjs # local sizing proof (plan 036 R2.2)
 //
 // Exit codes: 0 proof ok, 1 harness reported failure, 2 timeout.
 const DEBUG_PORT = Number(process.env.CDP_PORT ?? 9333);
-const PROOF_MODE = process.env.PROOF === "step" ? "step" : process.env.PROOF === "run" ? "run" : "bracket";
+const PROOF_MODE = ["step", "run", "localsizing"].includes(process.env.PROOF) ? process.env.PROOF : "bracket";
 const PAGE_URL = process.env.PAGE_URL
   ?? (PROOF_MODE === "step"
     ? "http://localhost:5199/?meshProof=step"
     : PROOF_MODE === "run"
       ? "http://localhost:5199/?meshProof=run"
-      : "http://localhost:5199/?meshProof=1");
-const RESULT_FIELD = PROOF_MODE === "step" ? "lastStepResult" : PROOF_MODE === "run" ? "lastRunResult" : "lastResult";
+      : PROOF_MODE === "localsizing"
+        ? "http://localhost:5199/?meshProof=localsizing"
+        : "http://localhost:5199/?meshProof=1");
+const RESULT_FIELD = {
+  step: "lastStepResult",
+  run: "lastRunResult",
+  localsizing: "lastLocalSizingResult",
+  bracket: "lastResult"
+}[PROOF_MODE];
 const TIMEOUT_MS = Number(process.env.PROOF_TIMEOUT_MS ?? 180_000);
 
 async function getTargets() {
@@ -122,6 +130,12 @@ const runGateFailed = PROOF_MODE === "run" && result.ok
     || !result.meshedStudyStoredArtifact || result.results?.labeledLocal !== true);
 if (runGateFailed) {
   console.log("RUNPROOF GATE FAILED: missing meshing/solve events, no stored artifact, or results not labeled local.");
+  process.exit(1);
+}
+// Plan 036 R2.2 local sizing proof: the bore-wall rule reached gmsh, refined
+// the mesh, passed the preflight, and the pre-mesh estimate was in band.
+if (PROOF_MODE === "localsizing" && result.ok && result.gatePassed !== true) {
+  console.log("LOCALSIZINGPROOF GATE FAILED: rule not applied, no refinement, inverted elements, or estimate out of band.");
   process.exit(1);
 }
 process.exit(result.ok ? 0 : 1);

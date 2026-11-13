@@ -5,6 +5,7 @@ import { stlDimensionsFromBase64 } from "@openfea/units";
 import { parseDisplayModel, parseResultBundle } from "./appPersistence";
 import { BRACKET_CORE_CLOUD_GEOMETRY, BRACKET_GEOMETRY_MIGRATION_NOTE, refreshBracketSampleGeometry } from "./bracketGeometryMigration";
 import type { EmbeddedModelFile, LocalResultBundle } from "./projectFile";
+import { meshSettingsWithoutMesh } from "./meshLocalSizing";
 import type { SampleAnalysisType, SampleModelId, SampleProjectResponse } from "./lib/api";
 
 const BEAM_RENDER_LENGTH = 3.8;
@@ -385,7 +386,7 @@ function discardImportedCoreMeshArtifacts(project: Project): Project {
     if (!artifacts || (!artifacts.actualCoreModel && !artifacts.coreModel && !artifacts.volumeMesh)) return study;
     return {
       ...study,
-      meshSettings: { preset: study.meshSettings.preset, status: "not_started" as const }
+      meshSettings: meshSettingsWithoutMesh(study.meshSettings)
     };
   });
   return studies.every((study, index) => study === project.studies[index]) ? project : { ...project, studies };
