@@ -8,7 +8,7 @@ Production solves run in a browser Web Worker on the CPU sparse solver (`@openfe
 OpenFEA Core is not a port of CalculiX, a CUDA solver, or a server-side solver.
 
 ## Repository
-OpenFEA Core lives in the OpenFEA monorepo (`esaueng/OpenFEA`) as the `packages/*` workspace packages (`@openfea/core`, `@openfea/solver-cpu`, `@openfea/solver-webgpu`, `@openfea/viewer`, `@openfea/examples`), not in a separate repository.
+OpenFEA Core lives in the OpenFEA monorepo (`esaueng/OpenFEA`) as the `packages/*` workspace packages (`@openfea/core`, `@openfea/solver-cpu`, `@openfea/solver-webgpu`, `@openfea/examples`), not in a separate repository.
 
 ## First Product Target
 A user can open a web app, load a simple Tet4 mesh, assign a linear elastic material, apply fixed supports and nodal forces, run a local in-browser solve, view displacement and von Mises stress, and export result data.

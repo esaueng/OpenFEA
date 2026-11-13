@@ -78,6 +78,24 @@ export function formatMaterialStress(valuePa: number, unitSystem: UnitSystem): s
   return formatStress(valuePa / 1_000_000, "MPa", unitSystem);
 }
 
+/**
+ * The unit a project enters and reads stresses in: MPa for SI, ksi for US. It is
+ * the unit material strengths and result stresses display in (`stressForUnits`).
+ */
+export function projectStressUnit(unitSystem: UnitSystem): "MPa" | "ksi" {
+  return unitSystem === "US" ? "ksi" : "MPa";
+}
+
+/** A stored stress in Pa expressed in the project's stress unit. */
+export function stressPascalsToProjectUnits(valuePa: number, unitSystem: UnitSystem): number {
+  return stressForUnits(valuePa / 1_000_000, "MPa", unitSystem).value;
+}
+
+/** A stress typed in the project's stress unit, converted to Pa for storage. */
+export function stressPascalsFromProjectUnits(value: number, unitSystem: UnitSystem): number {
+  return (unitSystem === "US" ? value * MPA_PER_KSI : value) * 1_000_000;
+}
+
 export function loadValueForUnits(value: number, units: string, unitSystem: UnitSystem): { value: number; units: string } {
   if (units === "N" || units === "lbf") return forceForUnits(value, units, unitSystem);
   if (units === "kPa" || units === "psi") return pressureForUnits(value, units, unitSystem);

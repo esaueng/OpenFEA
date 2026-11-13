@@ -1180,6 +1180,11 @@ function ensureSurfaceSetForSelection({
   selectionRef: string;
   surfaceSets: SurfaceSetJson[];
 }): SurfaceSetJson {
+  // A named selection of several faces (plan 036 R1.2) resolves as a union of
+  // its faces, never through the single-face alias the mesher stores under it.
+  if (faceRefCount(study, selectionRef) > 1) {
+    return ensureSurfaceSetForSelections(model, renderNodePoints, displayModel, study, [selectionRef], surfaceSets);
+  }
   const existing = surfaceSets.find((set) => set.name === selectionRef);
   if (existing?.facets.length) return existing;
 
@@ -1214,13 +1219,19 @@ function ensureSurfaceSetForSelections(
   surfaceSets: SurfaceSetJson[]
 ): SurfaceSetJson {
   const refs = [...new Set(selectionRefs.filter((ref) => typeof ref === "string" && ref.length > 0))];
-  if (refs.length === 1) {
+  if (refs.length === 1 && faceRefCount(study, refs[0]!) <= 1) {
     return ensureSurfaceSetForSelection({ model, renderNodePoints, displayModel, study, selectionRef: refs[0]!, surfaceSets });
   }
-  const name = refs.join("+");
+  // The mesher stores a single-face alias under a selection's own id, so a
+  // lone multi-face selection gets a distinct union name.
+  const name = refs.length === 1 ? `${refs[0]!}:faces` : refs.join("+");
   const existing = surfaceSets.find((set) => set.name === name);
   if (existing?.facets.length) return existing;
-  const facets = facetsForDisplaySelections(model.surfaceFacets ?? [], renderNodePoints, displayModel, study, refs);
+  // Prefer the faces' B-rep identity (facets attributed to each STEP face);
+  // fall back to the display-face plane heuristic only when some face has no
+  // attributed facets, e.g. procedural sample meshes.
+  const facets = facetsForSelectionSourceFaces(model.surfaceFacets ?? [], study, refs)
+    ?? facetsForDisplaySelections(model.surfaceFacets ?? [], renderNodePoints, displayModel, study, refs);
   if (!facets.length) throw new Error(`OpenFEA Core Local could not map selections ${refs.join(", ")} to Core surface facets.`);
   const next = { name, facets: [...new Set(facets)].sort((left, right) => left - right) };
   surfaceSets.push(next);
@@ -1263,6 +1274,35 @@ function normalizedSelectionName(value: string): string {
   while (start < end && collapsed.charCodeAt(start) === 0x5f) start += 1;
   while (end > start && collapsed.charCodeAt(end - 1) === 0x5f) end -= 1;
   return collapsed.slice(start, end);
+}
+
+function faceRefCount(study: Study, selectionRef: string): number {
+  return study.namedSelections.find((candidate) => candidate.id === selectionRef)?.geometryRefs.filter((ref) => ref.entityType === "face").length ?? 0;
+}
+
+/**
+ * Union of the facets attributed to every face of every selection, by the
+ * selection id (`sourceSelectionRef`) or by each face's B-rep id
+ * (`sourceFaceId`). Returns null unless every face resolved, so a partial
+ * attribution never silently drops a face.
+ */
+function facetsForSelectionSourceFaces(surfaceFacets: SurfaceFacetJson[], study: Study, selectionRefs: string[]): number[] | null {
+  const result = new Set<number>();
+  for (const selectionRef of selectionRefs) {
+    const bySelection = surfaceFacets.filter((facet) => facet.sourceSelectionRef === selectionRef);
+    if (bySelection.length) {
+      for (const facet of bySelection) result.add(facet.id);
+      continue;
+    }
+    const selection = study.namedSelections.find((candidate) => candidate.id === selectionRef);
+    const faceIds = selection?.geometryRefs.filter((ref) => ref.entityType === "face").map((ref) => ref.entityId) ?? [];
+    for (const faceId of faceIds.length ? faceIds : [selectionRef]) {
+      const byFace = surfaceFacets.filter((facet) => facet.sourceFaceId === faceId);
+      if (!byFace.length) return null;
+      for (const facet of byFace) result.add(facet.id);
+    }
+  }
+  return result.size ? [...result] : null;
 }
 
 function facetsForDisplaySelections(
@@ -1379,16 +1419,27 @@ function modalDiagnosticSummary(entries: readonly unknown[]): { diagnostics?: Di
   if (!modal) return {};
   const { precisionLimitWarning, meshProjection } = modal as {
     precisionLimitWarning?: string;
-    meshProjection?: { sourceElementOrder: string; solveElementOrder: string; reason: string };
+    meshProjection?: { sourceElementOrder: string; solveElementOrder: string; sourceDofs?: unknown; solveDofs?: unknown; reason: string };
   };
   const diagnostics: Diagnostic[] = [];
   if (precisionLimitWarning) diagnostics.push(solverWarning("modal-precision-limit", precisionLimitWarning));
   if (meshProjection) {
-    const { sourceElementOrder, solveElementOrder, reason } = meshProjection;
-    diagnostics.push(solverWarning("modal-mesh-projection",
-      `Mesh projection for solve: ${sourceElementOrder} → ${solveElementOrder} (${reason}). Results are computed on the projected mesh.`));
+    const { sourceElementOrder, solveElementOrder, sourceDofs, solveDofs, reason } = meshProjection;
+    diagnostics.push({
+      ...solverWarning("modal-mesh-projection",
+        `Mesh projection for solve: ${sourceElementOrder} → ${solveElementOrder} (${reason}). Results are computed on the projected mesh.`),
+      // The structured payload persists with the summary (schema field
+      // `meshProjection`), so a reopened project still knows the solved order.
+      ...(sourceElementOrder === "Tet10" && solveElementOrder === "Tet4" && isNonNegativeInteger(sourceDofs) && isNonNegativeInteger(solveDofs)
+        ? { meshProjection: { sourceElementOrder, solveElementOrder, sourceDofs, solveDofs, reason } }
+        : {})
+    });
   }
   return diagnostics.length ? { diagnostics } : {};
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function runVariantFromCoreResult({ id, name, kind, caseId, combinationId, result, runId, convergenceInputs = [] }: {

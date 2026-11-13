@@ -17,10 +17,11 @@ import { formatLength, lengthForUnits, stressForUnits, type UnitSystem } from ".
 
 import type { RightPanelProps } from "./RightPanelProps";
 import { MeshQualityCard } from "./MeshQualityCard";
+import { MeshLocalSizingSection } from "./MeshLocalSizingSection";
 import { Panel, meshPresetDescription, seedProbeCoordinate, structuralLoadCasesForPanel } from "./PanelChrome";
 import { MESH_PRESETS } from "./RightPanelProps";
 import { Callout, Collapsible, HelpLabel, Info, SectionTitle, capitalize, selectionLabelForPanel } from "./PanelChrome";
-export function MeshPanel({ project, displayModel, study, viewMode, onViewModeChange, onGenerateMesh, onConnectionsChange, onCancelMesh, meshPhaseProgress, showWorstMeshElements = false, onShowWorstMeshElementsChange, meshError, onRepairModel, isRepairingModel = false, onRunMeshConvergence, onCancelMeshConvergence, convergenceBusy = false, convergenceProgress = "" }: RightPanelProps) {
+export function MeshPanel({ project, displayModel, study, selectedFace, viewMode, onViewModeChange, onGenerateMesh, onConnectionsChange, onMeshLocalSizingChange, onCancelMesh, meshPhaseProgress, showWorstMeshElements = false, onShowWorstMeshElementsChange, meshError, onRepairModel, isRepairingModel = false, onRunMeshConvergence, onCancelMeshConvergence, convergenceBusy = false, convergenceProgress = "" }: RightPanelProps) {
   const unitSystem = project.unitSystem;
   const [preset, setPreset] = useState<MeshQuality>(study.meshSettings.preset);
   const meshing = Boolean(meshPhaseProgress);
@@ -83,6 +84,15 @@ export function MeshPanel({ project, displayModel, study, viewMode, onViewModeCh
           ))}
         </div>
       </div>
+      <MeshLocalSizingSection
+        study={study}
+        displayModel={displayModel}
+        selectedFace={selectedFace}
+        unitSystem={unitSystem}
+        preset={preset}
+        disabled={meshing || convergenceBusy}
+        onChange={onMeshLocalSizingChange}
+      />
       {displayModel.bodyCount > 1 || study.contacts.length ? (
         <section className="load-case-editor" aria-label="Assembly connections">
           <SectionTitle>Assembly connections</SectionTitle>

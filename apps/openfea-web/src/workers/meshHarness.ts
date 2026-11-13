@@ -15,6 +15,8 @@ import { unpackCoreVolumeMeshArtifact, type MeshWorkerPhase } from "./meshProtoc
 import { meshGeoScriptInWorker, meshStepFileInWorker } from "./meshWorkerClient";
 import { trySolveOpenFeaCoreStudy } from "@openfea/core-adapter";
 import { stepAttributionForRegistry, stepFaceRegistryFromBase64 } from "../stepFaces";
+import { meshLocalSizeForFace, planMeshLocalSizing } from "../meshLocalSizing";
+import { BROWSER_SOLVE_LIMITS } from "@openfea/solve-pipeline/limits";
 import { STEP_PROOF_LOAD_NEWTONS, stepProofScenario, studyWithWasmMeshSummary } from "./stepProofScenario";
 import { isStructuralResultSummary } from "@openfea/schema";
 // The corpus STEP fixture ships inline in the (flag-on-only) harness chunk so
@@ -206,6 +208,81 @@ async function runStepProof(): Promise<StepProofResult> {
   }
 }
 
+// Plan 036 R2.2: local sizing in the real browser worker. The bore wall of
+// the corpus STEP fixture gets a persisted local size; the rule is resolved
+// against the occt face registry, admitted by the pre-mesh DOF preflight,
+// and sent to the gmsh worker as a Distance + Threshold field.
+export type LocalSizingProofResult = {
+  ok: true;
+  boreFaceId: string;
+  globalSizeMm: number;
+  localSizeMm: number;
+  uniformElementCount: number;
+  localElementCount: number;
+  localNodeCount: number;
+  localElementType: string;
+  appliedCount: number;
+  unmatchedCount: number;
+  preflightStatus: string;
+  estimatedElements: number;
+  estimatedDofs: number;
+  actualDofs: number;
+  invertedElementCount: number;
+} | { ok: false; error: string };
+
+const LOCAL_SIZING_PROOF_GLOBAL_MM = 6;
+const LOCAL_SIZING_PROOF_LOCAL_MM = 1.5;
+
+async function runLocalSizingProof(): Promise<LocalSizingProofResult> {
+  try {
+    const contentBase64 = btoa(boxWithBoreStep);
+    const registry = await stepFaceRegistryFromBase64(contentBase64);
+    const bore = registry.faces.find((face) => face.cylinder?.interior);
+    if (!bore) return { ok: false, error: "box-with-bore registry has no interior cylindrical face" };
+    const rules = [meshLocalSizeForFace({ id: bore.faceId, label: "Bore wall" }, LOCAL_SIZING_PROOF_LOCAL_MM, registry, "local-size-proof")];
+    const plan = planMeshLocalSizing({ rules, registry, globalSizeMm: LOCAL_SIZING_PROOF_GLOBAL_MM, elementOrder: 2, maxDofs: BROWSER_SOLVE_LIMITS.maxDofs });
+    if (!plan) return { ok: false, error: "no local sizing plan" };
+    const stepBytes = () => {
+      const bytes = new TextEncoder().encode(boxWithBoreStep);
+      const buffer = new ArrayBuffer(bytes.byteLength);
+      new Uint8Array(buffer).set(bytes);
+      return buffer;
+    };
+    const uniform = await meshStepFileInWorker({ stepContent: stepBytes(), elementOrder: 2, units: "mm", meshSizeMm: LOCAL_SIZING_PROOF_GLOBAL_MM });
+    const local = await meshStepFileInWorker({ stepContent: stepBytes(), elementOrder: 2, units: "mm", meshSizeMm: LOCAL_SIZING_PROOF_GLOBAL_MM, localSizing: plan.targets });
+    const uniformArtifact = unpackCoreVolumeMeshArtifact(uniform.packed);
+    const localArtifact = unpackCoreVolumeMeshArtifact(local.packed);
+    return {
+      ok: true,
+      boreFaceId: bore.faceId,
+      globalSizeMm: LOCAL_SIZING_PROOF_GLOBAL_MM,
+      localSizeMm: LOCAL_SIZING_PROOF_LOCAL_MM,
+      uniformElementCount: uniformArtifact.metadata.elementCount,
+      localElementCount: localArtifact.metadata.elementCount,
+      localNodeCount: localArtifact.metadata.nodeCount,
+      localElementType: localArtifact.elements[0]?.type ?? "none",
+      appliedCount: local.localSizing?.applied.length ?? 0,
+      unmatchedCount: local.localSizing?.unmatched.length ?? 0,
+      preflightStatus: plan.preflight.status,
+      estimatedElements: plan.estimate.elements,
+      estimatedDofs: plan.preflight.estimatedDofs,
+      actualDofs: localArtifact.metadata.nodeCount * 3,
+      invertedElementCount: localArtifact.metadata.meshQuality.invertedElementCount
+    };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error) };
+  }
+}
+
+/** Browser gate for the local sizing proof (mirrored by scripts/verify-wasm-mesh-browser.mjs). */
+export function localSizingProofPasses(result: LocalSizingProofResult): boolean {
+  if (!result.ok) return false;
+  const estimateRatio = result.estimatedElements / result.localElementCount;
+  return result.appliedCount === 1 && result.unmatchedCount === 0 && result.preflightStatus === "ok"
+    && result.localElementCount > 1.5 * result.uniformElementCount && result.invertedElementCount === 0
+    && estimateRatio > 0.7 && estimateRatio < 1.3;
+}
+
 // A-M4: full mesh-then-solve run proof through the PRODUCTION run flow
 // (lib/api.runSimulation). Starts from a bracket study with NO stored mesh
 // artifact (preset-estimate summary), so the local run must wasm-mesh first
@@ -315,15 +392,17 @@ declare global {
       runBracket: typeof runBracketProof;
       runStep: typeof runStepProof;
       runMeshThenSolve: typeof runMeshThenSolveRunProof;
-      /** Set once an auto-run (triggered by ?meshProof=1|step|run) finishes. */
+      runLocalSizing: typeof runLocalSizingProof;
+      /** Set once an auto-run (triggered by ?meshProof=1|step|run|localsizing) finishes. */
       lastResult?: MeshProofResult;
       lastStepResult?: StepProofResult;
       lastRunResult?: RunProofResult;
+      lastLocalSizingResult?: LocalSizingProofResult & { gatePassed?: boolean };
     };
   }
 }
 
-window.__openfeaMeshProof = { runBracket: runBracketProof, runStep: runStepProof, runMeshThenSolve: runMeshThenSolveRunProof };
+window.__openfeaMeshProof = { runBracket: runBracketProof, runStep: runStepProof, runMeshThenSolve: runMeshThenSolveRunProof, runLocalSizing: runLocalSizingProof };
 
 // ?meshProof=1 auto-runs the bracket proof, ?meshProof=step the STEP proof;
 // both mirror the outcome into document.title + console so dump-dom style
@@ -347,6 +426,16 @@ if (meshProofMode === "1") {
       : `STEPPROOF FAIL ${result.error.split("\n")[0]}`;
     document.title = title;
     console.log(`[meshProof:step] ${title}`, result);
+  });
+} else if (meshProofMode === "localsizing") {
+  void runLocalSizingProof().then((result) => {
+    const gatePassed = localSizingProofPasses(result);
+    window.__openfeaMeshProof!.lastLocalSizingResult = { ...result, gatePassed };
+    const title = result.ok
+      ? `LOCALSIZINGPROOF ${gatePassed ? "OK" : "FAIL"} uniform=${result.uniformElementCount} local=${result.localElementCount} estimate=${result.estimatedElements} applied=${result.appliedCount}`
+      : `LOCALSIZINGPROOF FAIL ${result.error.split("\n")[0]}`;
+    document.title = title;
+    console.log(`[meshProof:localsizing] ${title}`, result);
   });
 } else if (meshProofMode === "run") {
   void runMeshThenSolveRunProof().then((result) => {

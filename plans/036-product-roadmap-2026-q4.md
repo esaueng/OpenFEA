@@ -7,8 +7,11 @@ accepted the same day and R0 started.
 
 Progress re-verified on 2026-11-12 against `main` at `12cf5fa`: R0 is done
 except 0.10 (`packages/viewer`). R1.3, R2.1 and R3.1 are done. R1.4 is done
-on this branch (development-grade). R5.1 is
+(#228, development-grade). R5.1 is
 partial (Chromium only). Each item below carries its commits and PR.
+On 2026-11-13, 0.10 was closed by deleting `packages/viewer` after parity
+tests (`apps/openfea-web/src/components/solverSurfaceRenderParity.test.ts`), so R0 is done.
+R2.2 (local sizing per face) is done (#227); its Kt, mm vs m and browser gates pass.
 
 This plan supersedes the ordering in plan 024 and reopens the deferred
 decisions 032 and 033 with a recommendation. Plans 024 (Releases 6–8) and
@@ -27,14 +30,14 @@ saying so. That index is corrected in the same change as this plan.
 | Elements | Tet4 and Tet10 only. | No shells or beams. Thin parts cost DOF. |
 | Supports | Fixed (all of x, y and z, or a chosen subset), symmetry/roller on axis-aligned faces (R1.4, this branch), prescribed displacement (one component per constraint), prescribed temperature. | No elastic, skew-symmetry or remote-displacement support. (The unreachable "Coming soon" menu was removed in `d020bba`, #191.) |
 | Loads | Force, pressure, traction, volume force, gravity/payload, remote force (distributed wrench), equivalent bolt preload (static), heat flux, heat generation. Tri6 loads are consistent and area-weighted. | No bearing load. No local coordinate systems. |
-| Selection | Multi-face supports and loads through an "Additional faces" checklist. | No direct shift/ctrl multi-pick in the viewer and no named-selection manager. |
+| Selection | Multi-face supports and loads through an "Additional faces" checklist. Ctrl/Cmd-click multi-pick and a named-selection manager (#225; R1.2). | — |
 | Materials | 22 isotropic linear materials, custom project materials, AM print settings applied as homogenized isotropic scale factors. Per-body material assignments mapped to element blocks (`27722d0`, `4edeae6`, #203). | No CTE and no orthotropy. |
 | Contact | Tie, fuse, and frictionless linear penalty contact that starts closed and stays closed. | No separation, gap or friction. |
 | Meshing | Gmsh WASM with coarse to ultra presets, automatic quality floor, Tet10 elevation, static convergence ladder. Mesh quality metrics in the Mesh panel, viewer and report (`9b3a3fd`, `f15ea2b`, #198). | No local sizing per face or edge. |
 | Results | Stress measures, displacement, safety factor (yield over von Mises), probes, one axis-aligned section, envelopes, playback, PDF, HTML viewer, CSV/VTU of the selected state. Modal mass participation per direction (`cc90be1`, #196). | No error indicator, linearized stress, run comparison or design sweep. |
 | Geometry | STEP/STP solvable; STL/OBJ preview-only by decision 031B; four parametric parts. | No IGES. No defeaturing. |
 | Scale | 150k DOF guarded ceiling. SSOR CG for static and thermal, Jacobi for modal and dynamic. The ceiling is benchmarked in Chromium (`docs/validation/solve-ladder.md`, `4f9541b`, #197). | No WebKit numbers and no CI smoke rung. Slender solves stop short of the true residual and slender modal can drop modes (see Unscheduled findings). WebGPU automatic routing is off because the CG loop is not GPU-resident. |
-| Code health | Dependencies current (React 19, Vite 8, Vitest 5, Zod 4). Backend fallbacks removed from the browser. Reference backend deleted (`88b5975`, #193). Type-aware ESLint in CI (`76653ba`, `ed3ad4f`, #195). | `CadViewer.tsx` 7,699 lines and `WorkspaceApp.tsx` 3,484 lines. Unused `packages/viewer` (R0.10). |
+| Code health | Dependencies current (React 19, Vite 8, Vitest 5, Zod 4). Backend fallbacks removed from the browser. Reference backend deleted (`88b5975`, #193). Type-aware ESLint in CI (`76653ba`, `ed3ad4f`, #195). | `CadViewer.tsx` 7,699 lines and `WorkspaceApp.tsx` 3,484 lines. `packages/viewer` deleted after parity tests (R0.10). |
 
 ## Principles
 
@@ -71,7 +74,7 @@ Each numbered item is one PR unless it says otherwise.
 | 0.7 | ~~Fix the status-bar Feedback URL.~~ Closed: the maintainer kept the current `opencae-feedback` form. | No change. |
 | 0.8 | Add `verify-wasm-mesh-browser` and `verify-offline-pwa` to the CI browser job, or record why they stay manual. Delete or wire the orphaned `trusted-ci.yml`. **CI change; review.** **Done:** both proofs run in the `browser-proof` job (`568913a`); `trusted-ci.yml` deleted (`032ba58`); #194. | Offline meshing is a headline feature with no CI gate. |
 | 0.9 (M) | Plan 024 Release 3B: delete `apps/openfea-api`, the API-only services, `libs/openfea-db`, `-jobs`, `-storage` and `runners/openfea-runner-local`. Split browser-safe samples out of `db` first. **Deletes ~4.5k lines; review.** **Done:** `88b5975` (#193). | Removes a second code path before new schemas multiply it. |
-| 0.10 | Adopt `packages/viewer` during the R1 viewer extraction, or delete it. **Open:** still unimported at `12cf5fa`; the pinned CI workflow still builds it. | It is built and tested in CI but nothing imports it. |
+| 0.10 | Adopt `packages/viewer` during the R1 viewer extraction, or delete it. **Done (deleted):** parity tests (`apps/openfea-web/src/components/solverSurfaceRenderParity.test.ts`) showed the app reproduces every viewer buffer (positions, indices, nodeMap, values, min/max, displacement vectors) for Tet4/Tet10 in m and mm, and adds normals, colours, deformation and non-stress contours. The viewer's output is frozen as a fixture. The pinned `fleet-ci.yml` still runs `pnpm --filter @openfea/viewer build` (matches nothing, exits 0) until its next re-pin. | It is built and tested in CI but nothing imports it. |
 | 0.11 (M) | Add lint: ESLint flat config with `typescript-eslint`, starting with `no-floating-promises`, `no-misused-promises` and `eqeqeq`, then a CI step. **New dev dependencies; flag.** **Done:** `76653ba`, `ed3ad4f` (#195). | Async UI and solver orchestration have no static guard today. |
 
 ### R1 — Model the real part (next; highest product leverage)
@@ -82,9 +85,9 @@ solver capability that already exists.
 | # | Item | Effort | Method and gate |
 | - | - | - | - |
 | 1.1 | Extract the selection, overlay and pick seams from `CadViewer.tsx`, and run and persistence orchestration from `WorkspaceApp.tsx` (plan 024 5B). | L | No behavior change. Characterization and browser checks before each extraction. This is the prerequisite for 1.2 and R3. |
-| 1.2 | Direct multi-pick (ctrl/cmd-click to add and remove faces) plus a named-selection manager: create, rename, reuse in several BCs. | M | Selections persist B-rep face IDs and fingerprints. `verify:step-selection-browser` extends to multi-pick at both display LODs. |
+| 1.2 | Direct multi-pick (ctrl/cmd-click to add and remove faces) plus a named-selection manager: create, rename, reuse in several BCs. **Done** (#225): Ctrl/Cmd-click and a keyboard face list feed the Additional faces model; the manager saves `selection-named-*` face sets with B-rep face IDs and a `faceset:v1` fingerprint, renames them, deletes unused ones, and lets several supports/loads reference one; the pick/selection seam moved out of `CadViewer.tsx` into `components/viewer/selection.ts` (the 1.1 slice this needed). The adapter maps a multi-face selection by B-rep face identity before the plane heuristic. | M | Selections persist B-rep face IDs and fingerprints. `verify:step-selection-browser` extends to multi-pick at both display LODs. |
 | 1.3 | Per-body materials (second half of decision 030A). **Done:** `27722d0`, `4edeae6` (#203). | M | The solver already supports a material per element block. Map mesh-intake body IDs to blocks and add one report row per body. Gate: a two-material bar in series matches the closed-form series-spring deflection. Old single-material projects round-trip unchanged. |
-| 1.4 | Per-component fixed supports and symmetry/roller supports. **Done (development-grade):** this branch. Gates pass (half and quarter cantilever within 1e-6 of the full model, mm/m equivalence, reaction balance); the symmetry half-model browser run is manual, not yet in CI. | M | v1 accepts faces whose normal lies within a named angular tolerance of a global axis and constrains that component. It rejects other faces with an explicit error. Gate: a half-model and a quarter-model of the cantilever match the full-model deflection and stress. |
+| 1.4 | Per-component fixed supports and symmetry/roller supports. **Done (development-grade):** #228. Gates pass (half and quarter cantilever within 1e-6 of the full model, mm/m equivalence, reaction balance); the symmetry half-model browser run is manual, not yet in CI. | M | v1 accepts faces whose normal lies within a named angular tolerance of a global axis and constrains that component. It rejects other faces with an explicit error. Gate: a half-model and a quarter-model of the cantilever match the full-model deflection and stress. |
 | 1.5 | Elastic (foundation) support: normal and/or tangential stiffness per area, in N/m³. | M | Add the consistent face matrix k∫NᵀN dA, which is SPD and removes rigid-body modes. Gate: a block on an elastic foundation matches F/(kA). Unit-equivalence test. |
 | 1.6 | Bearing load on a cylindrical face. | S–M | Cosine-weighted projected-area distribution over the loaded half. Gate: the resultant equals F exactly and the moment about the axis is zero within tolerance. |
 | 1.7 | Local coordinate systems: cylindrical and face-aligned, for loads, prescribed displacement and supports. | M | Use robust frame construction (degeneracy and handedness checks), persisted with the study. This also unlocks skew symmetry in 1.4 v2 through the nodal transformation method. |
@@ -95,7 +98,7 @@ solver capability that already exists.
 | # | Item | Effort | Method and gate |
 | - | - | - | - |
 | 2.1 | Show mesh quality: scaled Jacobian or SICN and aspect-ratio histograms, worst-element highlight, and Tet10 det J > 0 at quadrature points (curved meshes). **Done:** `9b3a3fd`, `f15ea2b` (#198). | S–M | Computed in a worker from the existing volume mesh. Labeled thresholds. Shown in the Mesh panel and the report. |
-| 2.2 | Local sizing per face or edge, persisted by B-rep face ID. | M | Gmsh Distance + Threshold size fields. The DOF preflight runs before the mesh. Gate: the plate-with-hole Kt error improves at equal total DOF. |
+| 2.2 | Local sizing per face or edge, persisted by B-rep face ID. **Done (#227):** faces only (the STEP registry has no B-rep edge ids); `meshSettings.localSizing` stores face id + fingerprint + size in mm; Mesh panel add/edit/remove in project units; pre-mesh estimate and DOF preflight. | M | Gmsh Distance + Threshold size fields. The DOF preflight runs before the mesh. Gate: the plate-with-hole Kt error improves at equal total DOF. Measured on this branch (thickness-averaged hole-edge hoop stress vs Kt_net = 2.422): uniform 3.8 mm, 25,920 DOF, Kt 2.347 (3.1% error); 1 mm on the hole wall under 6 mm, 26,310 DOF, Kt 2.464 (1.7%). mm vs m and estimate-band gates pass; browser proof: see `docs/validation/README.md`. |
 | 2.3 | Element error indicator: Zienkiewicz–Zhu recovered-stress energy-norm indicator per element. | M | Labeled an *indicator*, not an error bound. Feeds 2.4. Gate: on the plate-with-hole, the indicator ranks the hole-edge elements highest. |
 | 2.4 | Adaptive refinement loop: indicator → size field → remesh, two or three passes, under the DOF cap. | L | Reuses the convergence-ladder UI. Each pass is reported. It must not replace the working mesh without confirmation. |
 
@@ -106,7 +109,7 @@ solver capability that already exists.
 | 3.1 | Modal mass participation and cumulative effective mass per direction. **Done:** `cc90be1` (#196). | S | Γᵢ = φᵢᵀMr with mass-normalized φ. Report the projected-model caveat when the Tet10 → Tet4 projection applied. Gate: the sum approaches the total mass as the number of modes grows on a free-free bar. Prerequisite for harmonic (R6). |
 | 3.2 | Path plots and linearized stress (membrane + bending along a stress classification line). | M | Interpolate with the existing probe evaluation. Integrate along the path with a stated quadrature. Gate: pure tension and pure bending of a block recover the closed-form membrane and bending values. |
 | 3.3 | Run and study comparison: a KPI table across studies, and a difference field only when two results share topology. | M | No cross-mesh interpolated differences in v1, to avoid hidden mapping error. |
-| 3.4 | Safety factor basis choice: yield or ultimate, plus a user allowable, stated in the legend and report. | S | Default unchanged (yield over von Mises). |
+| 3.4 | Safety factor basis choice: yield or ultimate, plus a user allowable, stated in the legend and report. **Done** (#223): per-study `safetyFactorBasis`, re-scaled from the stored yield-basis result without re-solving; ultimate offered only for a material with an ultimate strength (no catalog entry has one) and only for single-material models. | S | Default unchanged (yield over von Mises). |
 | 3.5 | Report preview and offscreen figure capture (plan 028 D15/S7). | M | Removes the dependence on viewer state during report capture. |
 | 3.6 | Parametric design sweep: one parametric-part dimension × N values → batch mesh and solve → KPI curves. | L | Each point respects the DOF cap and cancellation, and every point keeps its own provenance. |
 

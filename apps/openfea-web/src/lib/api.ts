@@ -511,6 +511,7 @@ export async function generateMesh(studyId: string, preset: MeshQuality, current
           preset,
           status: "complete" as const,
           meshRef: `${currentStudy.projectId}/mesh/mesh-summary.json`,
+          ...(currentStudy.meshSettings.localSizing?.length ? { localSizing: currentStudy.meshSettings.localSizing } : {}),
           summary
         }
       },

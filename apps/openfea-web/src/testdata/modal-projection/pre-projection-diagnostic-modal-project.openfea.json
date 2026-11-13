@@ -1,0 +1,447 @@
+{
+  "format": "openfea-local-project",
+  "version": 2,
+  "savedAt": "2026-11-01T12:00:00.000Z",
+  "project": {
+    "id": "project-bracket-demo",
+    "name": "Cantilever Demo",
+    "schemaVersion": "0.1.0",
+    "unitSystem": "SI",
+    "geometryFiles": [
+      {
+        "id": "geom-cantilever-project-bracket-demo",
+        "projectId": "project-bracket-demo",
+        "filename": "cantilever-beam.step",
+        "localPath": "examples/bracket-demo/bracket-demo.step",
+        "artifactKey": "project-bracket-demo/geometry/cantilever-display.json",
+        "status": "ready",
+        "metadata": {
+          "displayModelRef": "project-bracket-demo/geometry/cantilever-display.json",
+          "bodyCount": 1,
+          "faceCount": 4,
+          "source": "sample",
+          "sampleModel": "cantilever",
+          "sampleAnalysisType": "static_stress",
+          "coreCloudGeometry": {
+            "kind": "structured_block",
+            "sampleId": "cantilever",
+            "units": "mm",
+            "descriptor": {
+              "length": 180,
+              "width": 24,
+              "height": 24,
+              "surfaces": {
+                "fixedSupport": {
+                  "selectionRef": "selection-fixed-face",
+                  "sourceFaceId": "face-base-left",
+                  "name": "fixed_support"
+                },
+                "loadSurface": {
+                  "selectionRef": "selection-load-face",
+                  "sourceFaceId": "face-load-top",
+                  "name": "load_surface"
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "studies": [
+      {
+        "id": "study-cantilever-modal",
+        "projectId": "project-bracket-demo",
+        "name": "Modal Analysis",
+        "type": "modal_analysis",
+        "geometryScope": [
+          {
+            "bodyId": "body-bracket",
+            "entityType": "body",
+            "entityId": "body-bracket",
+            "label": "Cantilever"
+          }
+        ],
+        "materialAssignments": [
+          {
+            "id": "assign-aluminum",
+            "materialId": "mat-aluminum-6061",
+            "selectionRef": "selection-body-bracket",
+            "status": "complete"
+          }
+        ],
+        "namedSelections": [
+          {
+            "id": "selection-body-bracket",
+            "name": "Cantilever body",
+            "entityType": "body",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "body",
+                "entityId": "body-bracket",
+                "label": "Cantilever"
+              }
+            ],
+            "fingerprint": "body-bracket-v1"
+          },
+          {
+            "id": "selection-fixed-face",
+            "name": "Fixed end face",
+            "entityType": "face",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "face",
+                "entityId": "face-base-left",
+                "label": "Fixed end face"
+              }
+            ],
+            "fingerprint": "face-base-left-cantilever-v1"
+          },
+          {
+            "id": "selection-load-face",
+            "name": "Free end load face",
+            "entityType": "face",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "face",
+                "entityId": "face-load-top",
+                "label": "Free end load face"
+              }
+            ],
+            "fingerprint": "face-load-top-cantilever-v1"
+          },
+          {
+            "id": "selection-web-face",
+            "name": "Top beam face",
+            "entityType": "face",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "face",
+                "entityId": "face-web-front",
+                "label": "Top beam face"
+              }
+            ],
+            "fingerprint": "face-web-front-cantilever-v1"
+          },
+          {
+            "id": "selection-base-face",
+            "name": "Beam bottom face",
+            "entityType": "face",
+            "geometryRefs": [
+              {
+                "bodyId": "body-bracket",
+                "entityType": "face",
+                "entityId": "face-base-bottom",
+                "label": "Beam bottom face"
+              }
+            ],
+            "fingerprint": "face-base-bottom-cantilever-v1"
+          }
+        ],
+        "contacts": [],
+        "constraints": [
+          {
+            "id": "constraint-fixed-mount",
+            "type": "fixed",
+            "selectionRef": "selection-fixed-face",
+            "parameters": {},
+            "status": "complete"
+          }
+        ],
+        "loads": [],
+        "meshSettings": {
+          "preset": "medium",
+          "status": "complete",
+          "meshRef": "project-bracket-demo/mesh/wasm-gmsh-mesh.json",
+          "summary": {
+            "nodes": 17854,
+            "elements": 7986,
+            "warnings": [],
+            "quality": "medium",
+            "source": "wasm_gmsh",
+            "units": "m",
+            "density": {
+              "requestedMeshSizeMm": 5,
+              "actualMeshSizeMm": 5,
+              "elementOrder": 2
+            },
+            "solverCoordinateSpace": "solver"
+          }
+        },
+        "solverSettings": {
+          "backend": "opencae_core_local",
+          "fidelity": "standard",
+          "modeCount": 2
+        },
+        "validation": [],
+        "runs": [
+          {
+            "id": "run-local-modal-projected",
+            "studyId": "study-cantilever-modal",
+            "status": "complete",
+            "jobId": "job-run-local-modal-projected",
+            "meshRef": "project-bracket-demo/mesh/wasm-gmsh-mesh.json",
+            "solverBackend": "opencae_core_local",
+            "solverVersion": "0.1.0",
+            "startedAt": "2026-11-01T11:59:40.000Z",
+            "finishedAt": "2026-11-01T11:59:52.000Z",
+            "diagnostics": []
+          }
+        ]
+      }
+    ],
+    "createdAt": "2026-10-01T12:00:00.000Z",
+    "updatedAt": "2026-10-01T12:00:00.000Z"
+  },
+  "displayModel": {
+    "id": "display-cantilever",
+    "name": "cantilever demo body",
+    "bodyCount": 1,
+    "dimensions": {
+      "x": 180,
+      "y": 24,
+      "z": 24,
+      "units": "mm"
+    },
+    "faces": [
+      {
+        "id": "face-base-left",
+        "label": "Fixed end face",
+        "color": "#4da3ff",
+        "center": [
+          -1.9,
+          0.18,
+          0
+        ],
+        "normal": [
+          -1,
+          0,
+          0
+        ],
+        "stressValue": 132
+      },
+      {
+        "id": "face-load-top",
+        "label": "Free end load face",
+        "color": "#f59e0b",
+        "center": [
+          1.9,
+          0.18,
+          0
+        ],
+        "normal": [
+          1,
+          0,
+          0
+        ],
+        "stressValue": 96
+      },
+      {
+        "id": "face-web-front",
+        "label": "Top beam face",
+        "color": "#22c55e",
+        "center": [
+          0,
+          0.42,
+          0
+        ],
+        "normal": [
+          0,
+          1,
+          0
+        ],
+        "stressValue": 74
+      },
+      {
+        "id": "face-base-bottom",
+        "label": "Beam bottom face",
+        "color": "#8b949e",
+        "center": [
+          0,
+          -0.08,
+          0
+        ],
+        "normal": [
+          0,
+          -1,
+          0
+        ],
+        "stressValue": 46
+      }
+    ],
+    "coreCloudGeometry": {
+      "kind": "structured_block",
+      "sampleId": "cantilever",
+      "units": "mm",
+      "descriptor": {
+        "length": 180,
+        "width": 24,
+        "height": 24,
+        "surfaces": {
+          "fixedSupport": {
+            "selectionRef": "selection-fixed-face",
+            "sourceFaceId": "face-base-left",
+            "name": "fixed_support"
+          },
+          "loadSurface": {
+            "selectionRef": "selection-load-face",
+            "sourceFaceId": "face-load-top",
+            "name": "load_surface"
+          }
+        }
+      }
+    }
+  },
+  "results": {
+    "completedRunId": "run-local-modal-projected",
+    "summary": {
+      "analysisType": "modal_analysis",
+      "requestedModeCount": 2,
+      "convergedModeCount": 2,
+      "modes": [
+        {
+          "modeIndex": 1,
+          "frequencyHz": 612.4,
+          "eigenvalue": 14806000.0,
+          "scaledResidual": 2.1e-07,
+          "fieldId": "mode-1-shape"
+        },
+        {
+          "modeIndex": 2,
+          "frequencyHz": 618.9,
+          "eigenvalue": 15122000.0,
+          "scaledResidual": 3.4e-07,
+          "fieldId": "mode-2-shape"
+        }
+      ],
+      "massParticipation": {
+        "massUnits": "kg",
+        "massMatrix": "lumped",
+        "totalMass": 0.2799,
+        "unconstrainedMass": [
+          0.2799,
+          0.2799,
+          0.2799
+        ],
+        "computedOnProjectedModel": true,
+        "modes": [
+          {
+            "modeIndex": 1,
+            "participationFactor": [
+              0,
+              0.41,
+              0.002
+            ],
+            "effectiveMass": [
+              0,
+              0.1681,
+              4e-06
+            ],
+            "effectiveMassRatio": [
+              0,
+              0.6006,
+              1.43e-05
+            ],
+            "cumulativeEffectiveMassRatio": [
+              0,
+              0.6006,
+              1.43e-05
+            ]
+          },
+          {
+            "modeIndex": 2,
+            "participationFactor": [
+              0,
+              0.002,
+              0.41
+            ],
+            "effectiveMass": [
+              0,
+              4e-06,
+              0.1681
+            ],
+            "effectiveMassRatio": [
+              0,
+              1.43e-05,
+              0.6006
+            ],
+            "cumulativeEffectiveMassRatio": [
+              0,
+              0.6006143,
+              0.6006143
+            ]
+          }
+        ]
+      },
+      "warning": "Local modal analysis used a linear Tet4 projection (7,986 DOFs) of the 53,562-DOF quadratic mesh to keep the browser solve tractable. Natural frequencies may differ from a full Tet10 solve.",
+      "provenance": {
+        "kind": "opencae_core_fea",
+        "solver": "opencae-core-modal-tet",
+        "resultSource": "computed",
+        "meshSource": "actual_volume_mesh",
+        "units": "m-N-s-Pa",
+        "coreVersion": "0.1.5",
+        "solverCpuVersion": "0.1.5",
+        "runnerVersion": "browser-0.1.0"
+      },
+      "diagnostics": []
+    },
+    "fields": [
+      {
+        "id": "mode-1-shape",
+        "runId": "run-local-modal-projected",
+        "type": "mode_shape",
+        "location": "node",
+        "values": [
+          0,
+          0.5,
+          1
+        ],
+        "min": 0,
+        "max": 1,
+        "units": "normalized",
+        "modeIndex": 1,
+        "frequencyHz": 612.4,
+        "provenance": {
+          "kind": "opencae_core_fea",
+          "solver": "opencae-core-modal-tet",
+          "resultSource": "computed",
+          "meshSource": "actual_volume_mesh",
+          "units": "m-N-s-Pa",
+          "coreVersion": "0.1.5",
+          "solverCpuVersion": "0.1.5",
+          "runnerVersion": "browser-0.1.0"
+        }
+      },
+      {
+        "id": "mode-2-shape",
+        "runId": "run-local-modal-projected",
+        "type": "mode_shape",
+        "location": "node",
+        "values": [
+          0,
+          0.5,
+          1
+        ],
+        "min": 0,
+        "max": 1,
+        "units": "normalized",
+        "modeIndex": 2,
+        "frequencyHz": 618.9,
+        "provenance": {
+          "kind": "opencae_core_fea",
+          "solver": "opencae-core-modal-tet",
+          "resultSource": "computed",
+          "meshSource": "actual_volume_mesh",
+          "units": "m-N-s-Pa",
+          "coreVersion": "0.1.5",
+          "solverCpuVersion": "0.1.5",
+          "runnerVersion": "browser-0.1.0"
+        }
+      }
+    ]
+  }
+}

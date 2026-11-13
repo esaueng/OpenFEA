@@ -42,6 +42,25 @@ export {
   type MeshQualityGateResult
 } from "./meshQualityGate";
 export {
+  estimateMeshSize,
+  LOCAL_MESH_SIZE_GROWTH_RATE,
+  localSizeDistanceSampling,
+  localSizeThresholdDistance,
+  localSizingPreflight,
+  matchLocalSizeSurfaces,
+  MAX_LOCAL_MESH_SIZE_RULES,
+  millimetresToModelLength,
+  type LocalSizeEstimateFace,
+  type LocalSizeSurfaceDescriptor,
+  type LocalSizeSurfaceMatch,
+  type LocalSizeTarget,
+  type LocalSizeUnmatched,
+  type LocalSizingPreflight,
+  type LocalSizingReport,
+  type MeshSizeEstimate,
+  type MeshSizeEstimateInput
+} from "./localSizing";
+export {
   configureGmshWasmModuleOptions,
   diagnoseStepMeshFailure,
   generateBoxWithBoreStep,

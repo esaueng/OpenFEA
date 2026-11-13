@@ -10,6 +10,13 @@
 import type { DisplayModel, MeshQuality, Study } from "@openfea/schema";
 import type { CloudAnalysisType, CoreVolumeMeshArtifact, ElementOrderFallbackMetadata } from "@openfea/mesh-intake";
 import { hasPerBodyMaterialAssignments } from "@openfea/materials";
+import { BROWSER_SOLVE_LIMITS } from "@openfea/solve-pipeline/limits";
+import {
+  MeshLocalSizingPreflightError,
+  meshLocalSizingWarnings,
+  planMeshLocalSizing,
+  type MeshLocalSizingPlan
+} from "../meshLocalSizing";
 import { inferGlobalCriticalPrintAxis } from "@openfea/study-core";
 import { geometrySourceForStudy, studyForCoreGeometryDispatch, type CoreCloudGeometrySource } from "../workers/openfeaCoreSolve";
 import { unpackCoreVolumeMeshArtifact } from "../workers/meshProtocol";
@@ -197,6 +204,9 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
   let stepStructuralBodyPlan: import("../stepStructuralBodies").StepStructuralBodyPlan | undefined;
   let stepFuseBodyGroups: import("@openfea/mesh-intake").StepBodyBounds[][] | undefined;
   let stepBodyIdentities: import("@openfea/mesh-intake").StepBodyIdentity[] | undefined;
+  let localSizingPlan: MeshLocalSizingPlan | null = null;
+  let localSizingReport: import("@openfea/mesh-intake").LocalSizingReport | undefined;
+  let localSizingNotes: string[] = [];
 
   if (geometry.kind === "sample_procedural" && geometry.sampleId === "bracket") {
     // Native curved Gmsh Tet10 elements can invert around the bracket's
@@ -256,6 +266,26 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
       stepFuseBodyGroups = undefined;
       structuralBodyNote = undefined;
     }
+    // Plan 036 R2.2: resolve local sizes by B-rep face id + fingerprint and
+    // run the DOF preflight BEFORE any gmsh work, so an over-limit refinement
+    // is refused in milliseconds instead of after a long mesh.
+    const localSizingRules = study.meshSettings.localSizing ?? [];
+    if (localSizingRules.length && stepFaceRegistry && options.meshSizeMm) {
+      localSizingPlan = planMeshLocalSizing({
+        rules: localSizingRules,
+        registry: stepFaceRegistry,
+        globalSizeMm: options.meshSizeMm,
+        elementOrder,
+        maxDofs: BROWSER_SOLVE_LIMITS.maxDofs,
+        meshIndices: stepStructuralBodyPlan?.structuralMeshIndices
+      });
+      if (localSizingPlan?.preflight.status === "block") {
+        throw new MeshLocalSizingPreflightError(localSizingPlan.preflight.message ?? "Local sizing exceeds the browser solver DOF limit.");
+      }
+      if (localSizingPlan?.preflight.message) localSizingNotes.push(localSizingPlan.preflight.message);
+    } else if (localSizingRules.length) {
+      localSizingNotes.push("Local mesh sizes were not applied: they need the STEP face registry, which is unavailable for this model.");
+    }
     throwIfMeshingCancelled(cancellationGeneration);
     const stepResult = await client.meshStepFileInWorker(
       {
@@ -267,10 +297,15 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
         fuseBodyGroups: stepFuseBodyGroups,
         bodyIdentities: stepBodyIdentities,
         preservePartIdentity: study.contacts.some((connection) => connection.type === "tie" || connection.type === "contact"),
-        attribution
+        attribution,
+        ...(localSizingPlan?.targets.length ? { localSizing: localSizingPlan.targets } : {})
       },
       onWorkerProgress
     );
+    localSizingReport = stepResult.localSizing;
+    if (localSizingPlan) {
+      localSizingNotes = [...localSizingNotes, ...meshLocalSizingWarnings(localSizingRules, localSizingPlan.unresolved, localSizingReport)];
+    }
     requestedMeshSizeMm = finitePositive(options.meshSizeMm);
     actualMeshSizeMm = stepResult.qualityRefinement?.usedMeshSizeMm ?? requestedMeshSizeMm;
     meshedPacked = stepResult;
@@ -364,14 +399,26 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
   const summary: NonNullable<Study["meshSettings"]["summary"]> = {
     nodes,
     elements,
-    warnings: [structuralBodyNote, multiBodyFusionNote, algorithmNote, elevationNote, refinementNote, geometryRepairNote, elementOrderFallbackNote, attributionNote].filter((note): note is string => Boolean(note)),
+    warnings: [structuralBodyNote, multiBodyFusionNote, algorithmNote, elevationNote, refinementNote, geometryRepairNote, elementOrderFallbackNote, attributionNote, ...localSizingNotes].filter((note): note is string => Boolean(note)),
     quality: preset,
     source: "wasm_gmsh",
     units: "m",
     density: {
       ...(requestedMeshSizeMm ? { requestedMeshSizeMm } : {}),
       ...(actualMeshSizeMm ? { actualMeshSizeMm } : {}),
-      elementOrder: actualElementOrder
+      elementOrder: actualElementOrder,
+      // Plan 036 R2.2: which rules reached the mesh, and the pre-mesh estimate
+      // they were admitted on (sizes in STEP model mm).
+      ...(localSizingPlan
+        ? {
+            localSizing: {
+              requested: study.meshSettings.localSizing?.length ?? 0,
+              applied: (localSizingReport?.applied ?? []).map((entry) => ({ id: entry.targetId, faceId: entry.faceId, sizeMm: entry.size })),
+              estimatedDofs: localSizingPlan.preflight.estimatedDofs,
+              estimatedElements: localSizingPlan.preflight.estimatedElements
+            }
+          }
+        : {})
     },
     solverCoordinateSpace: "solver",
     ...(meshedPacked.qualityMetrics ? { qualityMetrics: meshedPacked.qualityMetrics } : {}),
@@ -393,6 +440,7 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
         preset,
         status: "complete",
         meshRef: `${study.projectId}/mesh/wasm-gmsh-mesh.json`,
+        ...(study.meshSettings.localSizing?.length ? { localSizing: study.meshSettings.localSizing } : {}),
         summary
       }
     },
