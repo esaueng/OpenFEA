@@ -10,7 +10,7 @@ import type { DisplayModel, ResultField, ResultSummary, RunVariantRef, RunVarian
 
 export type NormalizedBrowserSolverBackend = "opencae_core_local";
 
-export const STANDARD_GRAVITY = 9.80665;
+export { STANDARD_GRAVITY } from "@openfea/units";
 export const DEFAULT_DYNAMIC_OUTPUT_INTERVAL_SECONDS = 0.005;
 export const MIN_DYNAMIC_OUTPUT_INTERVAL_SECONDS = 0.005;
 

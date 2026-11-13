@@ -353,16 +353,28 @@ export function Callout({ children }: { children: ReactNode }) {
 }
 
 export function Collapsible({ title, subtitle, helpId, defaultOpen = false, children }: { title: string; subtitle?: string; helpId?: SettingHelpId; defaultOpen?: boolean; children: ReactNode }) {
-  return (
+  const details = (
     <details className="collapsible-section" open={defaultOpen}>
       <summary className="collapsible-summary">
-        {/* The help trigger stops click propagation, so opening the tooltip does not toggle the section. */}
-        <span className="collapsible-title">{helpId ? <HelpLabel helpId={helpId}>{title}</HelpLabel> : title}</span>
+        <span className="collapsible-title">{title}</span>
         {subtitle && <span className="collapsible-subtitle">{subtitle}</span>}
         <ChevronDown className="collapsible-chevron" size={16} aria-hidden="true" />
       </summary>
       <div className="collapsible-body">{children}</div>
     </details>
+  );
+  if (!helpId) return details;
+  // A <summary> is itself the toggle button, so a help button inside it was a control nested
+  // in a control (axe nested-interactive): screen readers announced one merged button and
+  // the trigger could not be reached on its own. It sits beside the summary instead,
+  // overlaid on the same row.
+  return (
+    <div className="collapsible-help-anchor">
+      {details}
+      <span className="collapsible-help">
+        <SettingHelpTrigger helpId={helpId} />
+      </span>
+    </div>
   );
 }
 
@@ -378,8 +390,8 @@ export function ConceptCard({ icon, title, detail, tone = "accent" }: { icon: Re
   );
 }
 
-export function PlacementReadout({ selectedRef, fallbackLabel, detail, helpId }: { selectedRef: ReturnType<typeof selectionForFace> | undefined; fallbackLabel?: string; detail?: string; helpId?: SettingHelpId }) {
-  const label = selectedRef?.geometryRefs[0]?.label ?? fallbackLabel;
+export function PlacementReadout({ selectedRef, label: labelOverride, fallbackLabel, detail, helpId }: { selectedRef: ReturnType<typeof selectionForFace> | undefined; /** Display form of the selection's label (e.g. in project units); wins over the stored one. */ label?: string; fallbackLabel?: string; detail?: string; helpId?: SettingHelpId }) {
+  const label = labelOverride ?? selectedRef?.geometryRefs[0]?.label ?? fallbackLabel;
   const chip = (
     <div className={label ? "placement-chip ready" : "placement-chip"}>
       {label ? `Selected ${label}${detail ? ` · ${detail}` : ""}` : "Select a face in the model viewport"}

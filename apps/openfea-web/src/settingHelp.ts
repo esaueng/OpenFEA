@@ -149,7 +149,7 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
   },
   orientation: {
     title: "Orientation",
-    body: "Aims the camera straight down the global X, Y, or Z axis, so you can check the part against the Z-up frame that directions, gravity, and dimensions are measured in. These buttons move the camera only: the model is never rotated, which is why the angles below stay at zero and Reset stays greyed out.",
+    body: "Aims the camera straight down the global X, Y, or Z axis, so you can check the part against the Z-up frame that directions, gravity, and dimensions are measured in. These buttons move the camera only: the model is never rotated, which is why the angles below stay at zero.",
     visual: "axis"
   },
   materialLibrary: {
@@ -204,7 +204,7 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
   },
   loadPlacement: {
     title: "Load placement",
-    body: "Click the exact point for force or pressure loads. For payload mass, click the object carrying the mass so its weight is applied from that object center.",
+    body: "Select the face that takes the load. Force, pressure, and payload weight are spread over the whole selected face; the point you click only places the viewer marker and does not change the solve. For payload mass, select the object carrying the mass and its weight goes onto the face it rests on. A remote force acts from the coordinates you enter.",
     visual: "load"
   },
   loadType: {

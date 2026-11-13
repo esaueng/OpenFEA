@@ -389,7 +389,7 @@ function structuredTet10BlockModel(divisions: number): OpenFEAModelJson {
     { name: "FS", facets: (base.surfaceFacets ?? []).filter((facet) => facetOnPlane(facet, 0)).map((facet) => facet.id) },
     { name: "LS", facets: (base.surfaceFacets ?? []).filter((facet) => facetOnPlane(facet, sizeX)).map((facet) => facet.id) }
   ];
-  const withSurfaces = { ...base, schemaVersion: "0.2.0", surfaceSets };
+  const withSurfaces = { ...base, schemaVersion: "0.2.0" as const, surfaceSets };
   const fixedNodes = deriveFixedSupportNodeSetFromSurface("fixedNodes0", "FS", withSurfaces);
   return {
     ...withSurfaces,

@@ -87,8 +87,8 @@ describe("app CSS", () => {
     // Every app-level layer resolves through a token so the stacking order is
     // readable in one place. Bare z-index values are still allowed for ordering
     // siblings inside a single component's stacking context.
-    const scale = ["--z-base", "--z-viewer-overlay", "--z-log-drawer", "--z-viewer-import-overlay",
-      "--z-modal-backdrop", "--z-condition-menu", "--z-popover", "--z-gallery-backdrop",
+    const scale = ["--z-base", "--z-viewer-overlay", "--z-sticky-topbar", "--z-log-drawer", "--z-viewer-import-overlay",
+      "--z-modal-backdrop", "--z-popover", "--z-gallery-backdrop",
       "--z-tooltip", "--z-skip-link"];
     const depths = scale.map((name) => {
       const match = tokens.match(new RegExp(`${name}:\\s*(\\d+);`));
@@ -662,7 +662,7 @@ describe("app CSS", () => {
     expect(cadViewer).toContain("const SceneThemeContext = createContext<ThemeMode>");
     expect(cadViewer).toContain("<SceneThemeContext.Provider value={props.themeMode}>");
     expect(cadViewer).toMatch(/function sceneLabelColors\(tone: SceneLabelTone, themeMode: ThemeMode/);
-    expect(cadViewer).toContain('sceneLabelColors(tone, useContext(SceneThemeContext))');
+    expect(cadViewer).toMatch(/const themeMode = useContext\(SceneThemeContext\);\n\s*const colors = sceneLabelColors\(tone, themeMode\);/);
     expect(cadViewer).toContain('sceneLabelColors("dimension", useContext(SceneThemeContext))');
     // Every tone carries both roles, so no tone can silently fall back to dark-only.
     const palette = cadViewer.match(/const SCENE_LABEL_PALETTE[\s\S]*?\n\};/)?.[0] ?? "";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CoreCloudResultProvenanceSchema, CustomMaterialSchema, DisplayModelSchema, DynamicSolverSettingsSchema, MAX_LOAD_COMBINATIONS, MAX_PROJECT_NAME_LENGTH, MaterialSchema, MeshConvergenceRecordSchema, ProjectSchema, ResultFieldSchema, ResultSummarySchema, RunEventSchema, RunVariantResultSchema, SolverBackendSchema, StudyRunSchema, classifyResultProvenance, runStatusForResultProvenance } from "./index";
+import { CoreCloudResultProvenanceSchema, CustomMaterialSchema, DisplayModelSchema, DynamicSolverSettingsSchema, MAX_LOAD_COMBINATIONS, MAX_PROJECT_NAME_LENGTH, MaterialSchema, MeshConvergenceRecordSchema, ProjectSchema, ResultFieldSchema, ResultSummarySchema, RunEventSchema, RunVariantResultSchema, SolverBackendSchema, StudyRunSchema, classifyResultProvenance, runStatusForResultProvenance, type StructuralResultSummary } from "./index";
 
 describe("ProjectSchema", () => {
   it("accepts the minimum local project shape", () => {
@@ -461,7 +461,7 @@ describe("ProjectSchema", () => {
       rayleighBeta: 0.0002
     });
 
-    expect(ResultSummarySchema.parse({
+    expect((ResultSummarySchema.parse({
       maxStress: 0.3,
       maxStressUnits: "MPa",
       maxDisplacement: 0.003,
@@ -481,7 +481,7 @@ describe("ProjectSchema", () => {
         peakDisplacementTimeSeconds: 0.1,
         peakDisplacement: 0.003
       }
-    }).transient?.integrationMethod).toBe("newmark_average_acceleration");
+    }) as StructuralResultSummary).transient?.integrationMethod).toBe("newmark_average_acceleration");
   });
 
   it("accepts optional timing estimates on run events", () => {

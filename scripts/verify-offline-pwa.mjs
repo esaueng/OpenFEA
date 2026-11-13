@@ -20,7 +20,8 @@
 // Usage (Node >= 22 for global WebSocket + fetch; Chrome installed):
 //   VITE_BROWSER_PROOF=1 pnpm --filter @openfea/web build
 //   node scripts/verify-offline-pwa.mjs
-// Env: PORT (5199), CDP_PORT (9334), CHROME_BIN, PROOF_TIMEOUT_MS (240000).
+// Env: PORT (5200), CDP_PORT (9334), CHROME_BIN, PROOF_TIMEOUT_MS (240000).
+// The default ports differ from every other browser verifier so proofs can run side by side.
 // Exit codes: 0 proof ok, 1 gate failed, 2 timeout.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -28,7 +29,7 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PORT = Number(process.env.PORT ?? 5199);
+const PORT = Number(process.env.PORT ?? 5200);
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9334);
 const TIMEOUT_MS = Number(process.env.PROOF_TIMEOUT_MS ?? 240_000);
 const APPLIED_NEWTONS = 500;

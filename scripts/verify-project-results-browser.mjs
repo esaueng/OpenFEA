@@ -167,10 +167,12 @@ async function run() {
   for (const direction of ["Undo", "Redo"]) {
     await restore(projectFile, { ...ui, undoStack: direction === "Undo" ? [fixture.previous] : [], redoStack: direction === "Redo" ? [fixture.previous] : [] });
     await evaluate(cdp, `document.querySelector('[aria-label="${direction} last change"]').click()`);
-    await waitFor("cleared results", () => evaluate(cdp, '!document.querySelector(".result-variant-selector select")'));
+    // Undo/redo keep the previous results on screen but mark them outdated (they can't be
+    // reported, exported or saved) instead of discarding them.
+    await waitFor("outdated results", () => evaluate(cdp, 'Boolean(document.querySelector(".result-variant-selector select")) && document.body.innerText.includes("Results outdated")'));
     const saved = await save();
-    if (saved.results || saved.project.studies[0].loads[0].parameters.value !== 250) throw new Error(`${direction} retained stale results or did not restore the load`);
-    console.log(`${direction}: load restored; stale results absent from UI and saved file.`);
+    if (saved.results || saved.project.studies[0].loads[0].parameters.value !== 250) throw new Error(`${direction} saved stale results or did not restore the load`);
+    console.log(`${direction}: load restored; results marked outdated in the UI and absent from the saved file.`);
   }
   await restore(projectFile, ui);
   await callInPage(cdp, async variant => {
@@ -252,6 +254,8 @@ async function run() {
   }
   const renderedModes = new Set();
   for (const mode of modalFile.results.summary.modes) {
+    // Mode buttons are disabled while report figures are captured after a restore.
+    await waitFor(`mode ${mode.modeIndex} enabled`, () => callInPage(cdp, modeIndex => document.querySelector(`[aria-label^="Mode ${modeIndex},"]`)?.disabled === false, mode.modeIndex));
     await callInPage(cdp, modeIndex => document.querySelector(`[aria-label^="Mode ${modeIndex},"]`).click(), mode.modeIndex);
     await waitFor(`mode ${mode.modeIndex}`, () => callInPage(cdp, modeIndex => document.querySelector(`[aria-label^="Mode ${modeIndex},"]`)?.getAttribute('aria-pressed') === 'true', mode.modeIndex));
     const phase = await evaluate(cdp, `(() => {

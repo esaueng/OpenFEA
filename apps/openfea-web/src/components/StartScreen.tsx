@@ -183,6 +183,8 @@ export function StartScreen({ onLoadSample, onCreateProject, onOpenProject, busy
             ref={fileInputRef}
             className="visually-hidden"
             type="file"
+            aria-label="Open project file"
+            tabIndex={-1}
             accept=".json,.openfea,.openfea.json,.opencae,.opencae.json,application/json"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];

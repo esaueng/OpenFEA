@@ -14,9 +14,11 @@ import { boundedStructuralMaxDofs, structuralDofCount, structuralDofLimitError }
 import { computeLinearElasticDMatrix } from "./material";
 import { assembleMeshConnectionStiffness, type ConnectionAssemblyDiagnostics } from "./connections";
 import { staticCoreResultFromSolve } from "./results";
+import { SPARSE_ALGEBRA_POLICY } from "./sparse-policy";
 import {
   addSparseEntry,
   conjugateGradient,
+  conjugateGradientConvergenceDiagnostics,
   createSparseMatrixBuilder,
   csrMatVec,
   estimateCsrMemoryBytes,
@@ -216,7 +218,7 @@ export function solvePreparedStaticLoadCase(
   }
   const reducedRhs = reduceCsrRhs(prepared.stiffness, loadAssembly.forces, prepared.free, prepared.constraints);
   const solve = conjugateGradient(prepared.reducedStiffness, reducedRhs, {
-    tolerance: options.tolerance ?? 1e-10,
+    tolerance: options.tolerance ?? SPARSE_ALGEBRA_POLICY.defaultRelativeResidualTolerance,
     maxIterations: options.maxIterations,
     preconditioner: resolvePreconditioner(options),
     ssorOmega: options.ssorOmega,
@@ -244,7 +246,7 @@ export function solvePreparedStaticLoadCase(
     {
       solverMode: "sparse",
       iterations: solve.iterations,
-      converged: true,
+      ...conjugateGradientConvergenceDiagnostics([solve], "Static sparse CG"),
       matrixRows: prepared.dofs,
       matrixNonZeros: prepared.stiffness.values.length,
       preconditioner: resolvePreconditioner(options),
@@ -615,7 +617,7 @@ function solveSparseSystem(
 ): StaticLinearTet4CpuSolveResult {
   const reduced = reduceCsrSystem(stiffness, loads, free, constraints);
   const solve = conjugateGradient(reduced.matrix, reduced.rhs, {
-    tolerance: options.tolerance ?? 1e-10,
+    tolerance: options.tolerance ?? SPARSE_ALGEBRA_POLICY.defaultRelativeResidualTolerance,
     maxIterations: options.maxIterations,
     preconditioner: resolvePreconditioner(options),
     ssorOmega: options.ssorOmega,
@@ -636,7 +638,7 @@ function solveSparseSystem(
   return finishSolve(model, loads, constraints, free, solve.solution, (displacement) => csrMatVec(stiffness, displacement), {
     solverMode: "sparse",
     iterations: solve.iterations,
-    converged: true,
+    ...conjugateGradientConvergenceDiagnostics([solve], "Static sparse CG"),
     matrixRows: model.counts.nodes * 3,
     matrixNonZeros: stiffness.values.length,
     preconditioner: resolvePreconditioner(options),
@@ -660,7 +662,7 @@ function finishSolve(
   free: Int32Array,
   freeSolution: Float64Array,
   multiplyFull: (displacement: Float64Array) => Float64Array,
-  diagnostics: Pick<CpuSolverDiagnostics, "solverMode" | "iterations" | "converged" | "matrixRows" | "matrixNonZeros" | "preconditioner" | "estimatedMatrixBytes" | "visualizationSmoothing" | "loadAssembly" | "connections">
+  diagnostics: Pick<CpuSolverDiagnostics, "solverMode" | "iterations" | "converged" | "trueRelativeResidual" | "recursiveRelativeResidual" | "trueResidualRestarts" | "partialConvergenceWarning" | "matrixRows" | "matrixNonZeros" | "preconditioner" | "estimatedMatrixBytes" | "visualizationSmoothing" | "loadAssembly" | "connections">
 ): StaticLinearTet4CpuSolveResult {
   const dofs = model.counts.nodes * 3;
   const displacement = new Float64Array(dofs);

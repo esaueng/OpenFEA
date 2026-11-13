@@ -43,13 +43,30 @@ export async function writeWorkspaceLogsToClipboard(text: string, clipboard?: Pi
 export function BottomPanel({ status, logs, meshStatus, solverStatus, studySummary, onClearLogs }: BottomPanelProps) {
   const [tab, setTab] = useState<"help" | "logs" | null>(null);
   const [drawerHeight, setDrawerHeight] = useState(320);
-  const [clearPromptVisible, setClearPromptVisible] = useState(false);
+  // Clearing asks once, inline, like the geometry-replace and analysis-type confirms. The
+  // old "click again" arm let a double-click clear the log in one gesture.
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const clearButtonRef = useRef<HTMLButtonElement>(null);
+  const clearCancelRef = useRef<HTMLButtonElement>(null);
+  const restoreClearFocusRef = useRef(false);
   const [copyFeedback, setCopyFeedback] = useState<"idle" | "copied" | "unavailable" | "failed">("idle");
   const [tipFilter, setTipFilter] = useState("");
   const dragStart = useRef<{ y: number; height: number } | null>(null);
   const copyFeedbackTimeoutRef = useRef(0);
   const expanded = tab !== null;
   const displayStatus = statusForDisplay(status, solverStatus);
+  // A solve that ends while the user is elsewhere must still be heard: remember the
+  // outcome of the last transition out of Running and prefix it to the message that
+  // was current at that moment, until a newer message replaces it. Derived during
+  // render (not in an effect) so the region never flashes the bare message first.
+  const [trackedSolverStatus, setTrackedSolverStatus] = useState(solverStatus);
+  const [solveOutcome, setSolveOutcome] = useState<{ text: string; status: string } | null>(null);
+  if (trackedSolverStatus !== solverStatus) {
+    setTrackedSolverStatus(solverStatus);
+    const text = solveOutcomeAnnouncement(trackedSolverStatus, solverStatus);
+    setSolveOutcome(text ? { text, status } : null);
+  }
+  const liveStatus = liveStatusMessage(status, solverStatus, solveOutcome);
   const healthy = solverStatus === "Running" ? "running" : displayStatus === "Solve failed" || displayStatus === "Needs attention" || displayStatus === "Results outdated" ? "warning" : meshStatus === "Ready" ? "ready" : "warning";
   const formattedLogs = logs.map(formatLogEntry);
   // 43 guides is more than anyone scans. Filter across title and body so a user who knows
@@ -62,11 +79,19 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, studySumma
       })
     : REQUIRED_SETTING_HELP_IDS;
 
+  // Focus lands on the safe action when the confirm opens and returns to the
+  // Clear logs button when it is dismissed without clearing.
   useEffect(() => {
-    if (!clearPromptVisible) return undefined;
-    const timeoutId = window.setTimeout(() => setClearPromptVisible(false), 2200);
-    return () => window.clearTimeout(timeoutId);
-  }, [clearPromptVisible]);
+    if (clearConfirmOpen) {
+      clearCancelRef.current?.focus();
+    } else if (restoreClearFocusRef.current) {
+      restoreClearFocusRef.current = false;
+      clearButtonRef.current?.focus();
+    }
+  }, [clearConfirmOpen]);
+
+  // Nothing left to clear (another path emptied the log): drop a stale confirm.
+  if (clearConfirmOpen && !logs.length) setClearConfirmOpen(false);
 
   useEffect(() => () => window.clearTimeout(copyFeedbackTimeoutRef.current), []);
 
@@ -122,15 +147,21 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, studySumma
     copyFeedbackTimeoutRef.current = window.setTimeout(() => setCopyFeedback("idle"), COPY_FEEDBACK_DURATION_MS);
   }
 
-  function clearLogs(event: MouseEvent<HTMLButtonElement>) {
-    if (!logs.length) return;
-    if (resolveLogClearIntent(event.detail, clearPromptVisible) === "clear") {
-      setClearPromptVisible(false);
-      onClearLogs();
-      event.currentTarget.blur();
-      return;
-    }
-    setClearPromptVisible(true);
+  function requestClearLogs(event: MouseEvent<HTMLButtonElement>) {
+    if (!logs.length || !isDeliberateClick(event.detail)) return;
+    setClearConfirmOpen(true);
+  }
+
+  function cancelClearLogs() {
+    restoreClearFocusRef.current = true;
+    setClearConfirmOpen(false);
+  }
+
+  function confirmClearLogs(event: MouseEvent<HTMLButtonElement>) {
+    // The second click of a double-click on "Clear logs" lands here; it must not clear.
+    if (!isDeliberateClick(event.detail)) return;
+    setClearConfirmOpen(false);
+    onClearLogs();
   }
 
   return (
@@ -160,16 +191,32 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, studySumma
                 {copyFeedback === "copied" ? "Logs copied to clipboard." : copyFeedback === "unavailable" ? "Clipboard unavailable. Select the logs and copy manually." : copyFeedback === "failed" ? "Copy failed. Select the logs and copy manually." : ""}
               </span>
               <button type="button" className="log-copy-button" onClick={() => void copyLogs()}>{copyFeedback === "copied" ? "Copied" : copyFeedback === "failed" || copyFeedback === "unavailable" ? "Copy failed" : "Copy logs"}</button>
-              <button
-                type="button"
-                className="log-clear-button"
-                disabled={!logs.length}
-                title="Double-click to clear run logs"
-                aria-label="Clear logs. Double-click to clear."
-                onClick={clearLogs}
-              >
-                {clearPromptVisible ? "Double-click to clear" : "Clear logs"}
-              </button>
+              {clearConfirmOpen ? (
+                <span
+                  className="log-clear-confirm"
+                  role="group"
+                  aria-label="Confirm clearing run logs"
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") return;
+                    event.stopPropagation();
+                    cancelClearLogs();
+                  }}
+                >
+                  <span className="log-clear-confirm-copy">{clearLogsQuestion(logs.length)}</span>
+                  <button ref={clearCancelRef} type="button" className="log-copy-button" onClick={cancelClearLogs}>Keep logs</button>
+                  <button type="button" className="log-clear-button log-clear-confirm-button" onClick={confirmClearLogs}>Clear</button>
+                </span>
+              ) : (
+                <button
+                  ref={clearButtonRef}
+                  type="button"
+                  className="log-clear-button"
+                  disabled={!logs.length}
+                  onClick={requestClearLogs}
+                >
+                  Clear logs
+                </button>
+              )}
             </div>
           </div>
           <pre tabIndex={0} aria-label="Run log output">
@@ -237,6 +284,9 @@ export function BottomPanel({ status, logs, meshStatus, solverStatus, studySumma
         <div className="status-primary">
           <div className="status-groups" aria-label="Simulation status">
             <span className={`status-state ${healthy}`}><i /><span className="status-state-label">{displayStatus}</span></span>
+            {/* The latest message, not just the derived state word beside it. A polite live
+                region; during a solve it holds one line instead of reading every ETA tick. */}
+            <span className="status-message" role="status" aria-live="polite" aria-atomic="true" title={liveStatus || undefined}>{liveStatus}</span>
             {studySummary ? <span className="status-summary">{studySummary}</span> : null}
           </div>
         </div>
@@ -328,6 +378,29 @@ export function statusForDisplay(status: string, solverStatus: string) {
 }
 
 /**
+ * What to announce when a solve settles. Only a transition out of "Running" says
+ * anything; every other change is carried by the latest message alone.
+ */
+export function solveOutcomeAnnouncement(previousSolverStatus: string, solverStatus: string): string | null {
+  if (previousSolverStatus !== "Running" || solverStatus === "Running") return null;
+  if (solverStatus === "Complete") return "Simulation complete. Results are ready.";
+  if (solverStatus === "Error") return "Simulation failed.";
+  return "Simulation stopped.";
+}
+
+/**
+ * The text of the status bar's live region: the latest message, held at one line
+ * while a solve runs (progress messages arrive every tick and would flood a screen
+ * reader), and prefixed with the solve outcome while the message that was current
+ * when the solve ended is still the latest one.
+ */
+export function liveStatusMessage(status: string, solverStatus: string, solveOutcome: { text: string; status: string } | null): string {
+  if (solverStatus === "Running") return "Simulation running.";
+  if (solveOutcome && solveOutcome.status === status) return status ? `${solveOutcome.text} ${status}` : solveOutcome.text;
+  return status;
+}
+
+/**
  * The status bar's one-line study summary. Counts only what the user placed;
  * modal studies take no loads, so their load count is left out.
  */
@@ -342,8 +415,17 @@ export function studySummaryLine(study: Pick<Study, "type" | "constraints" | "lo
   return `${supports}, ${count(study.loads.length, "load")}`;
 }
 
-export function resolveLogClearIntent(clickDetail: number, armed: boolean): "confirm" | "clear" {
-  return armed || clickDetail >= 2 ? "clear" : "confirm";
+/**
+ * A deliberate single activation: `detail` is 1 for a click and 0 for keyboard
+ * activation; a double-click's follow-up clicks report 2 and up and are ignored, so
+ * no double-click can both open the clear confirm and accept it.
+ */
+export function isDeliberateClick(clickDetail: number): boolean {
+  return clickDetail <= 1;
+}
+
+export function clearLogsQuestion(lineCount: number): string {
+  return `Clear ${lineCount.toLocaleString()} log ${lineCount === 1 ? "line" : "lines"}?`;
 }
 
 export type WorkspaceLogLevel = "OK" | "ERR" | "INFO";

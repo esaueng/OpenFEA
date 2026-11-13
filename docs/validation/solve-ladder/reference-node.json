@@ -92,25 +92,25 @@
         "preconditioner": "jacobi (modal default)"
       },
       "timings": {
-        "generateMs": 306.0363550000002,
-        "assembleMs": 986.7482399999999,
-        "totalSolveMs": 63889.001478000006
+        "generateMs": 317.433815,
+        "assembleMs": 712.4642180000001,
+        "totalSolveMs": 62208.734663999996
       },
       "solver": {
         "subspaceIterations": 12,
         "convergedModeCount": 3,
         "frequenciesHz": [
-          1779.801749641491,
-          1787.6954344088983,
-          3655.7501288942376
+          1779.8017496415107,
+          1787.6954344089468,
+          3655.7501288942394
         ]
       },
       "coreResultValid": true,
       "heap": {
         "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
-        "peakBytes": 165358823
+        "peakBytes": 174346971
       },
-      "measuredAt": "2026-10-21T16:07:42.372Z"
+      "measuredAt": "2026-11-13T00:14:53.775Z"
     },
     "block-tet4-30k-dynamic": {
       "ok": true,
@@ -241,25 +241,25 @@
         "preconditioner": "jacobi (modal default)"
       },
       "timings": {
-        "generateMs": 88.12945800001035,
-        "assembleMs": 565.4706520000036,
-        "totalSolveMs": 111424.492689
+        "generateMs": 78.8362780000025,
+        "assembleMs": 497.4385120000006,
+        "totalSolveMs": 97684.843478
       },
       "solver": {
         "subspaceIterations": 10,
         "convergedModeCount": 3,
         "frequenciesHz": [
-          1768.0218633294944,
-          1768.3356247775023,
-          3609.4394530854793
+          1768.021863329643,
+          1768.3356247774589,
+          3609.4394530854984
         ]
       },
       "coreResultValid": true,
       "heap": {
         "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
-        "peakBytes": 141756751
+        "peakBytes": 142542595
       },
-      "measuredAt": "2026-10-21T16:10:29.112Z"
+      "measuredAt": "2026-11-13T00:16:31.541Z"
     },
     "block-tet10-30k-dynamic": {
       "ok": true,
@@ -390,23 +390,25 @@
         "preconditioner": "jacobi (modal default)"
       },
       "timings": {
-        "generateMs": 206.3615689999424,
-        "assembleMs": 767.8768900000141,
-        "totalSolveMs": 1448055.4389630002
+        "generateMs": 321.845908999996,
+        "assembleMs": 756.6813529999927,
+        "totalSolveMs": 412092.4994539999
       },
       "solver": {
-        "subspaceIterations": 30,
-        "convergedModeCount": 1,
+        "subspaceIterations": 7,
+        "convergedModeCount": 3,
         "frequenciesHz": [
-          107.30048297922382
+          17.1553172969058,
+          18.028401617975963,
+          107.30048297846444
         ]
       },
       "coreResultValid": true,
       "heap": {
         "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
-        "peakBytes": 148706043
+        "peakBytes": 149661415
       },
-      "measuredAt": "2026-10-21T16:36:41.541Z"
+      "measuredAt": "2026-11-13T00:23:23.960Z"
     },
     "slender-tet4-30k-dynamic": {
       "ok": true,
@@ -537,23 +539,25 @@
         "preconditioner": "jacobi (modal default)"
       },
       "timings": {
-        "generateMs": 53.33667699992657,
-        "assembleMs": 439.75968400016427,
-        "totalSolveMs": 4106963.6863989998
+        "generateMs": 97.78371300001163,
+        "assembleMs": 430.3869179999456,
+        "totalSolveMs": 885646.929236
       },
       "solver": {
-        "subspaceIterations": 30,
-        "convergedModeCount": 1,
+        "subspaceIterations": 7,
+        "convergedModeCount": 3,
         "frequenciesHz": [
-          102.10735018855011
+          16.32419905346998,
+          16.324793841149475,
+          102.10735018474658
         ]
       },
       "coreResultValid": true,
       "heap": {
         "method": "process.memoryUsage heapUsed+arrayBuffers (sampled at progress events)",
-        "peakBytes": 132580935
+        "peakBytes": 133719739
       },
-      "measuredAt": "2026-10-21T17:52:40.431Z"
+      "measuredAt": "2026-11-13T00:38:09.707Z"
     },
     "slender-tet10-30k-dynamic": {
       "ok": true,

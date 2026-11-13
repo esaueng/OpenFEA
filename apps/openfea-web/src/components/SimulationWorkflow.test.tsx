@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
 import {
-  CreateSimulationModal,
   CreateSimulationScreen,
   MaterialLibraryModal,
   densityForEditor,
@@ -12,9 +11,11 @@ import {
 
 describe("static simulation workflow components", () => {
   test("renders static, dynamic, and modal simulation choices", () => {
-    const html = renderToStaticMarkup(<CreateSimulationModal open onCreateStatic={vi.fn()} onCreateDynamic={vi.fn()} onCreateModal={vi.fn()} onCreateThermal={vi.fn()} onClose={vi.fn()} />);
+    const html = renderToStaticMarkup(<CreateSimulationScreen onCreateStatic={vi.fn()} onCreateDynamic={vi.fn()} onCreateModal={vi.fn()} onCreateThermal={vi.fn()} />);
 
-    expect(html).toContain("Create Simulation");
+    expect(html).toContain(">Choose simulation type</h2>");
+    expect(html).toContain("Need help?");
+    expect(html).not.toMatch(/Create Simulation|Choose Simulation Type|Need Help\?/);
     expect(html).toContain("Static Analysis");
     expect(html).toContain("Dynamic Analysis");
     expect(html).toContain("Modal Analysis");
@@ -23,14 +24,14 @@ describe("static simulation workflow components", () => {
     expect(html).toContain("Dynamic stress frame sequence example");
     expect(html).toContain("Time-dependent");
     expect(html).toContain("Choose simulation type");
-    expect(html).toContain(">Create Simulation</button>");
+    expect(html).toContain(">Create simulation</button>");
     expect(html).not.toContain("Incompressible");
     expect(html).not.toContain("Coming soon");
     expect(html).not.toContain("Create Dynamic");
   });
 
   test("renders simulation showcase renders with native overlays instead of inline SVG images", () => {
-    const html = renderToStaticMarkup(<CreateSimulationModal open onCreateStatic={vi.fn()} onCreateDynamic={vi.fn()} onCreateModal={vi.fn()} onCreateThermal={vi.fn()} onClose={vi.fn()} />);
+    const html = renderToStaticMarkup(<CreateSimulationScreen onCreateStatic={vi.fn()} onCreateDynamic={vi.fn()} onCreateModal={vi.fn()} onCreateThermal={vi.fn()} />);
 
     expect(html).toContain("analysis-showcase analysis-showcase--compact analysis-showcase--static");
     expect(html).toContain("analysis-showcase analysis-showcase--large analysis-showcase--static");
@@ -55,7 +56,7 @@ describe("static simulation workflow components", () => {
     expect(html).toContain("Dynamic Analysis");
     expect(html).toContain("Modal Analysis");
     expect(html).toContain("Steady Thermal");
-    expect(html).toContain(">Create Simulation</button>");
+    expect(html).toContain(">Create simulation</button>");
     expect(html).not.toContain("Close create simulation");
   });
 

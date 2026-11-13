@@ -19,6 +19,8 @@ import { formatDeformationFactor, type ResolvedDeformation } from "../resultDefo
 import { fieldWithOwnValueRange, formatResultValue } from "../resultFields";
 import { unitsForLoadType } from "../loadPreview";
 import { MODAL_DIRECTIONS, PROJECTED_PARTICIPATION_NOTE, cumulativeParticipation, formatMassKg, formatMassPercent, formatMassTripleKg } from "../modalMassParticipation";
+import { TET4_BENDING_LOCKING_NOTE, tet4BendingLockingApplies } from "../runAdvisories";
+import { boundingBoxAspectRatio, elementOrderForStudy, estimateAnalysisForStudy, type EstimateElementOrder } from "../lib/runTimeEstimate";
 import type { CapturedBoundaryView, CapturedResultView, ResultViewCaptures } from "./captureResultViews";
 import {
   displayModelForUnits,
@@ -245,9 +247,12 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
   const firstMode = summary.modes[0];
   const lastMode = summary.modes[summary.modes.length - 1];
   const modeField = fieldForReport(fields, "mode_shape", input.captures.displacement);
-  const assessment: FailureAssessment = summary.convergedModeCount === summary.requestedModeCount
-    ? { status: "pass", title: "Requested modes converged", message: `All ${summary.requestedModeCount} requested modes met the scaled residual tolerance.` }
-    : { status: "warning", title: "Partial modal convergence", message: summary.warning ?? `${summary.convergedModeCount} of ${summary.requestedModeCount} requested modes converged.` };
+  const precisionLimit = summary.diagnostics?.find((diagnostic) => diagnostic.id === "modal-precision-limit");
+  const assessment: FailureAssessment = summary.convergedModeCount < summary.requestedModeCount
+    ? { status: "warning", title: "Partial modal convergence", message: summary.warning ?? `${summary.convergedModeCount} of ${summary.requestedModeCount} requested modes converged.` }
+    : precisionLimit
+      ? { status: "warning", title: "Modal precision limit", message: precisionLimit.message }
+      : { status: "pass", title: "Requested modes converged", message: `All ${summary.requestedModeCount} requested modes met the scaled residual tolerance.` };
   const criticalLayerAxis = input.displayModel
     ? inferGlobalCriticalPrintAxis(input.study, input.displayModel.faces.map((face) => ({
         entityId: face.id,
@@ -255,9 +260,11 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
         ...(face.area ? { areaM2: face.area * 1e-6 } : {})
       })), input.displayModel)
     : undefined;
-  const diagnostics = new Set<string>((summary.diagnostics ?? []).map((diagnostic) => diagnostic.message));
+  const diagnostics = new Set<string>();
+  addSolverDiagnosticEntries(diagnostics, input.resultSummary);
   if (summary.warning) diagnostics.add(summary.warning);
   for (const warning of input.solverMeshSummary?.warnings ?? []) diagnostics.add(warning);
+  addElementFormulationNotes(diagnostics, input);
   const modalFigure = figureData("Normalized mode shape", modeField, input.captures.displacement, fields, input);
   return {
     pageFormat: input.unitSystem === "US" ? "letter" : "a4",
@@ -780,21 +787,31 @@ function legendValueWithUnits(value: number, units: string): string {
   return hasResultUnit(units) ? `${formatted} ${units}` : formatted;
 }
 
-function collectDiagnostics(input: BuildReportDataInput, summary: ResultSummary, fields: ResultField[]): string[] {
-  const entries = new Set<string>();
-  for (const diagnostic of summary.diagnostics ?? []) {
+/**
+ * Adds each solver diagnostic's message plus the structured payloads behind
+ * it. Solver-confessed approximations (modal Tet10→Tet4 projection, partial
+ * convergence, precision limits) are computed but historically never displayed, so surface the
+ * payloads, not just the free-text message. Reads the summary as stored
+ * (before unit conversion), like solvedElementOrderForReport, and serves both
+ * the structural and the modal report: the projection is a modal-only path.
+ */
+function addSolverDiagnosticEntries(entries: Set<string>, storedSummary: ResultSummary): void {
+  for (const diagnostic of storedSummary.diagnostics ?? []) {
     entries.add(diagnostic.message);
-    // Solver-confessed approximations (modal Tet10→Tet4 projection, partial
-    // convergence) are computed but historically never displayed. Surface the
-    // structured payloads, not just the free-text message.
-    const detail = diagnostic as { approximationWarning?: unknown; meshProjection?: unknown; partialConvergenceWarning?: unknown };
+    const detail = diagnostic as { approximationWarning?: unknown; meshProjection?: unknown; partialConvergenceWarning?: unknown; precisionLimitWarning?: unknown };
     if (typeof detail.approximationWarning === "string" && detail.approximationWarning) entries.add(detail.approximationWarning);
     if (typeof detail.partialConvergenceWarning === "string" && detail.partialConvergenceWarning) entries.add(detail.partialConvergenceWarning);
+    if (typeof detail.precisionLimitWarning === "string" && detail.precisionLimitWarning) entries.add(detail.precisionLimitWarning);
     if (detail.meshProjection && typeof detail.meshProjection === "object") {
       const projection = detail.meshProjection as { sourceElementOrder?: unknown; solveElementOrder?: unknown; reason?: unknown };
       entries.add(`Mesh projection for solve: ${String(projection.sourceElementOrder ?? "?")} → ${String(projection.solveElementOrder ?? "?")}${projection.reason ? ` (${String(projection.reason)})` : ""}. Results are computed on the projected mesh.`);
     }
   }
+}
+
+function collectDiagnostics(input: BuildReportDataInput, summary: ResultSummary, fields: ResultField[]): string[] {
+  const entries = new Set<string>();
+  addSolverDiagnosticEntries(entries, input.resultSummary);
   if (input.displayModel && shouldBlockPreviewResultsForDisplayModel(input.displayModel, summary, fields, input.study)) entries.add(PREVIEW_GEOMETRY_WARNING);
   const legacyWarning = legacyResultWarningForProvenance(summary.provenance);
   if (legacyWarning) entries.add(legacyWarning);
@@ -803,7 +820,36 @@ function collectDiagnostics(input: BuildReportDataInput, summary: ResultSummary,
     entries.add("Unit missing");
   }
   for (const warning of input.solverMeshSummary?.warnings ?? []) entries.add(warning);
+  addElementFormulationNotes(entries, input);
   return [...entries];
+}
+
+/**
+ * Element-formulation approximation (plan 036 Release A): linear tets lock in
+ * bending. Same rule and wording as the Run panel's non-blocking note.
+ */
+function addElementFormulationNotes(entries: Set<string>, input: BuildReportDataInput): void {
+  if (tet4BendingLockingApplies({
+    analysis: estimateAnalysisForStudy(input.study),
+    elementOrder: solvedElementOrderForReport(input.study, input.resultSummary),
+    aspectRatio: boundingBoxAspectRatio(input.displayModel?.dimensions)
+  })) entries.add(TET4_BENDING_LOCKING_NOTE);
+}
+
+/**
+ * The element order the result was solved with: a modal Tet4 projection or a
+ * Core Tet4 mesh source wins over what the study's mesh recorded. Reads the
+ * summary as stored (before unit conversion), whose diagnostics keep the
+ * solver's structured payloads.
+ */
+function solvedElementOrderForReport(study: Study, summary: ResultSummary): EstimateElementOrder {
+  const projected = (isModalResultSummary(summary) && summary.massParticipation?.computedOnProjectedModel === true)
+    || (summary.diagnostics ?? []).some((diagnostic) => {
+      const projection = (diagnostic as { meshProjection?: { solveElementOrder?: unknown } }).meshProjection;
+      return projection?.solveElementOrder === "Tet4";
+    });
+  if (projected || summary.provenance?.meshSource === "opencae_core_tet4") return "Tet4";
+  return elementOrderForStudy(study);
 }
 
 /**

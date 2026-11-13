@@ -13,6 +13,8 @@
 //   with a far more confusing error.
 // - Manifest missing (vite dev server / node): return {} so the Emscripten
 //   glue loads the raw .wasm itself (served from node_modules in dev).
+//   Production builds never take this path: they ship no raw .wasm, so an
+//   unreachable or missing manifest is reported as a clear error instead.
 //
 // The decompressed bytes are memoized per worker so repeated meshes (fresh
 // gmsh module per mesh — see @openfea/mesh-intake's loadGmshWasm) pay the
@@ -32,19 +34,36 @@ export async function gmshWasmModuleOptions(): Promise<Record<string, unknown>> 
 }
 
 async function loadCompressedWasmBinary(): Promise<ArrayBuffer | null> {
+  const production = import.meta.env?.PROD === true;
   const base = (import.meta.env?.BASE_URL as string | undefined) ?? "/";
   const manifestUrl = new URL(`${base.endsWith("/") ? base : `${base}/`}${MANIFEST_PATH}`, self.location.href);
   let manifestResponse: Response;
   try {
     manifestResponse = await fetch(manifestUrl, { credentials: "same-origin" });
-  } catch {
+  } catch (error) {
+    if (production) {
+      throw new Error(
+        `Could not load the gmsh meshing manifest (${manifestUrl.pathname}): ${error instanceof Error ? error.message : String(error)}. ` +
+          "Check the network connection and reload to retry meshing."
+      );
+    }
     return null; // No server to ask (tests) — let the glue use its default loader.
   }
-  if (!manifestResponse.ok) return null; // Dev server: raw .wasm is served directly.
+  if (!manifestResponse.ok) {
+    if (production) {
+      throw new Error(`Could not load the gmsh meshing manifest (${manifestUrl.pathname}: HTTP ${manifestResponse.status}); the deploy is broken or out of date.`);
+    }
+    return null; // Dev server: raw .wasm is served directly.
+  }
   // The vite dev server answers unknown paths with index.html + HTTP 200 (SPA
   // fallback), so a missing manifest must be detected by content type, not
   // status — otherwise .json() throws and dev meshing dies before it starts.
-  if (!(manifestResponse.headers.get("content-type") ?? "").includes("json")) return null;
+  if (!(manifestResponse.headers.get("content-type") ?? "").includes("json")) {
+    if (production) {
+      throw new Error(`The gmsh meshing manifest (${manifestUrl.pathname}) was not served as JSON; the deploy is broken or out of date.`);
+    }
+    return null;
+  }
   const manifest = (await manifestResponse.json()) as { wasm?: string; encoding?: string };
   if (!manifest.wasm) {
     throw new Error("gmsh wasm manifest (assets/gmsh-wasm.json) is present but has no `wasm` entry; the deploy is broken.");

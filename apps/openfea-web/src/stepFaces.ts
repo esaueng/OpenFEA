@@ -19,7 +19,8 @@
 // stepPreview's shared importer and caches registries per STEP content.
 import type { OcctMesh } from "occt-import-js";
 import type { DisplayFace } from "@openfea/schema";
-import { buildStepAttributionTessellation, type StepAttributionTessellation, type StepBodyBounds } from "@openfea/mesh-intake";
+import type { StepBodyBounds } from "@openfea/mesh-intake";
+import { buildStepAttributionTessellation, type StepAttributionTessellation } from "@openfea/mesh-intake/facetFaceAttribution";
 import {
   loadStepSurfacePreviewFallback,
   occtMeshesFromStepSurfacePreview,
@@ -31,6 +32,7 @@ import {
   stepDisplayCacheKey
 } from "./stepDisplayTessellation";
 import { readStepFileInDisplayWorker } from "./workers/stepDisplayWorkerClient";
+import { formatStepFaceAreaMm2 } from "./stepFaceLabels";
 
 export type StepFaceRecord = {
   /** Stable per-import id, global across meshes: "step-face-<k>". */
@@ -777,9 +779,9 @@ function displayFaceForRecord(face: StepFaceRecord, scale: number, offset: [numb
 function stepFaceLabel(face: StepFaceRecord): string {
   const ordinal = face.faceId.slice(STEP_FACE_ID_PREFIX.length);
   if (face.surfaceType === "cylindrical") {
-    return `${face.cylinder?.interior ? "Cylindrical hole wall" : "Cylindrical surface"} F${ordinal} (${formatAreaMm2(face.area)})`;
+    return `${face.cylinder?.interior ? "Cylindrical hole wall" : "Cylindrical surface"} F${ordinal} (${formatStepFaceAreaMm2(face.area)})`;
   }
-  if (face.surfaceType === "curved") return `Curved surface F${ordinal} (${formatAreaMm2(face.area)})`;
+  if (face.surfaceType === "curved") return `Curved surface F${ordinal} (${formatStepFaceAreaMm2(face.area)})`;
   const [nx, ny, nz] = face.avgNormal;
   const axes: Array<{ label: string; value: number }> = [
     { label: "+X", value: nx },
@@ -791,13 +793,7 @@ function stepFaceLabel(face: StepFaceRecord): string {
   ];
   const dominant = axes.sort((left, right) => right.value - left.value)[0];
   const orientation = dominant && dominant.value > 0.72 ? `${dominant.label} planar face` : "Planar face";
-  return `${orientation} F${ordinal} (${formatAreaMm2(face.area)})`;
-}
-
-function formatAreaMm2(area: number): string {
-  if (!Number.isFinite(area) || area <= 0) return "unknown area";
-  const rounded = area >= 100 ? Math.round(area) : Math.round(area * 10) / 10;
-  return `${rounded.toLocaleString()} mm²`;
+  return `${orientation} F${ordinal} (${formatStepFaceAreaMm2(face.area)})`;
 }
 
 function vertexAt(mesh: StepFaceRegistryMesh, index: number): [number, number, number] {

@@ -1,7 +1,9 @@
 import type { Study } from "@openfea/schema";
-import { AlertTriangle, Anchor, ArrowDownToLine, Box, ChartColumn, Grid3x3, Layers3, Play, type LucideIcon } from "lucide-react";
+import { AlertTriangle, Anchor, ArrowDownToLine, Box, ChartColumn, Check, Grid3x3, Layers3, Play, type LucideIcon } from "lucide-react";
 import { canNavigateToStep } from "../appShellState";
-import type { RunReadinessItem } from "../runReadiness";
+import { studyHasGeneratedMesh, type RunReadinessItem } from "../runReadiness";
+
+export { studyHasGeneratedMesh };
 
 export type StepId = "model" | "material" | "supports" | "loads" | "mesh" | "run" | "results";
 
@@ -38,6 +40,26 @@ const READINESS_STEP: Record<string, StepId> = {
   "Study valid": "run"
 };
 
+/** A thermal study fixes temperatures and applies heat, not supports and forces, so its
+ *  steps say so; the panels behind them already do. */
+const THERMAL_STEP_LABELS: Partial<Record<StepId, string>> = {
+  supports: "Temperatures",
+  loads: "Heat loads"
+};
+
+export function stepLabelForStudy(step: StepId, label: string, studyType: Study["type"]): string {
+  return studyType === "steady_state_thermal" ? THERMAL_STEP_LABELS[step] ?? label : label;
+}
+
+/** The step's accessible name: its label, whether it is done, then any blocker or notice.
+ *  The done state used to be a 2px green bar alone, so it was never announced. */
+export function stepAccessibleName(label: string, { complete, blockers, attention }: { complete: boolean; blockers?: readonly string[]; attention?: boolean }): string {
+  const name = complete ? `${label}, completed` : label;
+  if (blockers?.length) return `${name}: ${blockers.join(" ")}`;
+  if (attention) return `${name}: needs attention`;
+  return name;
+}
+
 export function readinessBlockersByStep(readiness: readonly RunReadinessItem[]): Partial<Record<StepId, string[]>> {
   const blockers: Partial<Record<StepId, string[]>> = {};
   for (const item of readiness) {
@@ -61,11 +83,13 @@ export function StepNav({ activeStep, study, hasResults, readiness = [], notices
     material: study.materialAssignments.length > 0 && !blockersByStep.material,
     supports: study.constraints.length > 0 && !blockersByStep.supports,
     loads: (study.type === "modal_analysis" || study.loads.length > 0) && !blockersByStep.loads,
-    mesh: study.meshSettings.status === "complete" && !blockersByStep.mesh,
+    mesh: studyHasGeneratedMesh(study) && !blockersByStep.mesh,
     run: hasResults,
     results: hasResults
   };
-  const visibleSteps = steps.filter((step) => study.type !== "modal_analysis" || step.id !== "loads");
+  const visibleSteps = steps
+    .filter((step) => study.type !== "modal_analysis" || step.id !== "loads")
+    .map((step) => ({ ...step, label: stepLabelForStudy(step.id, step.label, study.type) }));
 
   return (
     <nav className="step-nav" aria-label="Simulation workflow">
@@ -78,15 +102,15 @@ export function StepNav({ activeStep, study, hasResults, readiness = [], notices
           const isBlocked = !isComplete && Boolean(stepBlockers?.length);
           const notice = notices[step.id];
           const state = isComplete ? "done" : isBlocked ? "blocked" : "";
-          const attention = notice ? `${step.label}: needs attention` : undefined;
+          const accessibleName = stepAccessibleName(step.label, { complete: isComplete, blockers: stepBlockers, attention: Boolean(notice) });
           // A blocked step and the step carrying the workspace notice both get a warning
           // glyph after the label; an error notice takes the error tone.
           const flag = notice ?? (isBlocked ? "warning" : null);
           return (
             <li key={step.id} className="step-nav-item">
-              {/* State is the bar under the label: present and filled for done, accent for
-                  the current step, absent for steps still to do. Presence carries the state,
-                  not colour alone. */}
+              {/* State is the bar under the label (filled for done, accent for the current
+                  step, a hairline for steps still to do) plus a check glyph on done steps, so
+                  completion is carried by shape and the accessible name, not colour alone. */}
               <button
                 type="button"
                 className={["step-nav-step", state, isActive && "active"].filter(Boolean).join(" ")}
@@ -95,11 +119,12 @@ export function StepNav({ activeStep, study, hasResults, readiness = [], notices
                 aria-current={isActive ? "step" : undefined}
                 // Below the wide tier only the current step shows its label, so the title
                 // carries the name (or the blocker) on hover for the others.
-                title={stepBlockers?.length ? stepBlockers.join(" ") : attention ?? step.label}
-                aria-label={stepBlockers?.length ? `${step.label}: ${stepBlockers.join(" ")}` : attention}
+                title={stepBlockers?.length ? stepBlockers.join(" ") : notice ? `${step.label}: needs attention` : step.label}
+                aria-label={accessibleName === step.label ? undefined : accessibleName}
               >
                 <step.icon className="step-nav-icon" size={16} strokeWidth={1.9} aria-hidden="true" />
                 <span className="step-nav-label">{step.label}</span>
+                {isComplete && <Check className="step-nav-check" size={10} strokeWidth={3} aria-hidden="true" />}
                 {flag && <AlertTriangle className={`step-nav-flag ${flag}`} size={13} strokeWidth={2.25} aria-hidden="true" />}
               </button>
             </li>

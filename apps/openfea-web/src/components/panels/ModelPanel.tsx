@@ -1,7 +1,8 @@
 /* Step panel extracted from RightPanel.tsx: file move only, no behavior change.
    Shared contracts live in ./RightPanelProps; panels never import each other. */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { effectiveMaterialProperties, materialCatalog } from "@openfea/materials";
 import { AlertTriangle, ArrowDown, Atom, Eye, Factory, RotateCcw, Upload, Wrench } from "lucide-react";
 
 import { GEOMETRY_FILE_ACCEPT, PREVIEW_ONLY_GEOMETRY_NOTICE, STL_PREVIEW_SCOPE_NOTE, SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../../geometryFormats";
@@ -12,7 +13,7 @@ import { type SampleAnalysisType, type SampleModelId } from "../../lib/api";
 import { stepGeometryMetadataForProject } from "../../stepGeometryState";
 
 import { formatModelOrientation, getModelOrientation } from "../../modelOrientation";
-import { shouldShowSampleModelPicker } from "../../modelPanelState";
+import { massGramsForVolume, sampleSolidVolumeMm3, sampleSolverGeometryLabel, shouldShowSampleModelPicker } from "../../modelPanelState";
 
 import { formatMass, formatVolume } from "../../unitDisplay";
 
@@ -23,19 +24,16 @@ import { SAMPLE_OPTIONS, sampleOptionFor } from "../sampleOptions";
 
 import type { RightPanelProps } from "./RightPanelProps";
 import { Panel } from "./PanelChrome";
-import { Callout, Collapsible, ConceptCard, HelpLabel, Info, ModelDimensions, SectionTitle, SupportIcon, formatEquivalentForce } from "./PanelChrome";
+import { Callout, Collapsible, ConceptCard, HelpLabel, Info, ModelDimensions, SectionTitle, SupportIcon, formatEquivalentForce, materialForId } from "./PanelChrome";
 export function ModelPanel({ project, displayModel, study, showDimensions, sampleModel, sampleAnalysisType = "static_stress", onRotateModel, onResetModelOrientation, onLoadSample, onUploadModel, onRepairModel, isRepairingModel = false, modelBodies = [] }: RightPanelProps) {
-  const [confirmSampleLoad, setConfirmSampleLoad] = useState(false);
   const [pendingSampleModel, setPendingSampleModel] = useState<SampleModelId>(sampleModel);
   const [pendingAnalysisType, setPendingAnalysisType] = useState<SampleAnalysisType>(sampleAnalysisType);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
     setPendingSampleModel(sampleModel);
-    setConfirmSampleLoad(false);
   }, [sampleModel]);
   useEffect(() => {
     setPendingAnalysisType(sampleAnalysisType);
-    setConfirmSampleLoad(false);
   }, [sampleAnalysisType]);
   const geometry = project.geometryFiles[0];
   const isBlankProject = !geometry;
@@ -52,13 +50,22 @@ export function ModelPanel({ project, displayModel, study, showDimensions, sampl
   const sampleAnalysis = sampleAnalysisOptionFor(pendingAnalysisType);
   const sampleAnalysisLabel = sampleAnalysis.fullLabel;
   const sampleForceLabel = formatEquivalentForce(500, project.unitSystem);
-  // The beam summary describes the structural body only. The separate
-  // 0.498 kg payload is reported below as a load and must not be counted as
-  // beam material mass.
-  const sampleSummaryVolumeMm3 = pendingSampleModel === "plate" ? 28_590 : 41_280;
-  const sampleSummaryMassG = pendingSampleModel === "plate" ? 77 : 111;
+  // Volume and mass describe the solid the solver meshes (the sample's
+  // procedural or structured-block geometry, not a STEP file) at the assigned
+  // material's effective density. The beam's separate 0.498 kg payload is
+  // reported below as a load and is not counted here.
+  const solverGeometry = displayModel.coreCloudGeometry;
+  const solverGeometryLabel = sampleSolverGeometryLabel(solverGeometry);
+  const modelVolumeMm3 = sampleSolidVolumeMm3(solverGeometry);
+  const modelMaterials = useMemo(() => materialCatalog(project.customMaterials), [project.customMaterials]);
+  const modelAssignment = study.materialAssignments.find((assignment) => !assignment.bodyId) ?? study.materialAssignments[0];
+  const modelMaterial = modelAssignment ? materialForId(modelAssignment.materialId, modelMaterials) : undefined;
+  const modelDensity = modelMaterial ? effectiveMaterialProperties(modelMaterial, modelAssignment?.parameters ?? {}).density : undefined;
+  const modelMassG = modelVolumeMm3 !== undefined && modelDensity !== undefined ? massGramsForVolume(modelVolumeMm3, modelDensity) : undefined;
   const sampleLoadTitle = pendingSampleModel === "plate" ? `Payload mass · ${formatMass(0.497664, "kg", project.unitSystem)}` : `Force · ${sampleForceLabel}`;
   const orientation = getModelOrientation(displayModel);
+  // The axis buttons only move the camera, so the model angles stay at zero.
+  // Reset appears only for a project saved with a rotated model.
   const hasCustomOrientation = orientation.x !== 0 || orientation.y !== 0 || orientation.z !== 0;
   const preconfigured =
     pendingSampleModel === "bracket"
@@ -93,28 +100,25 @@ export function ModelPanel({ project, displayModel, study, showDimensions, sampl
           callout: preconfigured.callout
         };
 
+  /* Loading a sample replaces the model. The workspace routes it through the
+     geometry-replacement dialog, which names the setup that will be cleared and
+     opens with focus on "Keep the current model", so a double-click here cannot
+     discard supports or loads on its own. */
   function handleLoadSampleClick() {
-    if (!confirmSampleLoad) {
-      setConfirmSampleLoad(true);
-      return;
-    }
-    setConfirmSampleLoad(false);
     onLoadSample(pendingSampleModel, pendingAnalysisType);
   }
 
   function handleSampleSelect(sample: SampleModelId) {
     setPendingSampleModel(sample);
-    setConfirmSampleLoad(false);
   }
 
   function handleSampleOpen(sample: SampleModelId) {
     setPendingSampleModel(sample);
-    setConfirmSampleLoad(true);
+    onLoadSample(sample, pendingAnalysisType);
   }
 
   function handleAnalysisSelect(analysisType: SampleAnalysisType) {
     setPendingAnalysisType(analysisType);
-    setConfirmSampleLoad(false);
   }
 
   const uploadInput = (
@@ -184,8 +188,9 @@ export function ModelPanel({ project, displayModel, study, showDimensions, sampl
         <Info label="Faces" value={String(faceCount)} />
         {showSampleModelPicker && (
           <>
-            <Info label="Volume" value={formatVolume(sampleSummaryVolumeMm3, "mm^3", project.unitSystem)} />
-            <Info label="Mass" value={formatMass(sampleSummaryMassG, "g", project.unitSystem)} />
+            {solverGeometryLabel && <Info label="Solved geometry" value={solverGeometryLabel} />}
+            {modelVolumeMm3 !== undefined && <Info label="Volume" value={formatVolume(modelVolumeMm3, "mm^3", project.unitSystem)} />}
+            {modelMassG !== undefined && <Info label="Mass" value={formatMass(modelMassG, "g", project.unitSystem)} />}
             <Info label="Sample analysis" value={sampleAnalysisLabel} />
           </>
         )}
@@ -208,10 +213,12 @@ export function ModelPanel({ project, displayModel, study, showDimensions, sampl
             {axis.toUpperCase()}
           </button>
         ))}
-        <button className="secondary" type="button" onClick={onResetModelOrientation} disabled={!hasCustomOrientation} title="Reset model orientation">
-          <RotateCcw size={15} />
-          Reset
-        </button>
+        {hasCustomOrientation && (
+          <button className="secondary" type="button" onClick={onResetModelOrientation} title="Reset model orientation">
+            <RotateCcw size={15} />
+            Reset
+          </button>
+        )}
       </div>
       <p className="orientation-readout">{formatModelOrientation(displayModel)}</p>
       {!isBlankProject && !isUploadedProject && (
@@ -222,6 +229,9 @@ export function ModelPanel({ project, displayModel, study, showDimensions, sampl
             <ConceptCard icon={sampleSetup.actionIcon} title={sampleSetup.actionTitle} detail={sampleSetup.actionDetail} tone="accent" />
           </div>
           <Callout>{sampleSetup.callout}</Callout>
+          {solverGeometry?.kind === "sample_procedural" && (
+            <Callout>The solver meshes a simplified procedural bracket (base plate, upright, rib and drilled bores) rather than a STEP file, so volume, mass and results describe that shape.</Callout>
+          )}
         </>
       )}
       {!isBlankProject && uploadAction}
@@ -255,16 +265,10 @@ export function ModelPanel({ project, displayModel, study, showDimensions, sampl
                 </button>
               ))}
             </div>
-            <button
-              className={confirmSampleLoad ? "primary wide" : "secondary wide"}
-              type="button"
-              onClick={handleLoadSampleClick}
-              title={confirmSampleLoad ? "Click again to reload the sample project" : "Prepare to reload the sample project"}
-            >
+            <button className="secondary wide" type="button" onClick={handleLoadSampleClick} title={`Reload ${sampleLabel} as ${sampleAnalysisLabel}`}>
               <RotateCcw size={16} />
-              {confirmSampleLoad ? "Click again to load sample" : `Load ${sampleAnalysis.label.toLowerCase()} sample`}
+              {`Load ${sampleAnalysis.label.toLowerCase()} sample`}
             </button>
-            {confirmSampleLoad && <span className="panel-copy confirm-copy">This will reload {sampleLabel} as {sampleAnalysisLabel} and reset the sample setup.</span>}
           </div>
         </Collapsible>
       )}

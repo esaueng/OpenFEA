@@ -3,12 +3,17 @@ import type { StudyRun } from "@openfea/schema";
 
 /**
  * In-memory local run store: run records, capped bookkeeping, and the
- * EventSource-like replay adapter for in-browser solves. Extracted from
+ * replay subscription for in-browser solves. Extracted from
  * lib/api.ts (which re-exports this module's public surface) so run-bus
  * changes do not touch project CRUD, mesh orchestration, or scheduling.
  */
 
 export type LocalRunStatus = "running" | "complete" | "failed" | "cancelled";
+
+/** A live subscription to an in-browser run's events. Runs never leave the browser, so no network stream sits behind it. */
+export interface RunSubscription {
+  close(): void;
+}
 
 export interface LocalRunRecord {
   runId: string;
@@ -99,11 +104,11 @@ export function finishLocalRun(
 }
 
 /**
- * EventSource-like adapter over a local run record: replays the buffered
- * events asynchronously (matching EventSource delivery semantics), then
- * streams live solver-driven events until closed.
+ * Subscription over a local run record: replays the buffered events
+ * asynchronously (never inside the subscribe call), then delivers live
+ * solver-driven events until closed.
  */
-export function subscribeToLocalRunRecord(record: LocalRunRecord, onEvent: (event: RunEvent) => void): EventSource {
+export function subscribeToLocalRunRecord(record: LocalRunRecord, onEvent: (event: RunEvent) => void): RunSubscription {
   let closed = false;
   const listener = (event: RunEvent) => {
     if (!closed) onEvent(event);
@@ -123,7 +128,7 @@ export function subscribeToLocalRunRecord(record: LocalRunRecord, onEvent: (even
       globalThis.clearTimeout(replayTimer);
       record.listeners.delete(listener);
     }
-  } as EventSource;
+  };
 }
 
 export function syntheticRunErrorEvent(runId: string, message: string): RunEvent {

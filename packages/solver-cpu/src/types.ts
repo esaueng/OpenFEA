@@ -81,6 +81,14 @@ export type ModalCpuDiagnostics = {
   tolerance: number;
   totalMass: number;
   partialConvergenceWarning?: string;
+  /**
+   * Modes accepted at their double-precision residual floor because the
+   * requested tolerance lies below it (slender, finely meshed parts). Each
+   * scaledResidual is still the measured value; residualFloor is the
+   * dimensionless gamma_n rounding bound it was accepted against.
+   */
+  precisionLimitedModes?: Array<{ modeIndex: number; scaledResidual: number; residualFloor: number }>;
+  precisionLimitWarning?: string;
   approximationWarning?: string;
   meshProjection?: {
     sourceElementOrder: "Tet10";
@@ -120,7 +128,16 @@ export type CpuSolverDiagnostics = {
   maxVonMisesStress: number;
   solverMode?: "dense" | "sparse";
   iterations?: number;
+  /** For sparse solves, true only when CG's recomputed true residual met tolerance. */
   converged?: boolean;
+  /** Sparse CG: true relative residual ‖b − Ax‖/‖b‖ of the reduced system, the quantity `converged` is gated on. */
+  trueRelativeResidual?: number;
+  /** Sparse CG: recursively updated relative residual at termination; can drift below the true residual. */
+  recursiveRelativeResidual?: number;
+  /** Sparse CG: restart cycles run to recover from recursive-residual drift. */
+  trueResidualRestarts?: number;
+  /** Present when the true residual stayed above tolerance; results are usable but less accurate than requested. */
+  partialConvergenceWarning?: string;
   matrixRows?: number;
   matrixNonZeros?: number;
   preconditioner?: "none" | "jacobi" | "ssor";

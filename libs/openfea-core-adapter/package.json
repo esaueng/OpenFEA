@@ -13,7 +13,8 @@
     "@openfea/solve-pipeline": "workspace:*",
     "@openfea/solver-cpu": "workspace:*",
     "@openfea/solver-webgpu": "workspace:*",
-    "@openfea/study-core": "workspace:*"
+    "@openfea/study-core": "workspace:*",
+    "@openfea/units": "workspace:*"
   },
   "license": "Apache-2.0"
 }

@@ -774,7 +774,8 @@ describe("api", () => {
     });
     const results = await getResults(response.run.id);
 
-    expect(response.streamUrl).toMatch(/^local:run-local-/);
+    expect(response.run.id).toMatch(/^run-local-/);
+    expect(response).not.toHaveProperty("streamUrl");
     expect(fetchMock.mock.calls.every(([input]) => !String(input).includes("/api/cloud-core"))).toBe(true);
     expect(completed.type).toBe("complete");
     // The migration alias dispatches to the actual in-browser CPU solver and
@@ -844,7 +845,8 @@ describe("api", () => {
     const results = await getResults(response.run.id);
 
     expect(healthLogs).toEqual([]);
-    expect(response.streamUrl).toMatch(/^local:run-local-/);
+    expect(response.run.id).toMatch(/^run-local-/);
+    expect(response).not.toHaveProperty("streamUrl");
     expect((response.run as { solverBackend?: string }).solverBackend).toBe("opencae-core-sparse-tet");
     expect(seen.map((event) => event.message).join(" ")).toContain("OpenFEA Core");
     expect(results.summary.provenance?.solver).toBe("opencae-core-sparse-tet");
@@ -897,7 +899,8 @@ describe("api", () => {
     await vi.waitFor(() => expect(seen.some((event) => event.type === "complete")).toBe(true), { timeout: 45000 });
     source.close();
 
-    expect(response.streamUrl).toMatch(/^local:run-local-/);
+    expect(response.run.id).toMatch(/^run-local-/);
+    expect(response).not.toHaveProperty("streamUrl");
     expect((response.run as { solverBackend?: string }).solverBackend).toBe("opencae-core-sparse-tet");
     expect(fetchMock).not.toHaveBeenCalled();
     // The persisted study keeps its non-choice; only the run's dispatch copy is stamped local.

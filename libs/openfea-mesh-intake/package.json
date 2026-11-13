@@ -4,13 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./bracketGeo": "./src/bracketGeo.ts",
+    "./coreModelFromMesh": "./src/coreModelFromMesh.ts",
+    "./elevateArtifact": "./src/elevateArtifact.ts",
+    "./facetFaceAttribution": "./src/facetFaceAttribution.ts"
   },
   "dependencies": {
     "@loumalouomega/gmsh-wasm": "0.4.0",
     "@openfea/core": "workspace:*",
     "@openfea/materials": "workspace:*",
-    "@openfea/solve-pipeline": "workspace:*"
+    "@openfea/solve-pipeline": "workspace:*",
+    "@openfea/units": "workspace:*"
   },
   "devDependencies": {
     "@openfea/core-adapter": "workspace:*",

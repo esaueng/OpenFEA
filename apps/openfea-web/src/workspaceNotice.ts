@@ -32,6 +32,12 @@ export interface WorkspaceNoticeInputs {
    * new key so the banner re-appears instead of staying suppressed.
    */
   resultsOutdatedSequence?: number;
+  /**
+   * Whether the study's mesh is complete. An edit that clears the mesh leaves
+   * nothing to re-run until it is regenerated, so the outdated-results notice
+   * then points at Mesh rather than Run. Omitted means "assume complete".
+   */
+  meshReady?: boolean;
   /** A consequence of opening a file the user must act on, e.g. a mesh that was not restored. */
   openNote?: string | null;
   dismissedKey: string | null;
@@ -43,7 +49,7 @@ export function workspaceNoticeFor(inputs: WorkspaceNoticeInputs): WorkspaceNoti
   return notice;
 }
 
-function rawNoticeFor({ importError, meshError, meshing, runError, solverRunning, resultsOutdatedBy, resultsOutdatedSequence, openNote }: WorkspaceNoticeInputs): WorkspaceNotice | null {
+function rawNoticeFor({ importError, meshError, meshing, runError, solverRunning, resultsOutdatedBy, resultsOutdatedSequence, meshReady = true, openNote }: WorkspaceNoticeInputs): WorkspaceNotice | null {
   if (importError) {
     return { key: `import:${importError}`, tone: "error", title: "Model import failed", message: importError, step: "model", stepLabel: "Model" };
   }
@@ -61,9 +67,9 @@ function rawNoticeFor({ importError, meshError, meshing, runError, solverRunning
       key: `outdated:${resultsOutdatedSequence ?? 0}:${resultsOutdatedBy}`,
       tone: "warning",
       title: "Results outdated",
-      message: `${resultsOutdatedBy.replace(/\.?$/, ".")} The results shown are from before this change and cannot be reported or exported. Re-run to update them.`,
-      step: "run",
-      stepLabel: "Run"
+      message: `${resultsOutdatedBy.replace(/\.?$/, ".")} The results shown are from before this change and cannot be reported or exported. ${meshReady ? "Re-run to update them." : "Regenerate the mesh, then re-run to update them."}`,
+      // "Go to Run" dead-ended when the same edit had also cleared the mesh.
+      ...(meshReady ? { step: "run" as const, stepLabel: "Run" } : { step: "mesh" as const, stepLabel: "Mesh" })
     };
   }
   return null;

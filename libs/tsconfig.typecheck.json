@@ -1,0 +1,5 @@
+{
+  // `pnpm typecheck` entry for libs. ESLint's project service keeps using
+  // tsconfig.json so every lib file stays typed for lint.
+  "extends": "./tsconfig.json"
+}

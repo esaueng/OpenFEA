@@ -146,6 +146,8 @@ export interface RightPanelProps {
   showWorstMeshElements?: boolean;
   onShowWorstMeshElementsChange?: (show: boolean) => void;
   onRunMeshConvergence?: (caseId: string, probe: ConvergenceProbe) => void;
+  /** Stops a running convergence ladder (its in-flight mesh or solve worker); no record is saved. */
+  onCancelMeshConvergence?: () => void;
   convergenceBusy?: boolean;
   convergenceProgress?: string;
   onUpdateSolverSettings?: (settings: SolverSettingsPatch) => void;
@@ -158,6 +160,8 @@ export interface RightPanelProps {
   runReadiness: RunReadinessItem[];
   /** True while report figures are captured through the viewer; result-mode controls hold (2026-09 review D15). */
   resultControlsBusy?: boolean;
+  /** True when the study changed after the shown results were computed; the verdict and headline read as outdated. */
+  resultsOutdated?: boolean;
   /** Lets a panel commit pending work when the user presses Next (Material applies the previewed selection, 2026-09 review F3). */
   registerBeforeNext?: (handler: (() => void) | null) => void;
   resultFrameIndex?: number;

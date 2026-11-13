@@ -204,7 +204,7 @@ function responseWithPhysicalDynamicReactions(fixture: GoldenFixture, model: Ope
   for (let node = 0; node < nodalMass.length; node += 1) {
     for (let axis = 0; axis < 3; axis += 1) {
       const dof = node * 3 + axis;
-      reaction[axis] += nodalMass[node]! * (frame.acceleration.values[dof]! + solved.diagnostics.rayleighAlpha * frame.velocity.values[dof]!);
+      reaction[axis]! += nodalMass[node]! * (frame.acceleration.values[dof]! + solved.diagnostics.rayleighAlpha * frame.velocity.values[dof]!);
     }
   }
   const magnitude = Math.hypot(...reaction);
@@ -271,8 +271,20 @@ function additiveKeysAfterRecordedRunner(path: string): string[] {
   // connection assembly diagnostics (always zero-unmatched on these
   // single-body fixtures; surfaced so partial contact matches cannot solve
   // silently). Runner 0.1.6 predates all three; they are additive metadata.
+  // CG true-residual diagnostics (the recomputed ‖b − Ax‖/‖b‖, the recursive
+  // residual CG stopped on, restart count and a partial-convergence warning)
+  // are additive too; `converged` and the recorded values are still compared.
   if (/^response\.diagnostics\[\d+\]$/u.test(path)) {
-    return ["estimatedMatrixBytes", "preconditioner", "connections", "truncation"];
+    return [
+      "estimatedMatrixBytes",
+      "preconditioner",
+      "connections",
+      "truncation",
+      "trueRelativeResidual",
+      "recursiveRelativeResidual",
+      "trueResidualRestarts",
+      "partialConvergenceWarning"
+    ];
   }
   // Where the reported peaks sit on the solver surface mesh (on-model callout);
   // the recorded peak values themselves are still compared.
