@@ -24,3 +24,4 @@ export {
   type OpenFeaCoreSolveOutcome,
   type ResolvedSolverBackend
 } from "@openfea/core-adapter";
+export { WEBGPU_DEVICE_LOST_CODE, WEBGPU_OUT_OF_MEMORY_CODE } from "@openfea/core-adapter";

@@ -1,6 +1,7 @@
 import type { SolveProgressEvent } from "@openfea/solve-pipeline";
 import type { RunVariantResult } from "@openfea/schema";
-import { trySolveOpenFeaCoreStudyAutomatic } from "./openfeaCoreSolve";
+import { isAllocationFailure, reportFailureDiagnostic } from "../diagnosticSink";
+import { trySolveOpenFeaCoreStudyAutomatic, WEBGPU_DEVICE_LOST_CODE, WEBGPU_OUT_OF_MEMORY_CODE } from "./openfeaCoreSolve";
 import type { LocalSolveResult } from "./performanceProtocol";
 import {
   createSolveWorkerRequestId,
@@ -120,6 +121,16 @@ export function startLocalSolve(
   };
 }
 
+/**
+ * Maps a solve failure to a Glimpse diagnostic code: fixed WebGPU solver codes,
+ * or an allocation failure recognised locally from the error. Only the code is
+ * reported; the message never leaves the page.
+ */
+function trackSolveFailureDiagnostic(error: { name?: string; message: string; code?: string }): void {
+  if (error.code === WEBGPU_DEVICE_LOST_CODE) reportFailureDiagnostic("error_gpu_lost");
+  else if (error.code === WEBGPU_OUT_OF_MEMORY_CODE || isAllocationFailure(error)) reportFailureDiagnostic("error_out_of_memory");
+}
+
 function rejectedSolveHandle(error: Error): LocalSolveHandle {
   return {
     completion: Promise.reject(error),
@@ -154,11 +165,13 @@ function startInlineSolve(
           onVariantComplete
         });
         if (!outcome.ok) {
+          trackSolveFailureDiagnostic({ name: "Error", message: outcome.reason, code: outcome.code });
           reject(new LocalSolveError(outcome.reason, outcome.code));
           return;
         }
         resolve({ result: outcome.result, solverBackend: outcome.solverBackend });
       } catch (error) {
+        if (error instanceof Error) trackSolveFailureDiagnostic(error);
         reject(error instanceof Error ? error : new LocalSolveError(String(error)));
       }
     };
@@ -206,11 +219,13 @@ function handleSolveWorkerMessage(worker: Worker, event: MessageEvent<SolveWorke
     });
     return;
   }
+  trackSolveFailureDiagnostic(response.error);
   pending.reject(new LocalSolveError(response.error.message, response.error.code));
 }
 
 function handleSolveWorkerError(worker: Worker, event: ErrorEvent): void {
   if (worker !== workerInstance && !retiringWorkers.has(worker)) return;
+  reportFailureDiagnostic("error_worker");
   terminateSolveWorker(worker, new LocalSolveError(event.message || "Solve worker failed."));
 }
 

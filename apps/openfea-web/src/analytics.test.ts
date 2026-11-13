@@ -102,3 +102,122 @@ it('records only coarse validated size and part observations', () => {
       {event:'part_count',bucket:'2_10',count:1}
     ]);
 });
+
+const NEW_CODES = ['error_unresponsive', 'error_gpu_lost', 'error_out_of_memory', 'error_worker'] as const;
+function sentBodies(): unknown[] {
+  return send.mock.calls.map(call => JSON.parse(call[1]!.body as string));
+}
+class FakeLongTaskObserver {
+  static supportedEntryTypes = ['longtask'];
+  static instances: FakeLongTaskObserver[] = [];
+  observed: unknown[] = [];
+  readonly disconnect = vi.fn();
+  constructor(readonly callback: (list: {getEntries(): {duration:number}[]}) => void) { FakeLongTaskObserver.instances.push(this); }
+  observe(options: unknown) { this.observed.push(options); }
+  emit(...durations: number[]) { this.callback({getEntries: () => durations.map(duration => ({duration}))}); }
+}
+describe('Glimpse diagnostic codes approved 13 Nov 2026', () => {
+  it('sends each new code as the bare code after v2 opt-in only, and suppresses it under DNT/GPC', () => {
+    for (const code of NEW_CODES) analytics.trackDetail(code);
+    store.set('openfea.glimpse.consent.v1','granted-v1');
+    for (const code of NEW_CODES) analytics.trackDetail(code);
+    expect(send).not.toHaveBeenCalled();
+    analytics.setAnalyticsEnabled(true);
+    for (const code of NEW_CODES) analytics.trackDetail(code);
+    expect(sentBodies()).toEqual(NEW_CODES.map(event => ({event, bucket:'none'})));
+    for (const code of NEW_CODES) analytics.trackDetail(code, 'gte_5s');
+    vi.stubGlobal('navigator',{globalPrivacyControl:true}); analytics.trackDetail('error_gpu_lost');
+    vi.stubGlobal('navigator',{doNotTrack:'1'}); analytics.trackDetail('error_worker');
+    expect(send).toHaveBeenCalledTimes(NEW_CODES.length);
+    vi.stubGlobal('navigator',{});
+    expect(analytics.diagnosticReport().rows).toEqual(NEW_CODES.map(event => ({event, bucket:'none', count:1})));
+    analytics.setAnalyticsEnabled(false);
+    expect(analytics.diagnosticReport().rows).toEqual([]);
+    analytics.trackDetail('error_out_of_memory');
+    expect(send).toHaveBeenCalledTimes(NEW_CODES.length);
+  });
+  it('keeps the app working when an older Glimpse rejects a code it does not know', async () => {
+    analytics.setAnalyticsEnabled(true);
+    send.mockResolvedValueOnce(new Response(null,{status:400})).mockRejectedValueOnce(new TypeError('network'));
+    expect(() => { analytics.trackDetail('error_worker'); analytics.trackDetail('error_gpu_lost'); }).not.toThrow();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(send).toHaveBeenCalledTimes(2);
+    analytics.trackDetail('error_worker');
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+});
+describe('error_unresponsive watchdog', () => {
+  // A fresh window too, so the module instance from beforeEach cannot react.
+  async function reload() {
+    vi.stubGlobal('window', Object.assign(new EventTarget(), {localStorage: window.localStorage}));
+    vi.resetModules(); analytics = await import('./analytics');
+  }
+  it('does not observe the page without consent, then counts one code per long task of 5 s or more', async () => {
+    FakeLongTaskObserver.instances = [];
+    vi.stubGlobal('PerformanceObserver', FakeLongTaskObserver);
+    await reload();
+    expect(FakeLongTaskObserver.instances).toHaveLength(0);
+    analytics.setAnalyticsEnabled(true);
+    expect(FakeLongTaskObserver.instances).toHaveLength(1);
+    const observer = FakeLongTaskObserver.instances[0]!;
+    expect(observer.observed).toEqual([{type:'longtask'}]);
+    observer.emit(4999, 120);
+    expect(send).not.toHaveBeenCalled();
+    observer.emit(5000, 61234);
+    expect(sentBodies()).toEqual([{event:'error_unresponsive',bucket:'none'},{event:'error_unresponsive',bucket:'none'}]);
+    expect(JSON.stringify(sentBodies())).not.toMatch(/5000|61234/);
+    analytics.setAnalyticsEnabled(false);
+    expect(observer.disconnect).toHaveBeenCalledOnce();
+  });
+  it('stays inert where the Long Tasks API is unavailable', async () => {
+    vi.stubGlobal('PerformanceObserver', undefined);
+    store.set('openfea.glimpse.consent.v1','granted-v2');
+    await expect(reload()).resolves.toBeUndefined();
+    analytics.setAnalyticsEnabled(false); analytics.setAnalyticsEnabled(true);
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+describe('error_gpu_lost for the WebGL viewer', () => {
+  function renderer() {
+    const canvas = Object.assign(new EventTarget(), {isConnected:true});
+    const original = vi.fn();
+    return {canvas, original, gl: {domElement: canvas, forceContextLoss: original}};
+  }
+  it('counts an unexpected context loss but not renderer teardown or a detached canvas', async () => {
+    const { watchWebGlContextLoss } = await import('./diagnosticSink');
+    analytics.setAnalyticsEnabled(true);
+    const lost = renderer();
+    watchWebGlContextLoss(lost.gl);
+    lost.canvas.dispatchEvent(new Event('webglcontextlost'));
+    expect(sentBodies()).toEqual([{event:'error_gpu_lost',bucket:'none'}]);
+
+    const disposed = renderer();
+    watchWebGlContextLoss(disposed.gl);
+    disposed.gl.forceContextLoss();
+    expect(disposed.original).toHaveBeenCalledOnce();
+    disposed.canvas.dispatchEvent(new Event('webglcontextlost'));
+
+    const detached = renderer();
+    watchWebGlContextLoss(detached.gl);
+    detached.canvas.isConnected = false;
+    detached.canvas.dispatchEvent(new Event('webglcontextlost'));
+    expect(send).toHaveBeenCalledOnce();
+  });
+  it('sends nothing without consent', async () => {
+    const { watchWebGlContextLoss } = await import('./diagnosticSink');
+    const lost = renderer();
+    watchWebGlContextLoss(lost.gl);
+    lost.canvas.dispatchEvent(new Event('webglcontextlost'));
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+describe('worker-client failure sink', () => {
+  it('connects worker-client failure codes to the consent-gated sender', async () => {
+    const { reportFailureDiagnostic } = await import('./diagnosticSink');
+    reportFailureDiagnostic('error_worker');
+    expect(send).not.toHaveBeenCalled();
+    analytics.setAnalyticsEnabled(true);
+    reportFailureDiagnostic('error_worker'); reportFailureDiagnostic('error_out_of_memory'); reportFailureDiagnostic('error_gpu_lost');
+    expect(sentBodies()).toEqual([{event:'error_worker',bucket:'none'},{event:'error_out_of_memory',bucket:'none'},{event:'error_gpu_lost',bucket:'none'}]);
+  });
+});

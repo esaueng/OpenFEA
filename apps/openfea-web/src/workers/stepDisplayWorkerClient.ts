@@ -1,6 +1,7 @@
 import type { OcctImportResult, OcctMesh } from "occt-import-js";
 import { MAX_EMBEDDED_MODEL_BYTES } from "@openfea/schema";
 import type { StepDisplayLod } from "../stepDisplayTessellation";
+import { reportFailureDiagnostic } from "../diagnosticSink";
 
 const STEP_DISPLAY_TIMEOUT_MS = 20_000;
 let requestId = 0;
@@ -36,6 +37,7 @@ export async function readStepFileInDisplayWorker(content: Uint8Array, lod: Step
       worker.terminate();
     };
     worker.onerror = () => {
+      reportFailureDiagnostic("error_worker");
       finish();
       reject(new Error("STEP display worker failed."));
     };

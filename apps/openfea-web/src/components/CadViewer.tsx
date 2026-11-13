@@ -29,6 +29,7 @@ import { loadMarkerViewportPresentation } from "../loadPreview";
 import { highlightPayloadObjectMeshes } from "../payloadObjectHighlight";
 import { layoutOutsideModelLabels, payloadMassLabelOffset, type LabelAnchor } from "../calloutLabelLayout";
 import { getSnapSuggestion } from "../snapping/snapController";
+import { watchWebGlContextLoss } from "../diagnosticSink";
 import type { SolverSurfaceMesh } from "../projectFile";
 export { finalVisualScaleForDisplacementField } from "../resultDeformation";
 import { RESULT_DEFORMATION_CAP_FRACTION as SHARED_DEFORMATION_CAP_FRACTION, finalVisualScaleForDisplacementField, maxDisplacementMagnitude, resolvedDeformation, transientDisplacementPeakMagnitude } from "../resultDeformation";
@@ -407,7 +408,7 @@ export function CadViewer(props: CadViewerProps) {
       aria-label="3D CAD viewer"
       onPointerDown={orbitHintDismissed ? undefined : dismissOrbitHint}
     >
-      <Canvas frameloop="demand" dpr={viewerDpr} camera={{ position: [4.8, 4.8, 4.8], up: ISO_CAMERA_UP.toArray(), fov: DEFAULT_CAMERA_FOV }} onCreated={({ gl }) => { gl.localClippingEnabled = true; }} onPointerMissed={props.onViewerMiss}>
+      <Canvas frameloop="demand" dpr={viewerDpr} camera={{ position: [4.8, 4.8, 4.8], up: ISO_CAMERA_UP.toArray(), fov: DEFAULT_CAMERA_FOV }} onCreated={({ gl }) => { gl.localClippingEnabled = true; watchWebGlContextLoss(gl); }} onPointerMissed={props.onViewerMiss}>
         <SceneFirstFrameSignal onPainted={handleScenePainted} />
         <ProjectionCameraController projectionMode={projectionMode} controlsRef={controlsRef} />
         <SectionClippingController state={props.sectionPlane} bounds={sectionBounds} />

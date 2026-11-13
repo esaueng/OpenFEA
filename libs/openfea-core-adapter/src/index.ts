@@ -82,6 +82,8 @@ export {
   type ResolvedSolverBackend
 } from "./backend";
 
+export { WEBGPU_DEVICE_LOST_CODE, WEBGPU_OUT_OF_MEMORY_CODE } from "@openfea/solver-webgpu";
+
 export {
   TOPOLOGY_MAPPING_POLICY,
   selectionPlaneMatches,
