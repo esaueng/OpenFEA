@@ -229,6 +229,9 @@ importers:
       '@openfea/schema':
         specifier: workspace:*
         version: link:../openfea-schema
+      '@openfea/units':
+        specifier: workspace:*
+        version: link:../openfea-units
 
   libs/openfea-units: {}
 

@@ -1,4 +1,5 @@
 import type { Constraint, CustomMaterial, Diagnostic, DisplayModel, DynamicSolverSettings, Load, ModalSolverSettings, Study } from "@openfea/schema";
+import { pressureToPascals } from "@openfea/units";
 import { bodyLabelForId, hasPerBodyMaterialAssignments, manufacturingProcessCompatibilityError, materialAssignmentForBody, resolveMaterial } from "@openfea/materials";
 
 export type PrintCriticalAxis = "x" | "y" | "z";
@@ -372,14 +373,9 @@ function equivalentLoadForceNewtons(load: Load, face: PrintCriticalFace): number
   }
   if (load.type === "pressure") {
     if (!(face.areaM2 && Number.isFinite(face.areaM2) && face.areaM2 > 0)) return undefined;
-    const pressurePa = units === "Pa"
-      ? value
-      : units === "MPa"
-        ? value * 1_000_000
-        : units === "psi"
-          ? value * 6894.757293168
-          : value * 1000;
-    return pressurePa * face.areaM2;
+    // Same unit reading as the solver translators: case-insensitive Pa/kPa/MPa/psi,
+    // with a missing or unknown label read as Pa.
+    return pressureToPascals(value, units) * face.areaM2;
   }
   return units === "lbf" ? value * 4.4482216152605 : value;
 }
