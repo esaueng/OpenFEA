@@ -7,6 +7,10 @@ import { cancelWasmMeshing, type WasmMeshPhaseProgress } from "./lib/wasmMeshing
 import { buildOpenFeaCoreModelForStudy, resolveSolverBackend } from "./workers/openfeaCoreSolve";
 import { manufacturingProcessForId, normalizeManufacturingParameters, resolveMaterial } from "@openfea/materials";
 import { assignedFaceTintsForStudy } from "./assignedFaceTints";
+import { createNamedFaceSelection, deleteNamedSelection, faceSelectionForFace, faceSelectionLookup, isManagedNamedSelection, managedNamedSelections, namedSelectionAssignmentTarget, namedSelectionFacesFor, renameNamedSelection, selectionFaceIds, workingSelectionForNamedSelection } from "./namedSelections";
+import { applyFacePick, selectionCountLabel, toggleAdditionalRef, workingSelectionFaceIds, type PickIntent, type WorkingFaceSelection } from "./components/viewer/selection";
+import type { NamedSelectionManagerActions } from "./components/panels/NamedSelectionsDialog";
+import { peekStepFaceRegistryForBase64, stepFaceRecordForId } from "./stepFaces";
 import { BottomPanel, studySummaryLine, KeyboardShortcutGuide, type WorkspaceLogEntry } from "./components/BottomPanel";
 import { OpenFeaLogoMark } from "./components/OpenFeaLogoMark";
 import { ProjectStorageNotice } from "./components/ProjectStorageNotice";
@@ -163,6 +167,11 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   const [undoStack, setUndoStack] = useState<Project[]>(restoredUi?.undoStack ?? []);
   const [redoStack, setRedoStack] = useState<Project[]>(restoredUi?.redoStack ?? []);
   const [selectedFaceId, setSelectedFaceId] = useState<string | null>(restoredUi?.selectedFaceId ?? null);
+  // The rest of the working face selection (plan 036 R1.2): the "Additional
+  // faces" refs that viewer Ctrl/Cmd-click and the panel checklist share, and
+  // the named selection it reuses while it is exactly that selection.
+  const [additionalSelectionRefs, setAdditionalSelectionRefs] = useState<readonly string[]>([]);
+  const [boundNamedSelectionId, setBoundNamedSelectionId] = useState<string | null>(null);
   const [selectedLoadPoint, setSelectedLoadPoint] = useState<[number, number, number] | null>(restoredUi?.selectedLoadPoint ?? null);
   const [selectedPayloadObject, setSelectedPayloadObject] = useState<PayloadObjectSelection | null>(restoredUi?.selectedPayloadObject ?? null);
   const [viewMode, setViewMode] = useState<ViewMode>(restoredUi?.viewMode ?? (restoredResults?.fields.length ? "results" : "model"));
@@ -600,6 +609,29 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   // an assignment is visible where it lives, not only as a callout (2026-09 review F2).
   // Multi-face entries tint every face, not only the first.
   const assignedFaceTints = useMemo<ViewerFaceTint[]>(() => assignedFaceTintsForStudy(study), [study]);
+  const workingSelection: WorkingFaceSelection = { primaryFaceId: selectedFaceId, extraRefs: additionalSelectionRefs, namedSelectionId: boundNamedSelectionId };
+  // Every face the next Add acts on, primary first; a reused named selection counts all of its faces.
+  const workingFaceIds = useMemo(() => {
+    if (!study) return selectedFaceId ? [selectedFaceId] : [];
+    const faceIds = workingSelectionFaceIds({ primaryFaceId: selectedFaceId, extraRefs: additionalSelectionRefs, namedSelectionId: null }, faceSelectionLookup(study));
+    return boundNamedSelectionId ? [...new Set([...faceIds, ...selectionFaceIds(study, boundNamedSelectionId)])] : faceIds;
+  }, [additionalSelectionRefs, boundNamedSelectionId, selectedFaceId, study]);
+  const additionalSelectedFaceIds = useMemo(() => workingFaceIds.filter((faceId) => faceId !== selectedFaceId), [selectedFaceId, workingFaceIds]);
+  // The checklist used to live in the panel and reset when it unmounted (step
+  // change) or when its list of supports/loads grew (an Add). Keep both rules.
+  const selectionEntryCount = (study?.constraints.length ?? 0) + (study?.loads.length ?? 0);
+  const selectionEntryCountRef = useRef(selectionEntryCount);
+  useEffect(() => {
+    if (selectionEntryCount > selectionEntryCountRef.current) {
+      setAdditionalSelectionRefs([]);
+      setBoundNamedSelectionId(null);
+    }
+    selectionEntryCountRef.current = selectionEntryCount;
+  }, [selectionEntryCount]);
+  useEffect(() => {
+    setAdditionalSelectionRefs([]);
+    setBoundNamedSelectionId(null);
+  }, [activeStep, study?.id]);
   const meshArtifactModel = (study?.meshSettings.summary?.artifacts as { actualCoreModel?: { model?: unknown } } | undefined)?.actualCoreModel?.model;
   const meshPreviewSurface = useMemo(() => {
     if (!meshArtifactModel) return undefined;
@@ -938,7 +970,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     const face = isPayloadMass && selectedPayloadObject ? faceForPayloadObject(selectedPayloadObject) : selectedFace;
     const point = isPayloadMass ? selectedPayloadObject?.center ?? null : selectedLoadPoint;
     if (!face || !point) return undefined;
-    const existingSelection = study.namedSelections.find((item) => item.entityType === "face" && item.geometryRefs.some((ref) => ref.entityId === face.id));
+    const existingSelection = faceSelectionForFace(study, face.id);
     const selection = existingSelection ?? namedSelectionForFace(study, face);
     const value = isPayloadMass ? draftPayloadPreview?.value ?? draftLoadValue : draftLoadValue;
     const payloadMetadata = isPayloadMass ? draftPayloadPreview?.metadata ?? {} : {};
@@ -989,7 +1021,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
         faceId,
         type: support.type,
         displayLabel: supportDisplayLabel(support, supportOrdinal),
-        label: selection?.geometryRefs[0]?.label ?? selection?.name ?? "selected face",
+        label: (isManagedNamedSelection(selection) ? selection?.name : selection?.geometryRefs[0]?.label) ?? selection?.name ?? "selected face",
         stackIndex
       }];
     });
@@ -1933,7 +1965,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
 
   // UI callbacks call this fire-and-forget (`void updateStudy(...)`): nothing
   // awaits the commit, and the result reaches the user through pushMessage.
-  async function updateStudy(action: Promise<{ study: Study; message: string }>, nextStep?: StepId) {
+  async function updateStudy(action: Promise<{ study: Study; message: string }>, nextStep?: StepId, options?: { keepResults?: boolean }) {
     const response = await action;
     // Snapshot the latest committed project (not the render closure) so quick consecutive mutations
     // each capture their true pre-mutation state, then merge the study into the current project.
@@ -1949,7 +1981,9 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     // The previous results stay viewable but are marked outdated (rail,
     // legend, pill, notice) and are refused by report and export until the
     // next run; they used to be destroyed on the spot (2026-09 review D4).
-    markResultsOutdated(response.message);
+    // Saving, renaming or deleting an unused named selection changes no
+    // solver input, so it leaves results current.
+    if (!options?.keepResults) markResultsOutdated(response.message);
     pushMessage(response.message);
     if (nextStep) navigateToStep(nextStep);
   }
@@ -2085,7 +2119,17 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     }
   }
 
-  function handleViewportFaceSelect(face: DisplayFace, point?: [number, number, number], payloadObject?: PayloadObjectSelection) {
+  function handleViewportFaceSelect(face: DisplayFace, point?: [number, number, number], payloadObject?: PayloadObjectSelection, pick?: { intent: PickIntent }) {
+    const placing = activeStep === "supports" || activeStep === "loads";
+    if (study && placing && pick?.intent === "toggle" && !(activeStep === "loads" && draftLoadType === "gravity")) {
+      handleViewportFaceToggle(face, point);
+      return;
+    }
+    if (study) {
+      const next = applyFacePick(workingSelection, face.id, "replace", faceSelectionLookup(study)).selection;
+      setAdditionalSelectionRefs(next.extraRefs);
+      setBoundNamedSelectionId(next.namedSelectionId);
+    }
     setSelectedFaceId(face.id);
     const isPayloadObjectLoad = activeStep === "loads" && draftLoadType === "gravity";
     const nextLoadPoint = activeStep === "loads" ? (isPayloadObjectLoad ? payloadObject?.center ?? selectedPayloadObject?.center ?? point ?? face.center : point ?? face.center) : null;
@@ -2101,6 +2145,83 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
     pushMessage(`${face.label} selected.`);
   }
 
+  /** Ctrl/Cmd-click (or the face list with Add to selection on): add or remove a face (plan 036 R1.2). */
+  function handleViewportFaceToggle(face: DisplayFace, point?: [number, number, number]) {
+    if (!study) return;
+    const { selection: next, outcome } = applyFacePick(workingSelection, face.id, "toggle", faceSelectionLookup(study));
+    if (displayModel && !displayModel.faces.some((item) => item.id === face.id)) {
+      setDisplayModel({ ...displayModel, faces: [...displayModel.faces, face] });
+    }
+    if (next.primaryFaceId !== selectedFaceId) {
+      setSelectedFaceId(next.primaryFaceId);
+      const primaryFace = next.primaryFaceId === face.id ? face : displayModel?.faces.find((item) => item.id === next.primaryFaceId);
+      setSelectedLoadPoint(activeStep === "loads" && primaryFace ? (primaryFace.id === face.id ? point ?? face.center : primaryFace.center) : null);
+    }
+    setAdditionalSelectionRefs(next.extraRefs);
+    setBoundNamedSelectionId(next.namedSelectionId);
+    const count = workingSelectionFaceIds(next, faceSelectionLookup(study)).length;
+    if (outcome === "unavailable") pushMessage(`${face.label} cannot join a multi-face selection; pick it on its own.`);
+    else if (outcome === "removed") pushMessage(`${face.label} removed from the selection. ${selectionCountLabel(count)}.`);
+    else if (outcome === "added") pushMessage(`${face.label} added to the selection. ${selectionCountLabel(count)}.`);
+    else pushMessage(`${face.label} selected.`);
+  }
+
+  function handleToggleAdditionalSelectionRef(selectionRef: string) {
+    const next = toggleAdditionalRef(workingSelection, selectionRef);
+    setAdditionalSelectionRefs(next.extraRefs);
+    setBoundNamedSelectionId(next.namedSelectionId);
+  }
+
+  /** A STEP face's B-rep fingerprint from the live face registry, the identity named selections persist. */
+  function stepRegistryFingerprint(faceId: string): string | null {
+    const contentBase64 = displayModel?.nativeCad?.format === "step" ? displayModel.nativeCad.contentBase64 : undefined;
+    const registry = contentBase64 ? peekStepFaceRegistryForBase64(contentBase64) : null;
+    return registry ? stepFaceRecordForId(registry, faceId)?.fingerprint ?? null : null;
+  }
+
+  /** Named-selection manager actions for the Supports and Loads panels (plan 036 R1.2). */
+  function namedSelectionManagerFor(currentStudy: Study): NamedSelectionManagerActions {
+    const faceLabel = (faceId: string) => displayModelForUi?.faces.find((face) => face.id === faceId)?.label ?? faceId;
+    return {
+      selectedFaceNames: workingFaceIds.map(faceLabel),
+      boundSelectionId: boundNamedSelectionId,
+      onCreate: (name) => {
+        const faces = namedSelectionFacesFor(currentStudy, workingFaceIds, displayModel?.faces ?? [], stepRegistryFingerprint);
+        const created = createNamedFaceSelection(currentStudy, name, faces, crypto.randomUUID());
+        if (!created.ok) return created.error;
+        void updateStudy(saveStudyPatch(currentStudy.id, { namedSelections: created.namedSelections }, `Named selection ${created.selection.name} saved with ${faces.length} face${faces.length === 1 ? "" : "s"}.`, currentStudy), undefined, { keepResults: true });
+        // The working selection is now exactly the saved selection, so the next Add reuses it.
+        setBoundNamedSelectionId(created.selection.id);
+        return null;
+      },
+      onRename: (selectionId, name) => {
+        const renamed = renameNamedSelection(currentStudy, selectionId, name);
+        if (!renamed.ok) return renamed.error;
+        void updateStudy(saveStudyPatch(currentStudy.id, { namedSelections: renamed.namedSelections }, `Named selection renamed to ${renamed.selection.name}.`, currentStudy), undefined, { keepResults: true });
+        return null;
+      },
+      onDelete: (selectionId) => {
+        const name = managedNamedSelections(currentStudy).find((item) => item.id === selectionId)?.name ?? "Named selection";
+        const deleted = deleteNamedSelection(currentStudy, selectionId);
+        if (!deleted.ok) return deleted.error;
+        if (boundNamedSelectionId === selectionId) setBoundNamedSelectionId(null);
+        void updateStudy(saveStudyPatch(currentStudy.id, { namedSelections: deleted.namedSelections }, `Named selection ${name} deleted.`, currentStudy), undefined, { keepResults: true });
+        return null;
+      },
+      onUse: (selectionId) => {
+        const next = workingSelectionForNamedSelection(currentStudy, selectionId);
+        if (!next) return;
+        const primaryFace = displayModel?.faces.find((face) => face.id === next.primaryFaceId);
+        setSelectedFaceId(next.primaryFaceId);
+        setAdditionalSelectionRefs(next.extraRefs);
+        setBoundNamedSelectionId(next.namedSelectionId);
+        setSelectedLoadPoint(activeStep === "loads" && primaryFace ? primaryFace.center : null);
+        const named = managedNamedSelections(currentStudy).find((item) => item.id === selectionId);
+        pushMessage(`${named?.name ?? "Named selection"} selected. ${selectionCountLabel(selectionFaceIds(currentStudy, selectionId).length)}.`);
+      }
+    };
+  }
+
   function handleViewerMiss() {
     if (!shouldClearPayloadSelectionOnViewerMiss({ activeStep, draftLoadType })) return;
     setSelectedPayloadObject(null);
@@ -2109,7 +2230,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
 
   async function addLoadForFace(type: LoadType, value: number, face: DisplayFace, direction: LoadDirectionLabel, applicationPoint?: [number, number, number] | null, payloadObject?: PayloadObjectSelection | null, payloadMetadata: PayloadLoadMetadata = {}) {
     if (!study) return;
-    const existingSelection = study.namedSelections.find((item) => item.entityType === "face" && item.geometryRefs.some((ref) => ref.entityId === face.id));
+    const existingSelection = faceSelectionForFace(study, face.id);
     const selection = existingSelection ?? namedSelectionForFace(study, face);
     const nextSelections = existingSelection ? study.namedSelections : [...study.namedSelections, selection];
     const load: Load = {
@@ -2828,6 +2949,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
               importingModelFilename={modelImport?.filename}
               activeStep={activeStep}
               selectedFaceId={selectedFaceId}
+              additionalSelectedFaceIds={additionalSelectedFaceIds}
               payloadObjectSelectionMode={Boolean(study && activeStep === "loads" && draftLoadType === "gravity")}
               selectedPayloadObject={selectedPayloadObject}
               highlightedBodyId={activeStep === "material" ? highlightedBodyId : null}
@@ -2936,6 +3058,9 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           draftLoadDirection={draftLoadDirection}
           selectedLoadPoint={selectedLoadPoint}
           selectedPayloadObject={selectedPayloadObject}
+          additionalSelectionRefs={additionalSelectionRefs}
+          onToggleAdditionalSelectionRef={handleToggleAdditionalSelectionRef}
+          namedSelectionManager={namedSelectionManagerFor(study)}
           onFitView={handleFitDefaultView}
           onRotateModel={handleRotateModel}
           onResetModelOrientation={handleResetModelOrientation}
@@ -2965,7 +3090,17 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           onSaveCustomMaterial={handleSaveCustomMaterial}
           onDeleteCustomMaterial={handleDeleteCustomMaterial}
           onPreviewPrintLayerOrientation={setPreviewPrintLayerOrientation}
-          onAddSupport={(selectionRef, options, extras) => {
+          onAddSupport={(pickedSelectionRef, options, pickedExtras) => {
+            // A reused named selection replaces the face refs while the
+            // working selection is still exactly that selection (plan 036 R1.2).
+            const target = namedSelectionAssignmentTarget(study, boundNamedSelectionId, pickedSelectionRef, pickedExtras?.selectionRefs);
+            const selectionRef = target.selectionRef;
+            const extras = target.selectionRefs.length ? { selectionRefs: target.selectionRefs } : undefined;
+            const reused = selectionRef !== pickedSelectionRef ? study.namedSelections.find((item) => item.id === selectionRef) : undefined;
+            if (reused && study.constraints.some((item) => item.selectionRef === reused.id && item.type === (options?.type ?? "fixed"))) {
+              pushMessage(`${reused.name} already has this support. Edit or remove it below.`);
+              return;
+            }
             if (options?.type === "prescribed_temperature") {
               const constraint: Constraint = {
                 id: `constraint-${crypto.randomUUID()}`,
@@ -3048,7 +3183,15 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           onDraftLoadDirectionChange={(direction) => {
             setDraftLoadDirection(direction);
           }}
-          onAddLoad={(type, value, selectionRef, direction, payloadMetadata = {}) => {
+          onAddLoad={(type, value, pickedSelectionRef, direction, pickedMetadata = {}) => {
+            // A reused named selection replaces the face refs for loads that
+            // accept several faces (plan 036 R1.2); body and payload loads and
+            // a bolt preload's face pair keep their own placement.
+            const target = type === "bolt_preload" || type === "gravity"
+              ? null
+              : namedSelectionAssignmentTarget(study, boundNamedSelectionId, pickedSelectionRef, pickedMetadata.selectionRefs);
+            const selectionRef = target?.selectionRef ?? pickedSelectionRef;
+            const payloadMetadata = target && target.selectionRef !== pickedSelectionRef ? { ...pickedMetadata, selectionRefs: target.selectionRefs } : pickedMetadata;
             const selection = study.namedSelections.find((item) => item.id === selectionRef);
             const faceId = selection?.geometryRefs[0]?.entityId;
             const payloadObject = type === "gravity" ? selectedPayloadObject : null;
@@ -3443,7 +3586,7 @@ function debugResultField(field: ResultField | undefined) {
 
 /** The named selection for a picked face, creating it when the study has none yet (re-targeting, 2026-09 review D3). */
 function selectionPatchForFace(study: Study, face: DisplayFace): { selection: NamedSelection; namedSelections: NamedSelection[] } {
-  const existing = study.namedSelections.find((item) => item.entityType === "face" && item.geometryRefs.some((ref) => ref.entityId === face.id));
+  const existing = faceSelectionForFace(study, face.id);
   if (existing) return { selection: existing, namedSelections: study.namedSelections };
   const selection = namedSelectionForFace(study, face);
   return { selection, namedSelections: [...study.namedSelections, selection] };
