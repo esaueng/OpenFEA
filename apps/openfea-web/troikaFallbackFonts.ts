@@ -12,6 +12,9 @@ import type { PluginOption } from "vite";
 // upstream resolver; SceneLabelText's glyph filtering still keeps it idle.
 
 const FACTORY_PATTERN = /function unicodeFontResolverClientFactory\(\)\{[^\n]*\n/g;
+// Shape check only (not URL validation): the factory being replaced must still be the
+// resolver that loads its data from the lojjic/unicode-font-resolver CDN package.
+const RESOLVER_DATA_PACKAGE = "lojjic/unicode-font-resolver@";
 
 export const TROIKA_FALLBACK_FONT_STUB =
   "function unicodeFontResolverClientFactory(){return{getFontsForString:function(){return Promise.reject(new Error(" +
@@ -23,7 +26,7 @@ export function isTroikaTextModule(id: string): boolean {
 
 export function stripTroikaFallbackFontResolver(code: string): string {
   const matches = code.match(FACTORY_PATTERN) ?? [];
-  if (matches.length !== 1 || !matches[0]!.includes("cdn.jsdelivr.net")) {
+  if (matches.length !== 1 || !matches[0]!.includes(RESOLVER_DATA_PACKAGE)) {
     throw new Error("troika-three-text's bundled unicode-font-resolver changed shape; review its network fallback before upgrading.");
   }
   return code.replace(FACTORY_PATTERN, TROIKA_FALLBACK_FONT_STUB);
