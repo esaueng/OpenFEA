@@ -1,0 +1,72 @@
+{
+  "format": "openfea-local-project",
+  "version": 2,
+  "savedAt": "2026-11-01T09:00:00.000Z",
+  "project": {
+    "id": "project-pre-r34",
+    "name": "Pre R3.4 bracket",
+    "schemaVersion": "0.4.0",
+    "unitSystem": "SI",
+    "geometryFiles": [],
+    "customMaterials": [
+      {
+        "id": "00000000-0000-4000-8000-0000000000c1",
+        "name": "Shop steel",
+        "category": "metal",
+        "youngsModulus": 200000000000,
+        "poissonRatio": 0.29,
+        "density": 7850,
+        "yieldStrength": 250000000,
+        "thermalConductivity": 50,
+        "verification": "user_supplied_unverified"
+      }
+    ],
+    "studies": [
+      {
+        "id": "study-pre-r34",
+        "projectId": "project-pre-r34",
+        "name": "Static stress",
+        "type": "static_stress",
+        "geometryScope": [{ "bodyId": "body-1", "entityType": "body", "entityId": "body-1", "label": "Bracket" }],
+        "materialAssignments": [
+          { "id": "assign-1", "materialId": "00000000-0000-4000-8000-0000000000c1", "selectionRef": "selection-body", "parameters": {}, "status": "complete" }
+        ],
+        "namedSelections": [
+          {
+            "id": "selection-body",
+            "name": "Bracket",
+            "entityType": "body",
+            "geometryRefs": [{ "bodyId": "body-1", "entityType": "body", "entityId": "body-1", "label": "Bracket" }],
+            "fingerprint": "body"
+          }
+        ],
+        "contacts": [],
+        "constraints": [],
+        "loads": [],
+        "meshSettings": { "preset": "medium", "status": "complete" },
+        "solverSettings": { "backend": "opencae_core_local" },
+        "validation": [],
+        "runs": []
+      }
+    ],
+    "createdAt": "2026-11-01T08:00:00.000Z",
+    "updatedAt": "2026-11-01T09:00:00.000Z"
+  },
+  "results": {
+    "completedRunId": "run-pre-r34",
+    "summary": {
+      "maxStress": 125,
+      "maxStressUnits": "MPa",
+      "maxDisplacement": 0.2,
+      "maxDisplacementUnits": "mm",
+      "safetyFactor": 2,
+      "reactionForce": 500,
+      "reactionForceUnits": "N"
+    },
+    "fields": [
+      { "id": "stress-surface", "runId": "run-pre-r34", "type": "stress", "component": "von_mises", "location": "node", "values": [0, 62.5, 125], "min": 0, "max": 125, "units": "MPa", "surfaceMeshRef": "solver-surface" },
+      { "id": "safety-factor", "runId": "run-pre-r34", "type": "safety_factor", "location": "element", "values": [0, 4, 2], "min": 0, "max": 4, "units": "ratio" },
+      { "id": "safety-factor-surface", "runId": "run-pre-r34", "type": "safety_factor", "location": "node", "values": [10000, 4, 2], "min": 2, "max": 10000, "units": "ratio", "surfaceMeshRef": "solver-surface" }
+    ]
+  }
+}

@@ -53,7 +53,8 @@ export type SettingHelpId =
   | "simulationSettings"
   | "preconfigured"
   | "modalSettings"
-  | "targetSafetyFactor";
+  | "targetSafetyFactor"
+  | "safetyFactorBasis";
 
 export interface SettingHelp {
   title: string;
@@ -290,6 +291,11 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
   targetSafetyFactor: {
     title: "Target safety factor",
     body: "Reverse-checks the current result to estimate the maximum load for the safety factor you want. Higher targets allow less load.",
+    visual: "results"
+  },
+  safetyFactorBasis: {
+    title: "Safety factor basis",
+    body: "Chooses what the safety factor divides by: the material yield strength (default), its ultimate strength, or an allowable stress you enter in the project stress unit. The stress is always von Mises. Changing it re-scales the stored result; it does not re-run the solve.",
     visual: "results"
   }
 };

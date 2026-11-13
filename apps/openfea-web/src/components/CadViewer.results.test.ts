@@ -918,6 +918,15 @@ describe("CadViewer result coloring", () => {
     expect(resultLegendTitle("safety_factor", "von_mises")).toBe("Safety factor");
   });
 
+  test("names the safety-factor basis in the legend title and limit note (plan 036 R3.4)", () => {
+    expect(resultLegendTitle("safety_factor", "von_mises", { shortLabel: "yield, von Mises" })).toBe("Safety factor (yield, von Mises)");
+    expect(resultLegendTitle("safety_factor", "von_mises", { shortLabel: "ultimate, von Mises" })).toBe("Safety factor (ultimate, von Mises)");
+    // Other modes are not qualified by the basis.
+    expect(resultLegendTitle("stress", "von_mises", { shortLabel: "yield, von Mises" })).toBe("Von Mises stress");
+    expect(cadViewerSource).toContain("resultLegendTitle(resultMode, stressComponent, safetyFactorBasis)");
+    expect(cadViewerSource).toContain('{safetyFactorBasis?.limitNote ?? "below it the part yields"}');
+  });
+
   test("renders solver surface results outside the legacy sample base rotation", () => {
     // Solver surface meshes are already in solver model space (Z-up). Nesting them in the
     // Y-up sample base rotation group tipped results 90 degrees away from the setup view.
