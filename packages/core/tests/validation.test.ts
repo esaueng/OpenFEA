@@ -13,6 +13,28 @@ describe("validateModelJson", () => {
     });
   });
 
+  test("validates elastic-support boundary conditions (plan 036 R1.5)", () => {
+    const base = createSingleTetModel();
+    const surfaceFacets = extractBoundarySurfaceFacets(base);
+    const withElastic = (condition: Record<string, unknown>, stepType: "staticLinear" | "steadyStateThermal" = "staticLinear") => ({
+      ...base,
+      schemaVersion: "0.4.0" as const,
+      surfaceFacets,
+      surfaceSets: [{ name: "base", facets: [surfaceFacets[0]!.id] }],
+      boundaryConditions: [{ name: "foundation", type: "elasticSupport", surfaceSet: "base", normalStiffness: 1e8, tangentialStiffness: 5e7, ...condition }],
+      steps: [stepType === "staticLinear"
+        ? { name: "static", type: "staticLinear", boundaryConditions: ["foundation"], loads: base.loads.map((load) => load.name) }
+        : { name: "thermal", type: "steadyStateThermal", boundaryConditions: ["foundation"], loads: [] }]
+    });
+    expect(validateModelJson(withElastic({})).ok).toBe(true);
+    expect(validateModelJson(withElastic({ tangentialStiffness: 0 })).ok).toBe(true);
+    const codes = (model: unknown) => validateModelJson(model).errors.map((error) => error.code);
+    expect(codes(withElastic({ normalStiffness: 0, tangentialStiffness: 0 }))).toContain("invalid-elastic-support-stiffness");
+    expect(codes(withElastic({ normalStiffness: -1 }))).toContain("invalid-elastic-support-stiffness");
+    expect(codes(withElastic({ surfaceSet: "missing" }))).toContain("missing-surface-set-reference");
+    expect(codes(withElastic({}, "steadyStateThermal"))).toContain("elastic-support-thermal-step");
+  });
+
   test("accepts a valid two-tet model", () => {
     expect(validateModelJson(createTwoTetModel()).ok).toBe(true);
   });

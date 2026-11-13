@@ -5,6 +5,7 @@ export type {
   BodyGravityLoadJson,
   CoordinateSystemJson,
   DisplacementComponent,
+  ElasticSupportBoundaryConditionJson,
   DynamicLinearStepJson,
   DynamicLoadProfileJson,
   DynamicStepJson,

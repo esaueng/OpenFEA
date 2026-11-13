@@ -127,7 +127,7 @@ describe("buildCoreModelFromCloudMesh", () => {
 
     const bottomNodeSets = model.nodeSets.filter((set) => set.name === "surface_bottom_nodes");
     expect(bottomNodeSets).toHaveLength(1);
-    expect(model.boundaryConditions.map((condition) => condition.nodeSet)).toEqual([
+    expect(model.boundaryConditions.map((condition) => ("nodeSet" in condition ? condition.nodeSet : undefined))).toEqual([
       "surface_bottom_nodes",
       "surface_bottom_nodes"
     ]);

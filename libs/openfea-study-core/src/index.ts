@@ -237,6 +237,7 @@ export function selectionRefsFor(entry: { selectionRef: string; selectionRefs?: 
 
 function structuralSupportDiagnostics(study: Study): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
+  diagnostics.push(...elasticSupportDiagnostics(study));
   for (const constraint of study.constraints) {
     if (constraint.type === "fixed" && constraint.parameters.components !== undefined && !fixedSupportComponentsAreValid(constraint.parameters.components)) {
       diagnostics.push(issue(`validation-support-components-${constraint.id}`, `Support ${constraint.id} must hold at least one of x, y and z.`));
@@ -250,6 +251,30 @@ function structuralSupportDiagnostics(study: Study): Diagnostic[] {
     if (component !== "x" && component !== "y" && component !== "z") {
       diagnostics.push(issue(`validation-support-component-${constraint.id}`, `Support ${constraint.id} needs a displacement component (x, y, or z).`));
     }
+  }
+  return diagnostics;
+}
+
+/**
+ * Elastic (foundation) supports, plan 036 R1.5. Each needs finite,
+ * non-negative stiffnesses with one positive. A study held only by elastic
+ * supports needs one with both normal and tangential stiffness: a normal-only
+ * (or tangential-only) foundation on its own leaves rigid-body motion free.
+ */
+function elasticSupportDiagnostics(study: Study): Diagnostic[] {
+  const elastic = study.constraints.filter((constraint) => constraint.type === "elastic_support");
+  if (!elastic.length) return [];
+  const diagnostics: Diagnostic[] = [];
+  for (const constraint of elastic) {
+    const values = [constraint.parameters.normalStiffness, constraint.parameters.tangentialStiffness];
+    if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0) || !values.some((value) => typeof value === "number" && value > 0)) {
+      diagnostics.push(issue(`validation-support-stiffness-${constraint.id}`, `Elastic support ${constraint.id} needs a positive normal or tangential stiffness.`));
+    }
+  }
+  const restrained = study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement" || constraint.type === "symmetry");
+  const holdsAllDirections = elastic.some((constraint) => Number(constraint.parameters.normalStiffness) > 0 && Number(constraint.parameters.tangentialStiffness) > 0);
+  if (!restrained && !holdsAllDirections) {
+    diagnostics.push(issue("validation-elastic-support-rigid-body", "An elastic support with only normal or only tangential stiffness cannot hold the part on its own. Give one elastic support both stiffnesses, or add a fixed support."));
   }
   return diagnostics;
 }

@@ -13,6 +13,7 @@ import { solveDenseLinearSystem } from "./linear-solve";
 import { boundedStructuralMaxDofs, structuralDofCount, structuralDofLimitError } from "./limits";
 import { computeLinearElasticDMatrix } from "./material";
 import { assembleMeshConnectionStiffness, type ConnectionAssemblyDiagnostics } from "./connections";
+import { assembleElasticSupportStiffness, elasticSupportForce, type ElasticSupportDiagnostics } from "./elastic-support";
 import { staticCoreResultFromSolve } from "./results";
 import { SPARSE_ALGEBRA_POLICY } from "./sparse-policy";
 import {
@@ -46,7 +47,11 @@ const COMPONENT_INDEX = {
 
 export type PreparedStaticLinearTetSystem = {
   model: NormalizedOpenFEAModel;
+  /** Global stiffness including any elastic-support (foundation) terms. */
   stiffness: CsrMatrix;
+  /** Foundation stiffness alone, kept so reactions include the elastic-support forces. */
+  supportStiffness?: CsrMatrix;
+  elasticSupports?: ElasticSupportDiagnostics;
   reducedStiffness: CsrMatrix;
   constraints: Map<number, number>;
   free: Int32Array;
@@ -130,14 +135,14 @@ export function solveStaticLinearTet4Cpu(
   const solverMode = selectSolverMode(dofs, options, model, step.loads);
 
   if (solverMode === "dense") {
-    const assembly = assembleDenseStiffness(model, options.hooks);
+    const assembly = assembleDenseStiffness(model, options.hooks, step.boundaryConditions);
     if (!assembly.ok) return failure(assembly.error.code, assembly.error.message, { dofs });
-    return solveDenseSystem(model, assembly.stiffness, loads, constraints.values, free, options, reportedLoadAssembly);
+    return solveDenseSystem(model, assembly.stiffness, loads, constraints.values, free, options, reportedLoadAssembly, assembly.elasticSupport);
   }
 
-  const assembly = assembleSparseStiffness(model, options.hooks);
+  const assembly = assembleSparseStiffness(model, options.hooks, step.boundaryConditions);
   if (!assembly.ok) return failure(assembly.error.code, assembly.error.message, { dofs });
-  return solveSparseSystem(model, assembly.stiffness, loads, constraints.values, free, options, reportedLoadAssembly, assembly.connections);
+  return solveSparseSystem(model, assembly.stiffness, loads, constraints.values, free, options, reportedLoadAssembly, assembly.connections, assembly.elasticSupport);
 }
 
 function hasAdvancedLoadPrimitives(model: NormalizedOpenFEAModel, loadNames: string[]): boolean {
@@ -184,7 +189,7 @@ export function prepareStaticLinearTetSystem(
       freeDofs: 0
     });
   }
-  const assembled = assembleSparseStiffness(model, options.hooks);
+  const assembled = assembleSparseStiffness(model, options.hooks, boundaryConditionNames);
   if (!assembled.ok) return preparedFailure(assembled.error.code, assembled.error.message, { dofs });
   const reduced = reduceCsrSystem(assembled.stiffness, new Float64Array(dofs), free, constraints.values);
   return {
@@ -192,6 +197,7 @@ export function prepareStaticLinearTetSystem(
     system: {
       model,
       stiffness: assembled.stiffness,
+      ...(assembled.elasticSupport ? { supportStiffness: assembled.elasticSupport.matrix, elasticSupports: assembled.elasticSupport.diagnostics } : {}),
       reducedStiffness: reduced.matrix,
       constraints: constraints.values,
       free,
@@ -244,6 +250,7 @@ export function solvePreparedStaticLoadCase(
     solve.solution,
     (displacement) => csrMatVec(prepared.stiffness, displacement),
     {
+      ...(prepared.elasticSupports ? { elasticSupports: prepared.elasticSupports } : {}),
       solverMode: "sparse",
       iterations: solve.iterations,
       ...conjugateGradientConvergenceDiagnostics([solve], "Static sparse CG"),
@@ -254,7 +261,8 @@ export function solvePreparedStaticLoadCase(
       visualizationSmoothing: options.visualizationSmoothing,
       ...(hasAdvancedLoadPrimitives(prepared.model, loadNames) ? { loadAssembly: loadAssembly.diagnostics } : {}),
       ...(prepared.connections ? { connections: prepared.connections } : {})
-    }
+    },
+    prepared.supportStiffness
   );
   return finished.ok ? { ...finished, reducedSolution: solve.solution } : finished;
 }
@@ -383,8 +391,15 @@ export function getNormalizedModel(input: CpuSolverInput):
   return { ok: true, model: result.model };
 }
 
-export function assembleDenseStiffness(model: NormalizedOpenFEAModel, hooks?: SolverHooks):
-  | { ok: true; stiffness: Float64Array }
+export type AssembledElasticSupport = { matrix: CsrMatrix; diagnostics: ElasticSupportDiagnostics };
+
+/**
+ * Dense global stiffness. Elastic supports (plan 036 R1.5) named in
+ * `boundaryConditionNames` add their foundation matrix; it is also returned
+ * on its own so reactions can include the foundation forces.
+ */
+export function assembleDenseStiffness(model: NormalizedOpenFEAModel, hooks?: SolverHooks, boundaryConditionNames?: readonly string[]):
+  | { ok: true; stiffness: Float64Array; elasticSupport?: AssembledElasticSupport }
   | { ok: false; error: CpuSolverError } {
   const dofs = model.counts.nodes * 3;
   const stiffness = new Float64Array(dofs * dofs);
@@ -396,17 +411,41 @@ export function assembleDenseStiffness(model: NormalizedOpenFEAModel, hooks?: So
   }, hooks);
   if (!elementAssembly.ok) return elementAssembly;
 
-  return { ok: true, stiffness };
+  const foundation = assembleElasticSupportStiffness(model, boundaryConditionNames);
+  if (!foundation.ok) return foundation;
+  const elasticSupport = foundation.assembly.matrix && foundation.assembly.diagnostics
+    ? { matrix: foundation.assembly.matrix, diagnostics: foundation.assembly.diagnostics }
+    : undefined;
+  if (elasticSupport) {
+    const matrix = elasticSupport.matrix;
+    for (let row = 0; row < matrix.rowCount; row += 1) {
+      for (let entry = matrix.rowPtr[row]; entry < matrix.rowPtr[row + 1]; entry += 1) {
+        stiffness[row * dofs + matrix.colInd[entry]] += matrix.values[entry];
+      }
+    }
+  }
+
+  return { ok: true, stiffness, ...(elasticSupport ? { elasticSupport } : {}) };
 }
 
-export function assembleSparseStiffness(model: NormalizedOpenFEAModel, hooks?: SolverHooks):
-  | { ok: true; stiffness: CsrMatrix; connections?: ConnectionAssemblyDiagnostics }
+/**
+ * Sparse global stiffness. Elastic supports (plan 036 R1.5) named in
+ * `boundaryConditionNames` add their foundation matrix; it is also returned
+ * on its own so reactions can include the foundation forces.
+ */
+export function assembleSparseStiffness(model: NormalizedOpenFEAModel, hooks?: SolverHooks, boundaryConditionNames?: readonly string[]):
+  | { ok: true; stiffness: CsrMatrix; connections?: ConnectionAssemblyDiagnostics; elasticSupport?: AssembledElasticSupport }
   | { ok: false; error: CpuSolverError } {
   const dofs = model.counts.nodes * 3;
+  const foundation = assembleElasticSupportStiffness(model, boundaryConditionNames);
+  if (!foundation.ok) return foundation;
+  const elasticSupport = foundation.assembly.matrix && foundation.assembly.diagnostics
+    ? { matrix: foundation.assembly.matrix, diagnostics: foundation.assembly.diagnostics }
+    : undefined;
   // Element and penalty-equation scatter counts are known before assembly.
   // Reserving them once avoids grow-by-doubling copies of multi-million-entry
   // COO buffers in browser workers.
-  const builder = createSparseMatrixBuilder(dofs, dofs, sparseStiffnessTripletCapacity(model));
+  const builder = createSparseMatrixBuilder(dofs, dofs, sparseStiffnessTripletCapacity(model) + (elasticSupport?.matrix.values.length ?? 0));
 
   const elementAssembly = assembleElementStiffnesses(model, {
     add(block, elementOffset, elementStiffness, nodeCount) {
@@ -418,7 +457,16 @@ export function assembleSparseStiffness(model: NormalizedOpenFEAModel, hooks?: S
   const connections = assembleMeshConnectionStiffness(builder, model);
   if (!connections.ok) return connections;
 
-  return { ok: true, stiffness: toCsrMatrix(builder), connections: connections.diagnostics };
+  if (elasticSupport) {
+    const matrix = elasticSupport.matrix;
+    for (let row = 0; row < matrix.rowCount; row += 1) {
+      for (let entry = matrix.rowPtr[row]; entry < matrix.rowPtr[row + 1]; entry += 1) {
+        addSparseEntry(builder, row, matrix.colInd[entry], matrix.values[entry]);
+      }
+    }
+  }
+
+  return { ok: true, stiffness: toCsrMatrix(builder), connections: connections.diagnostics, ...(elasticSupport ? { elasticSupport } : {}) };
 }
 
 function sparseStiffnessTripletCapacity(model: NormalizedOpenFEAModel): number {
@@ -566,7 +614,8 @@ function solveDenseSystem(
   constraints: Map<number, number>,
   free: Int32Array,
   options: CpuSolverOptions,
-  loadAssembly: LoadAssemblyDiagnostics | undefined
+  loadAssembly: LoadAssemblyDiagnostics | undefined,
+  elasticSupport?: AssembledElasticSupport
 ): StaticLinearTet4CpuSolveResult {
   const dofs = model.counts.nodes * 3;
   const freeDofs = free.length;
@@ -601,8 +650,9 @@ function solveDenseSystem(
     matrixRows: dofs,
     matrixNonZeros: dofs * dofs,
     visualizationSmoothing: options.visualizationSmoothing,
-    ...(loadAssembly ? { loadAssembly } : {})
-  });
+    ...(loadAssembly ? { loadAssembly } : {}),
+    ...(elasticSupport ? { elasticSupports: elasticSupport.diagnostics } : {})
+  }, elasticSupport?.matrix);
 }
 
 function solveSparseSystem(
@@ -613,7 +663,8 @@ function solveSparseSystem(
   free: Int32Array,
   options: CpuSolverOptions,
   loadAssembly: LoadAssemblyDiagnostics | undefined,
-  connections?: ConnectionAssemblyDiagnostics
+  connections?: ConnectionAssemblyDiagnostics,
+  elasticSupport?: AssembledElasticSupport
 ): StaticLinearTet4CpuSolveResult {
   const reduced = reduceCsrSystem(stiffness, loads, free, constraints);
   const solve = conjugateGradient(reduced.matrix, reduced.rhs, {
@@ -645,8 +696,9 @@ function solveSparseSystem(
     estimatedMatrixBytes: estimateCsrMemoryBytes(stiffness),
     visualizationSmoothing: options.visualizationSmoothing,
     ...(loadAssembly ? { loadAssembly } : {}),
-    ...(connections ? { connections } : {})
-  });
+    ...(connections ? { connections } : {}),
+    ...(elasticSupport ? { elasticSupports: elasticSupport.diagnostics } : {})
+  }, elasticSupport?.matrix);
 }
 
 function resolvePreconditioner(options: CpuSolverOptions): "none" | "jacobi" | "ssor" {
@@ -662,7 +714,8 @@ function finishSolve(
   free: Int32Array,
   freeSolution: Float64Array,
   multiplyFull: (displacement: Float64Array) => Float64Array,
-  diagnostics: Pick<CpuSolverDiagnostics, "solverMode" | "iterations" | "converged" | "trueRelativeResidual" | "recursiveRelativeResidual" | "trueResidualRestarts" | "partialConvergenceWarning" | "matrixRows" | "matrixNonZeros" | "preconditioner" | "estimatedMatrixBytes" | "visualizationSmoothing" | "loadAssembly" | "connections">
+  diagnostics: Pick<CpuSolverDiagnostics, "solverMode" | "iterations" | "converged" | "trueRelativeResidual" | "recursiveRelativeResidual" | "trueResidualRestarts" | "partialConvergenceWarning" | "matrixRows" | "matrixNonZeros" | "preconditioner" | "estimatedMatrixBytes" | "visualizationSmoothing" | "loadAssembly" | "connections" | "elasticSupports">,
+  supportStiffness?: CsrMatrix
 ): StaticLinearTet4CpuSolveResult {
   const dofs = model.counts.nodes * 3;
   const displacement = new Float64Array(dofs);
@@ -670,8 +723,13 @@ function finishSolve(
   for (let i = 0; i < free.length; i += 1) displacement[free[i]] = freeSolution[i];
 
   const internalForce = multiplyFull(displacement);
+  // Support reactions on the body: K u - f at constrained DOFs, plus the
+  // elastic-support (foundation) force -K_found u wherever it acts. With the
+  // foundation inside K, K u - f vanishes at free DOFs, so without this term
+  // an elastically supported model would report no reaction at all.
+  const foundationForce = elasticSupportForce(supportStiffness, displacement);
   const reactionForce = new Float64Array(dofs);
-  for (let i = 0; i < dofs; i += 1) reactionForce[i] = internalForce[i] - loads[i];
+  for (let i = 0; i < dofs; i += 1) reactionForce[i] = internalForce[i] - loads[i] + (foundationForce ? foundationForce[i] : 0);
 
   const residual = computeResidualStats(internalForce, loads, free);
   const recovery = recoverElementResults(model, displacement);

@@ -123,6 +123,27 @@ Gate (`apps/openfea-web/src/workers/symmetrySupports.test.ts`): the 180 x 24 x 2
 
 A vertical load is antisymmetric about the neutral plane, so the quarter model needs the antisymmetry condition (in-plane components held, normal free) there, not a symmetry support. The full model's tip deflection is within 0.8% of Timoshenko beam theory (0.1782 mm); its peak stress includes the clamped-root corner concentration.
 
+## Elastic (Foundation) Supports (plan 036 R1.5)
+
+Development-grade. The closed-form, unit-equivalence, balance and modal gates below pass in `pnpm test`; the in-app browser run was manual and is not part of CI yet. In that run (Chromium, 2026-11-13) the `box-with-bore.step` fixture, held only by an elastic support added through the Supports panel on its −Z face (0.05 and 0.02 N/mm³), meshed with gmsh-wasm and solved in the browser under a 500 N load with a 500 N reaction and no page errors.
+
+- Model: a Winkler foundation. Each support face carries independent linear springs per unit area: `normalStiffness` along each facet's normal and `tangentialStiffness` in its tangent plane (N/m³ in `m-N-s-Pa`, N/mm³ in `mm-N-s-MPa`). The springs pull as well as push (no lift-off or contact) and do not spread load through the foundation.
+- Assembly (`packages/solver-cpu/src/elastic-support.ts`): the consistent face matrix k∫NᵀN dA ⊗ (k_n nnᵀ + k_t (I − nnᵀ)) per facet, exact for Tri3 and straight-sided Tri6 facets (A/12 and A/180 closed forms; Tri6 corner rows sum to 0 and midside rows to A/3, matching the consistent load vector). It is symmetric and positive semidefinite per facet and positive definite on the face DOFs when both stiffnesses are positive, so a part held only by such a face has no rigid-body modes. Static, dynamic and modal solves include it; the WebGPU matrix-free path rejects it.
+- Reactions: the reported support reaction includes the foundation force −K_found·u, so a part held only by springs reports the full reaction.
+- A study held only by elastic supports needs one with both stiffnesses positive; otherwise validation and eligibility refuse it before solving.
+
+Gates (`packages/solver-cpu/tests/elastic-support.test.ts`, `apps/openfea-web/src/workers/elasticSupport.test.ts`): a 100 x 100 x 50 mm steel block (ν = 0, so the state is exactly uniaxial) on k_n = 2e8 N/m³, k_t = 1e8 N/m³ under a 1 kN top load.
+
+| Case | Tolerance | Measured |
+| --- | --- | --- |
+| Base settles F/(k_n A) = 0.5 mm, top adds F h/(E A) (Tet4 and Tet10, solver level) | `FOUNDATION_CLOSED_FORM_RELATIVE_TOLERANCE` 1e-6 | worst nodal error 5.9e-11 |
+| Product path (mesh-intake → adapter → browser solver, Tet10): top 0.500025 mm | 1e-6 | 2.1e-11 |
+| mm-N-s-MPa (k in N/mm³) vs m-N-s-Pa | `UNIT_EQUIVALENCE_RELATIVE_TOLERANCE` 1e-6 | 2.2e-11 (displacement), 4.6e-11 (stress), 2.6e-11 (reaction) |
+| Reaction balance, block held only by the foundation | `REACTION_BALANCE_RELATIVE_TOLERANCE` 1e-6 (1e-8 at solver level) | 2.1e-12 |
+| Modal, foundation only: six modes, none near zero; bounce mode √(k_n A / m)/2π = 113.61 Hz | every mode > 0.1 × bounce; bounce within 1% | 62.9, 63.0, 79.1, 113.61, 125.8, 127.1 Hz (bounce error 8e-6) |
+
+The pre-R1.5 fixture (`pre-elastic-supports-study.json`: base held in Z, symmetry on x0 and y0) reads unchanged and compresses exactly F h/(E A) (error 7.9e-11).
+
 ## Benchmark Matrix
 
 | Case | Model | Material | Load and support | Expected behavior |
@@ -130,6 +151,7 @@ A vertical load is antisymmetric about the neutral plane, so the quarter model n
 | Simple cantilever static | Connected Tet4 block | Linear elastic validation material | Fixed left face and transverse right-face force | Reaction force balances applied force, displacement/stress are finite and positive, safety factor is finite, fields are non-empty, and the solver surface mesh is connected. |
 | Simple cantilever dynamic | Same connected Tet4 block | Linear elastic validation material with density | Fixed left face and ramp or step right-face force | Dynamic frame count matches the requested cadence, frames are unique, velocity/acceleration fields are present, fields are non-empty, and no frame is reused as a fake response. |
 | Cantilever symmetry half/quarter models | Mirror-symmetric Tet10 cantilever and its cut halves/quarters | Steel (E 200 GPa, ν 0.29) | Fixed root plus symmetry (and, for a vertical load, antisymmetry) supports on the cut planes | Tip deflection and peak stress match the full model within 1e-6; reactions balance the applied share of the load; a face more than 1° off an axis is rejected. |
+| Block on elastic foundation | Structured Tet4/Tet10 block | Steel, ν = 0 | Elastic support (k_n, k_t) on the base, total load on the top; also modal with no load | Settlement F/(k_n A) and compression F h/(E A) within 1e-6; mm/m equivalence; reaction equals F; modal has no zero-frequency modes and the bounce mode matches √(k_n A / m). |
 | Simple cantilever modal | Connected Tet10 beam | Linear elastic validation material with density | Fixed left face; no loads | First bending frequency is within 10% of Euler–Bernoulli theory, returned shapes are M-orthogonal, and every returned scaled residual is at most `1e-6`. |
 | Pressure patch | Connected Tet4 block | Linear elastic validation material | Pressure on right face with explicit direction | Reaction force balances `pressure * surface area`; result provenance is computed production provenance. |
 | Surface traction patch | Connected Tet4/Tet10 block | Linear elastic validation material | Vector traction on one surface | Tri3/Tri6 integration balances `traction * surface area` and conserves direction. |

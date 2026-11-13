@@ -60,7 +60,7 @@ import {
 } from "./appShellState";
 import { displayModelForUnits, formatResultMetric, loadValueForUnits, resultFieldForUnits, resultSummaryForUnits, resultValueForUnits, resultValueFromDisplayUnits, type UnitSystem } from "./unitDisplay";
 import { nextLoadLabel, nextSupportLabel, supportDisplayLabel } from "./supportLabels";
-import { fixedSupportParameters, formatSupportComponents } from "./supportDescriptions";
+import { elasticSupportParameters, fixedSupportParameters, formatSupportComponents } from "./supportDescriptions";
 import { nextSelectedPayloadObject, shouldClearPayloadSelectionOnViewerMiss } from "./payloadSelection";
 import { hasLegacyStepUploadFaces, hasUnresolvedStepFaceSelections, healStepFaceSelections, healStepHoleSupportSelections, legacyStepFaceHealMessage } from "./stepFaceHealing";
 import { stepGeometryNeedsRepair } from "./stepGeometryState";
@@ -3003,6 +3003,24 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
               return;
             }
             const extraRefs = [...new Set((extras?.selectionRefs ?? []).filter((ref) => ref && ref !== selectionRef))];
+            if (options?.type === "elastic_support") {
+              // Elastic (foundation) support, plan 036 R1.5; stiffness in N/m^3.
+              const constraint: Constraint = {
+                id: `constraint-${crypto.randomUUID()}`,
+                type: "elastic_support",
+                selectionRef: selectionRef ?? "",
+                ...(extraRefs.length ? { selectionRefs: extraRefs } : {}),
+                parameters: elasticSupportParameters({ label: nextSupportLabel(study.constraints, "elastic_support") }, options.normalStiffness ?? 0, options.tangentialStiffness ?? 0),
+                status: "complete"
+              };
+              void updateStudy(saveStudyPatch(
+                study.id,
+                { constraints: [...study.constraints, constraint] },
+                extraRefs.length ? `Elastic support added on ${extraRefs.length + 1} faces.` : "Elastic support added.",
+                study
+              ));
+              return;
+            }
             if (options?.type === "symmetry" || (options?.type === "fixed" && options.components && options.components.length < 3)) {
               // Symmetry/roller and per-component fixed supports (plan 036 R1.4).
               const symmetry = options.type === "symmetry";

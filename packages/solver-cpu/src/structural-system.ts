@@ -18,11 +18,15 @@ import {
   enumerateFreeDofs
 } from "./solver";
 import { reduceCsrSystem, type CsrMatrix } from "./sparse";
-import type { CpuSolverError, SolverHooks } from "./types";
+import type { CpuSolverError, ElasticSupportDiagnostics, SolverHooks } from "./types";
 
 export type PreparedStructuralSystem = {
   stiffness: CsrMatrix;
+  /** Global stiffness including any elastic-support (foundation) terms. */
   fullStiffness: CsrMatrix;
+  /** Foundation stiffness alone (plan 036 R1.5), so reactions include its forces. */
+  supportStiffness?: CsrMatrix;
+  elasticSupports?: ElasticSupportDiagnostics;
   fullLoad: Float64Array;
   load: Float64Array;
   mass: Float64Array;
@@ -48,7 +52,7 @@ export function prepareStructuralSystem(
   analysisLabel: "Dynamic" | "Modal" = "Dynamic",
   massFloor = analysisLabel === "Dynamic" ? 1e-12 : 0
 ): { ok: true; system: PreparedStructuralSystem } | { ok: false; error: CpuSolverError } {
-  const stiffness = assembleSparseStiffness(model, hooks);
+  const stiffness = assembleSparseStiffness(model, hooks, boundaryConditionNames);
   if (!stiffness.ok) return stiffness;
   const constraints = collectConstraints(model, boundaryConditionNames);
   if (!constraints.ok) return constraints;
@@ -97,6 +101,7 @@ export function prepareStructuralSystem(
       totalMass: lumpedMass.totalMass,
       ...(hasAdvancedLoadPrimitives(model, loadNames) ? { loadAssembly: loadAssembly.diagnostics } : {}),
       ...(stiffness.connections ? { connections: stiffness.connections } : {}),
+      ...(stiffness.elasticSupport ? { supportStiffness: stiffness.elasticSupport.matrix, elasticSupports: stiffness.elasticSupport.diagnostics } : {}),
       free,
       constraints: constraints.values
     }

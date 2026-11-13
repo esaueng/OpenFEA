@@ -102,6 +102,9 @@ export const NamedSelectionSchema = z.object({
   fingerprint: z.string()
 });
 
+/** Storage unit of elastic-support stiffness (foundation modulus) in studies. */
+export const ELASTIC_SUPPORT_STIFFNESS_UNITS = "N/m^3";
+
 /** Global displacement components a support can constrain. */
 export const SUPPORT_COMPONENTS = ["x", "y", "z"] as const;
 export type SupportComponent = (typeof SUPPORT_COMPONENTS)[number];
@@ -110,16 +113,32 @@ export const ConstraintSchema = z.object({
   id: z.string(),
   /**
    * `symmetry` (plan 036 R1.4) is a symmetry/roller support: it constrains the
-   * displacement component normal to an axis-aligned face. Older readers never
-   * see it; every older type parses unchanged.
+   * displacement component normal to an axis-aligned face. `elastic_support`
+   * (plan 036 R1.5) is a Winkler foundation with `normalStiffness` and
+   * `tangentialStiffness` in N/m^3. Every older type parses unchanged.
    */
-  type: z.enum(["fixed", "prescribed_displacement", "prescribed_temperature", "symmetry"]),
+  type: z.enum(["fixed", "prescribed_displacement", "prescribed_temperature", "symmetry", "elastic_support"]),
   /** One or more face selection ids the constraint applies to (multi-face BCs, Decision 2). */
   selectionRef: z.string(),
   selectionRefs: z.array(z.string()).optional(),
   parameters: z.record(z.string(), z.unknown()),
   status: z.enum(["not_started", "ready", "warning", "complete"])
 }).superRefine((constraint, context) => {
+  if (constraint.type === "elastic_support") {
+    const { normalStiffness, tangentialStiffness, units } = constraint.parameters;
+    const values = [normalStiffness, tangentialStiffness];
+    if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0) || !values.some((value) => typeof value === "number" && value > 0)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["parameters"],
+        message: "Elastic support stiffnesses must be finite, non-negative numbers in N/m^3, with at least one positive."
+      });
+    }
+    if (units !== undefined && units !== ELASTIC_SUPPORT_STIFFNESS_UNITS) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["parameters", "units"], message: `Elastic support stiffness is stored in ${ELASTIC_SUPPORT_STIFFNESS_UNITS}.` });
+    }
+    return;
+  }
   // Per-component fixed supports (plan 036 R1.4): an optional, non-empty set
   // of distinct global components. Absent means all three, so every fixed
   // support saved before the field existed still holds x, y and z.
@@ -138,6 +157,13 @@ export const ConstraintSchema = z.object({
     });
   }
 });
+
+/** An elastic support's normal and tangential foundation moduli in N/m^3 (0 when absent or invalid). */
+export function elasticSupportStiffness(constraint: Pick<Constraint, "type" | "parameters">): { normal: number; tangential: number } {
+  if (constraint.type !== "elastic_support") return { normal: 0, tangential: 0 };
+  const read = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
+  return { normal: read(constraint.parameters.normalStiffness), tangential: read(constraint.parameters.tangentialStiffness) };
+}
 
 /**
  * Global components a fixed support holds. A fixed support without

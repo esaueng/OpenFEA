@@ -530,6 +530,34 @@ describe("per-component fixed and symmetry supports (plan 036 R1.4)", () => {
   });
 });
 
+describe("elastic (foundation) supports (plan 036 R1.5)", () => {
+  const elastic: Study["constraints"][number] = {
+    id: "es-1",
+    type: "elastic_support",
+    selectionRef: namedSelections[0]!.id,
+    parameters: { label: "ES 1", normalStiffness: 5e7, tangentialStiffness: 2.5e7, units: "N/m^3" },
+    status: "complete"
+  };
+
+  test("rows show both stiffnesses in project units and label the approximation and grade", () => {
+    const metric = renderPanel("supports", { project: metricProject, study: { ...study, constraints: [elastic] } });
+    expect(metric).toContain("ES 1 · Elastic support (normal 0.05 N/mm³, tangential 0.025 N/mm³)");
+    expect(metric).toContain("Elastic supports are development-grade");
+    expect(renderPanel("supports", { study: { ...study, constraints: [elastic] } })).toMatch(/ES 1 · Elastic support \(normal 184(\.\d+)? lbf\/in³/);
+    expect(renderPanel("supports", { selectedFace: displayModel.faces[0]! })).toContain('<option value="elastic_support">Elastic support (foundation)</option>');
+  });
+
+  test("the edit form enters stiffness in the project unit and states the Winkler approximation", () => {
+    const html = renderToStaticMarkup(<SupportEditForm support={elastic} study={{ ...study, constraints: [elastic] }} displayModel={displayModel} unitSystem="SI" onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).toContain('<option value="elastic_support" selected="">Elastic support (foundation)</option>');
+    expect(html).toMatch(/aria-label="Normal stiffness" value="0.05"/);
+    expect(html).toMatch(/aria-label="Tangential stiffness" value="0.025"/);
+    expect(html).toContain("<span>N/mm³</span>");
+    expect(html).toContain("Winkler foundation");
+    expect(html).toContain("no lift-off");
+  });
+});
+
 function sameVector(left: readonly number[], right: readonly number[]) {
   return left.every((value, index) => Math.abs(value - right[index]!) < 1e-9);
 }

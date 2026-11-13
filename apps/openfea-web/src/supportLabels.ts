@@ -15,6 +15,7 @@ export function storedEntryLabel(entry: { parameters?: Record<string, unknown> }
 export function supportLabelPrefix(type: Constraint["type"]): string {
   if (type === "fixed") return "FS";
   if (type === "symmetry") return "SYM";
+  if (type === "elastic_support") return "ES";
   return "PD";
 }
 

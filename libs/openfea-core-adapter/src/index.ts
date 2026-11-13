@@ -16,7 +16,7 @@ import {
   type SurfaceSetJson
 } from "@openfea/core";
 import { solveSteadyStateThermal, type DynamicLoadProfile } from "@openfea/solver-cpu";
-import { pressureToPascals, pressureToSolverStress } from "@openfea/units";
+import { foundationModulusToSolverUnits, pressureToPascals, pressureToSolverStress } from "@openfea/units";
 import { CPU_TET_DOF_THRESHOLD, MAX_WEBGPU_TET4_DOFS, WEBGPU_TET4_AUTOMATIC_ENABLED, solveStaticTet4ModelWebGpu } from "@openfea/solver-webgpu";
 import {
   BROWSER_SOLVE_LIMITS,
@@ -35,6 +35,7 @@ import {
   resolveMaterial
 } from "@openfea/materials";
 import {
+  elasticSupportStiffness,
   fixedSupportComponents,
   SUPPORT_COMPONENTS,
   type Constraint,
@@ -380,8 +381,15 @@ export function openFeaCoreEligibility(
     if (study.loads.some((load) => load.type !== "heat_flux" && load.type !== "heat_generation")) return { ok: false, reason: "Steady thermal studies accept heat flux and heat generation only." };
     return { ok: true };
   }
-  if (!study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement" || constraint.type === "symmetry")) {
-    return { ok: false, reason: "OpenFEA Core requires at least one fixed, symmetry or prescribed-displacement support." };
+  if (!study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement" || constraint.type === "symmetry" || constraint.type === "elastic_support")) {
+    return { ok: false, reason: "OpenFEA Core requires at least one fixed, symmetry, elastic or prescribed-displacement support." };
+  }
+  const elasticOnly = !study.constraints.some((constraint) => constraint.type === "fixed" || constraint.type === "prescribed_displacement" || constraint.type === "symmetry");
+  if (elasticOnly && !study.constraints.some((constraint) => {
+    const stiffness = elasticSupportStiffness(constraint);
+    return stiffness.normal > 0 && stiffness.tangential > 0;
+  })) {
+    return { ok: false, reason: "An elastic support with only normal or only tangential stiffness cannot hold the part on its own. Give one elastic support both stiffnesses, or add a fixed support." };
   }
   if (study.type === "dynamic_structural" && study.loads.some((load) => load.type === "bolt_preload")) {
     return { ok: false, reason: "Equivalent bolt preload is supported for static studies only." };
@@ -864,7 +872,7 @@ export function buildOpenFeaCoreModelForStudy(
   const coreLoadNameByStudyLoadId = new Map<string, string>();
 
   for (const [index, constraint] of study.constraints.entries()) {
-    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement" && constraint.type !== "symmetry") {
+    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement" && constraint.type !== "symmetry" && constraint.type !== "elastic_support") {
       throw new Error(
         `OpenFEA Core browser solve does not support ${constraint.type} constraints yet (constraint ${constraint.id}). Change it to a fixed support or remove it.`
       );
@@ -878,6 +886,20 @@ export function buildOpenFeaCoreModelForStudy(
       constraintRefs,
       surfaceSets
     );
+    if (constraint.type === "elastic_support") {
+      // Elastic (Winkler foundation) support, plan 036 R1.5: study values are
+      // N/m^3; the Core model takes its solver unit (N/mm^3 for mm models).
+      const solverUnits = model.coordinateSystem?.solverUnits ?? "m-N-s-Pa";
+      const stiffness = elasticSupportStiffness(constraint);
+      boundaryConditions.push({
+        name: `elasticSupport${index}`,
+        type: "elasticSupport",
+        surfaceSet: surfaceSet.name,
+        normalStiffness: foundationModulusToSolverUnits(stiffness.normal, solverUnits),
+        tangentialStiffness: foundationModulusToSolverUnits(stiffness.tangential, solverUnits)
+      });
+      continue;
+    }
     const nodeSet = deriveFixedSupportNodeSetFromSurface(`fixedNodes${index}`, surfaceSet.name, { ...model, surfaceSets });
     if (!nodeSet.nodes.length) throw new Error(`OpenFEA Core Local could not map boundary ${constraintRefs.join(", ")} to mesh nodes.`);
     nodeSets.push(nodeSet);
@@ -1701,7 +1723,8 @@ function meshStatisticsForCoreModel(coreModel: CoreStudyModel): CoreMeshStatisti
   const componentIndex = new Map([["x", 0], ["y", 1], ["z", 2]] as const);
   const constrained = new Set<number>();
   for (const boundaryCondition of model.boundaryConditions) {
-    if (!activeBoundaryConditions.has(boundaryCondition.name)) continue;
+    // Elastic supports add stiffness, not constrained DOFs.
+    if (!activeBoundaryConditions.has(boundaryCondition.name) || boundaryCondition.type === "elasticSupport") continue;
     const constrainedNodes = typeof boundaryCondition.nodeSet === "string"
       ? nodeSetByName.get(boundaryCondition.nodeSet)
       : boundaryCondition.type === "fixed" && typeof boundaryCondition.surfaceSet === "string"

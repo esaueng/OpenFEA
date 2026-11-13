@@ -118,6 +118,15 @@ export type CpuSolverError = {
 
 export type CoreFeaResult = CoreSolveResult;
 
+/** Elastic (Winkler foundation) supports assembled into the stiffness (plan 036 R1.5). */
+export type ElasticSupportDiagnostics = {
+  supportCount: number;
+  facetCount: number;
+  /** Total supported area in solver length units squared. */
+  area: number;
+  formulation: "consistent-face-winkler-foundation";
+};
+
 export type CpuSolverDiagnostics = {
   dofs: number;
   freeDofs: number;
@@ -156,6 +165,8 @@ export type CpuSolverDiagnostics = {
     imbalance: [number, number, number];
     relativeError: number;
   };
+  /** Present when elastic (foundation) supports were assembled (plan 036 R1.5). */
+  elasticSupports?: ElasticSupportDiagnostics;
   visualizationSmoothing?: {
     iterations?: number;
     alpha?: number;
