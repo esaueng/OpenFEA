@@ -11,6 +11,8 @@ import { STUDY_TYPE_LABELS, studyTypeSwitchConsequence } from "../../studyTypeSw
 
 import { type SettingHelpId } from "../../settingHelp";
 import { readinessItemStep, readinessItemText } from "../../runReadiness";
+import { runAdvisoriesForStudy } from "../../runAdvisories";
+import { formatAspectRatio, formatSolveTimeRange, solveTimeEstimateForStudy } from "../../lib/runTimeEstimate";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 import { defaultSolverMethodForStudy } from "../../unitDisplay";
@@ -70,6 +72,10 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
   const outputIntervalValue = dynamic?.outputInterval ?? DEFAULT_DYNAMIC_OUTPUT_INTERVAL_SECONDS;
   const loadProfile = isDynamicLoadProfile(dynamic?.loadProfile) ? dynamic.loadProfile : "ramp";
   const loadProfileHelper = DYNAMIC_LOAD_PROFILE_OPTIONS.find((option) => option.value === loadProfile)?.helper ?? DEFAULT_DYNAMIC_LOAD_PROFILE_HELPER;
+  // Pre-run solve-time range and non-blocking warnings (plan 036 Release A).
+  // Both are heuristics fitted to the browser solve ladder; see lib/runTimeEstimate.ts.
+  const solveEstimate = solveTimeEstimateForStudy(study, displayModel);
+  const runAdvisories = runAdvisoriesForStudy(study, displayModel, solveEstimate);
   return (
     <Panel title="Run" question="Ready to solve?" step="run" helper={modal ? "Solve for natural frequencies and normalized mode shapes." : thermal ? "Solve for steady temperature and heat-flux fields." : "Run the simulation to solve for stress and displacement."} study={study}>
       <SectionTitle helpId="runReadiness">Readiness</SectionTitle>
@@ -97,6 +103,16 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
           );
         })}
       </div>
+      {runAdvisories.map((advisory) => advisory.tone === "warning" ? (
+        <p key={advisory.id} className="panel-warning run-advisory" data-advisory={advisory.id}>
+          <AlertTriangle size={16} aria-hidden="true" />
+          <strong>{advisory.title}.</strong> {advisory.text}
+        </p>
+      ) : (
+        <p key={advisory.id} className="callout run-advisory" data-advisory={advisory.id}>
+          <strong>{advisory.title}.</strong> {advisory.text}
+        </p>
+      ))}
       {/* B5: the backend picker is gone — every simulation runs locally in the
           browser, so a choice would be routing theater. The Solver info block
           below states the backend; solverSettings.backend stays in the schema
@@ -205,7 +221,15 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
         <Info label="Solver method" value={defaultSolverMethodForStudy(study)} />
         <Info label="Runner" value={solverRunnerLabelForStudy(study, displayModel)} />
         {typeof solveElapsedMs === "number" && !isRunning && <Info label="Solved in" value={formatSimulationElapsed(solveElapsedMs)} />}
+        {!isRunning && <Info label="Estimated solve time" value={solveEstimate ? formatSolveTimeRange(solveEstimate) : "After meshing"} />}
       </div>
+      {!isRunning && solveEstimate && (
+        <p className="panel-copy run-time-estimate-note">
+          Approximate range from in-browser benchmark solves, scaled for {solveEstimate.solveDofs.toLocaleString()} DOF, {solveEstimate.elementOrder}
+          {solveEstimate.aspectRatio !== null ? ` and a ${formatAspectRatio(solveEstimate.aspectRatio)} bounding box` : ""}. Actual time depends on your browser and device; meshing is not included.
+          {solveEstimate.extrapolated ? ` Wider range: ${solveEstimate.extrapolationReasons.join(" ")}` : ""}
+        </p>
+      )}
     </Panel>
   );
 }
