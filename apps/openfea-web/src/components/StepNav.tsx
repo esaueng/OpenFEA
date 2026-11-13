@@ -1,7 +1,9 @@
 import type { Study } from "@openfea/schema";
 import { AlertTriangle, Anchor, ArrowDownToLine, Box, ChartColumn, Check, Grid3x3, Layers3, Play, type LucideIcon } from "lucide-react";
 import { canNavigateToStep } from "../appShellState";
-import type { RunReadinessItem } from "../runReadiness";
+import { studyHasGeneratedMesh, type RunReadinessItem } from "../runReadiness";
+
+export { studyHasGeneratedMesh };
 
 export type StepId = "model" | "material" | "supports" | "loads" | "mesh" | "run" | "results";
 
@@ -56,24 +58,6 @@ export function stepAccessibleName(label: string, { complete, blockers, attentio
   if (blockers?.length) return `${name}: ${blockers.join(" ")}`;
   if (attention) return `${name}: needs attention`;
   return name;
-}
-
-/**
- * Whether a real mesh exists for the study's current inputs. A study can carry
- * `status: "complete"` with only a preset estimate or a seeded sample summary (Bracket
- * Demo), which used to turn the Mesh step green while no mesh existed. Only a
- * mesher-produced summary (structured Core grid or in-browser Gmsh) or a stored volume
- * mesh counts.
- *
- * Same rule and signature as `studyHasGeneratedMesh` in runReadiness.ts on the
- * integration branch; swap this local copy for that import when they meet.
- */
-export function studyHasGeneratedMesh(study: Pick<Study, "meshSettings">): boolean {
-  if (study.meshSettings.status !== "complete") return false;
-  const summary = study.meshSettings.summary;
-  if (summary?.source === "core_solver" || summary?.source === "wasm_gmsh") return true;
-  const artifacts = summary?.artifacts as Record<string, unknown> | undefined;
-  return Boolean(artifacts?.actualCoreModel);
 }
 
 export function readinessBlockersByStep(readiness: readonly RunReadinessItem[]): Partial<Record<StepId, string[]>> {
