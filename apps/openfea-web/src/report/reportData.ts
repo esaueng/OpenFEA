@@ -19,6 +19,8 @@ import { formatDeformationFactor, type ResolvedDeformation } from "../resultDefo
 import { fieldWithOwnValueRange, formatResultValue } from "../resultFields";
 import { unitsForLoadType } from "../loadPreview";
 import { MODAL_DIRECTIONS, PROJECTED_PARTICIPATION_NOTE, cumulativeParticipation, formatMassKg, formatMassPercent, formatMassTripleKg } from "../modalMassParticipation";
+import { TET4_BENDING_LOCKING_NOTE, tet4BendingLockingApplies } from "../runAdvisories";
+import { boundingBoxAspectRatio, elementOrderForStudy, estimateAnalysisForStudy, type EstimateElementOrder } from "../lib/runTimeEstimate";
 import type { CapturedBoundaryView, CapturedResultView, ResultViewCaptures } from "./captureResultViews";
 import {
   displayModelForUnits,
@@ -258,6 +260,7 @@ function buildModalReportData(input: BuildReportDataInput, summary: ModalResultS
   const diagnostics = new Set<string>((summary.diagnostics ?? []).map((diagnostic) => diagnostic.message));
   if (summary.warning) diagnostics.add(summary.warning);
   for (const warning of input.solverMeshSummary?.warnings ?? []) diagnostics.add(warning);
+  addElementFormulationNotes(diagnostics, input);
   const modalFigure = figureData("Normalized mode shape", modeField, input.captures.displacement, fields, input);
   return {
     pageFormat: input.unitSystem === "US" ? "letter" : "a4",
@@ -803,7 +806,36 @@ function collectDiagnostics(input: BuildReportDataInput, summary: ResultSummary,
     entries.add("Unit missing");
   }
   for (const warning of input.solverMeshSummary?.warnings ?? []) entries.add(warning);
+  addElementFormulationNotes(entries, input);
   return [...entries];
+}
+
+/**
+ * Element-formulation approximation (plan 036 Release A): linear tets lock in
+ * bending. Same rule and wording as the Run panel's non-blocking note.
+ */
+function addElementFormulationNotes(entries: Set<string>, input: BuildReportDataInput): void {
+  if (tet4BendingLockingApplies({
+    analysis: estimateAnalysisForStudy(input.study),
+    elementOrder: solvedElementOrderForReport(input.study, input.resultSummary),
+    aspectRatio: boundingBoxAspectRatio(input.displayModel?.dimensions)
+  })) entries.add(TET4_BENDING_LOCKING_NOTE);
+}
+
+/**
+ * The element order the result was solved with: a modal Tet4 projection or a
+ * Core Tet4 mesh source wins over what the study's mesh recorded. Reads the
+ * summary as stored (before unit conversion), whose diagnostics keep the
+ * solver's structured payloads.
+ */
+function solvedElementOrderForReport(study: Study, summary: ResultSummary): EstimateElementOrder {
+  const projected = (isModalResultSummary(summary) && summary.massParticipation?.computedOnProjectedModel === true)
+    || (summary.diagnostics ?? []).some((diagnostic) => {
+      const projection = (diagnostic as { meshProjection?: { solveElementOrder?: unknown } }).meshProjection;
+      return projection?.solveElementOrder === "Tet4";
+    });
+  if (projected || summary.provenance?.meshSource === "opencae_core_tet4") return "Tet4";
+  return elementOrderForStudy(study);
 }
 
 /**

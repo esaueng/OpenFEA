@@ -3,6 +3,7 @@ import { bracketDemoProject, bracketDisplayModel } from "@openfea/samples";
 import type { Project, ResultField, ResultSummary, Study } from "@openfea/schema";
 import { buildReportData, coverContextLine, suggestedReportFilename } from "./reportData";
 import { formatDeformationFactor, resolvedDeformation } from "../resultDeformation";
+import { TET4_BENDING_LOCKING_NOTE } from "../runAdvisories";
 
 const productionSummary: ResultSummary = {
   maxStress: 142,
@@ -557,5 +558,56 @@ describe("coverContextLine", () => {
     const study: Study = { ...bracketDemoProject.studies[0]!, materialAssignments: [], loads: [] };
     expect(coverContextLine({ project: bracketDemoProject, study, displayModel: null, unitSystem: "SI" }))
       .toBe(`${bracketDemoProject.name} · No material · No loads`);
+  });
+});
+
+describe("Tet4 bending-locking note in Diagnostics & limitations (plan 036 Release A)", () => {
+  const slenderModel = { ...bracketDisplayModel, dimensions: { x: 1000, y: 20, z: 20, units: "mm" } };
+  const compactModel = { ...bracketDisplayModel, dimensions: { x: 200, y: 100, z: 100, units: "mm" } };
+  const withOrder = (study: Study, elementOrder: 1 | 2): Study => ({
+    ...study,
+    meshSettings: { preset: "medium", status: "complete", summary: { nodes: 1000, elements: 500, warnings: [], source: "wasm_gmsh", density: { elementOrder } } }
+  });
+  const staticStudy = bracketDemoProject.studies[0]!;
+
+  test("lists the note for a slender static Tet4 solve", () => {
+    expect(report({ study: withOrder(staticStudy, 1), displayModel: slenderModel }).diagnostics).toContain(TET4_BENDING_LOCKING_NOTE);
+  });
+
+  test("omits it for Tet10, for a compact part and for unknown extents", () => {
+    expect(report({ study: withOrder(staticStudy, 2), displayModel: slenderModel }).diagnostics).not.toContain(TET4_BENDING_LOCKING_NOTE);
+    expect(report({ study: withOrder(staticStudy, 1), displayModel: compactModel }).diagnostics).not.toContain(TET4_BENDING_LOCKING_NOTE);
+    // The bracket sample (120 x 88 x 34 mm) is compact; without extents there is no slenderness signal.
+    expect(report({ study: withOrder(staticStudy, 1), displayModel: bracketDisplayModel }).diagnostics).not.toContain(TET4_BENDING_LOCKING_NOTE);
+    expect(report({ study: withOrder(staticStudy, 1), displayModel: { ...bracketDisplayModel, dimensions: undefined } }).diagnostics).not.toContain(TET4_BENDING_LOCKING_NOTE);
+  });
+
+  test("lists it for a modal solve run on the Tet4 projection of a quadratic mesh", () => {
+    const study: Study = { ...withOrder(staticStudy, 2), type: "modal_analysis", loads: [], solverSettings: { ...staticStudy.solverSettings, modeCount: 1 } };
+    const modalSummary: ResultSummary = {
+      analysisType: "modal_analysis",
+      requestedModeCount: 1,
+      convergedModeCount: 1,
+      modes: [{ modeIndex: 1, frequencyHz: 16.3, eigenvalue: 10_489, scaledResidual: 3e-7, fieldId: "mode-1" }],
+      provenance: productionSummary.provenance
+    };
+    expect(report({ study, displayModel: slenderModel, resultSummary: modalSummary, resultFields: [] }).diagnostics).not.toContain(TET4_BENDING_LOCKING_NOTE);
+    const projected: ResultSummary = {
+      ...modalSummary,
+      diagnostics: [{
+        id: "modal-projection", severity: "warning", source: "solver", message: "Projected.", suggestedActions: [],
+        meshProjection: { sourceElementOrder: "Tet10", solveElementOrder: "Tet4", sourceDofs: 240_000, solveDofs: 30_000, reason: "local-modal-performance" }
+      } as NonNullable<ResultSummary["diagnostics"]>[number]]
+    };
+    expect(report({ study, displayModel: slenderModel, resultSummary: projected, resultFields: [] }).diagnostics).toContain(TET4_BENDING_LOCKING_NOTE);
+    // Stored modal results carry the projection as massParticipation.computedOnProjectedModel.
+    const storedProjected: ResultSummary = {
+      ...modalSummary,
+      massParticipation: {
+        massUnits: "t", massMatrix: "lumped", totalMass: 0.003, unconstrainedMass: [0.003, 0.003, 0.003], computedOnProjectedModel: true,
+        modes: [{ modeIndex: 1, participationFactor: [0, 0, 0.04], effectiveMass: [0, 0, 0.0018], effectiveMassRatio: [0, 0, 0.6], cumulativeEffectiveMassRatio: [0, 0, 0.6] }]
+      }
+    };
+    expect(report({ study, displayModel: slenderModel, resultSummary: storedProjected, resultFields: [] }).diagnostics).toContain(TET4_BENDING_LOCKING_NOTE);
   });
 });
