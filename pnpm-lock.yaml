@@ -266,19 +266,6 @@ importers:
         specifier: workspace:*
         version: link:../examples
 
-  packages/viewer:
-    dependencies:
-      '@openfea/core':
-        specifier: workspace:*
-        version: link:../core
-    devDependencies:
-      '@openfea/examples':
-        specifier: workspace:*
-        version: link:../examples
-      '@openfea/solver-cpu':
-        specifier: workspace:*
-        version: link:../solver-cpu
-
 packages:
 
   '@apideck/better-ajv-errors@0.3.7':
