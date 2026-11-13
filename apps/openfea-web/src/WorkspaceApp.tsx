@@ -1602,7 +1602,9 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   async function handleSaveProject() {
     if (!project || !displayModel) return;
     try {
-      const saved = await saveProjectToLocalDisk(project, displayModel, resultSummary ? {
+      // Outdated results stay visible (muted) in this session, but a project file has no
+      // outdated marker, so writing them would let stale contours reopen as fresh.
+      const saved = await saveProjectToLocalDisk(project, displayModel, resultSummary && !resultsOutdatedBy ? {
         activeRunId,
         completedRunId,
         summary: resultSummary,
