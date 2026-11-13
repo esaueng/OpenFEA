@@ -16,6 +16,7 @@ import { formatDisplayNumber, formatMeshSourceLabel, formatResultMetric, formatR
 import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 import { dynamicPlaybackFrames } from "../../resultFields";
+import { structuralHeadlineLabels } from "../../resultHeadlineLabels";
 import { MODAL_DIRECTIONS, PROJECTED_PARTICIPATION_NOTE, cumulativeParticipation, formatMassKg, formatMassPercent, formatMassTripleKg } from "../../modalMassParticipation";
 import { resultScaleCssGradient, validManualResultRange, type ResultColorScaleSetting } from "../../resultColorScale";
 import { INVALID_REACTION_WARNING, PREVIEW_GEOMETRY_WARNING, canShowReverseLoadCapacity, hasInvalidReactionForce, hasUnavailableReactionDiagnostic, resultTierChip, shouldBlockPreviewResultsForDisplayModel } from "../../resultProvenance";
@@ -577,6 +578,8 @@ export function ResultsPanelContent({
     : playbackOrdinalForSolverFramePosition(frameIndexes, activeFramePosition);
   const currentFrameNumber = frames.length ? Math.min(frames.length, Math.max(1, Math.floor(sliderPosition) + 1)) : 0;
   const peakDisplacement = peakDisplacementFrame(resultFields, resultSummary);
+  // A dynamic summary holds peaks over time, not the frame being scrubbed.
+  const headlineLabels = structuralHeadlineLabels(resultSummary);
   const peakMarkerPercent = peakDisplacement && hasPlayback ? playbackPeakMarkerPercent(frames, peakDisplacement.timeSeconds) : null;
   const peakMarkerLabel = peakDisplacement ? `Peak displacement at ${peakDisplacement.timeSeconds.toFixed(4)} s` : "";
   const resultProvenance = resultSummary.provenance;
@@ -669,10 +672,10 @@ export function ResultsPanelContent({
         </span>
       </div>
       <Headline items={[
-        { label: "Max stress", value: formatResultMetric(resultSummary.maxStress, resultSummary.maxStressUnits) },
-        { label: "Max displacement", value: formatResultMetric(resultSummary.maxDisplacement, resultSummary.maxDisplacementUnits) },
-        { label: "Safety factor", value: formatResultNumber(resultSummary.safetyFactor) },
-        { label: "Reaction force", value: formatResultMetric(resultSummary.reactionForce, resultSummary.reactionForceUnits) }
+        { label: headlineLabels.stress, value: formatResultMetric(resultSummary.maxStress, resultSummary.maxStressUnits) },
+        { label: headlineLabels.displacement, value: formatResultMetric(resultSummary.maxDisplacement, resultSummary.maxDisplacementUnits) },
+        { label: headlineLabels.safetyFactor, value: formatResultNumber(resultSummary.safetyFactor) },
+        { label: headlineLabels.reactionForce, value: formatResultMetric(resultSummary.reactionForce, resultSummary.reactionForceUnits) }
       ]} />
       </ResultAnswer>
       {/* Where the numbers came from, one line under them. The full run details fold away

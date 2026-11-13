@@ -65,6 +65,7 @@ import { hasLegacyStepUploadFaces, hasUnresolvedStepFaceSelections, healStepFace
 import { stepGeometryNeedsRepair } from "./stepGeometryState";
 import { createLocalDynamicStructuralStudy, createLocalModalStudy, createLocalStaticStressStudy, createLocalThermalStudy } from "./localProjectFactory";
 import { compatibleResultModeForSummary, createPackedResultPlaybackCache, createResultFrameCache, hasDynamicPlaybackFrames, solverMeshSummaryFromResults, synthesizeModalPhaseFields, withDerivedSurfaceSafetyFactorFields, type SolverMeshSummary } from "./resultFields";
+import { structuralHeadlineLabels } from "./resultHeadlineLabels";
 import { appendResultProbe, availableStressComponents, derivedStressFieldsForComponent, governingVariantIdForProbe, MAX_RESULT_PROBES, resolveResultProbe, resultProbeTopologySignature, selectActiveResultField, semanticResultFieldKey, type ResultProbeAnchor, type ResultProbePin } from "./resultSelection";
 import { isResultDisplayEligible } from "./resultDisplayState";
 import { automaticResultFieldRange, DEFAULT_RESULT_COLOR_SCALE_SETTING, resolveResultColorScale, type ResultColorScaleSetting, type ResultColorScaleSettings } from "./resultColorScale";
@@ -358,9 +359,10 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
   // unaveraged element value. Show both on the legend (2026-09 review F8).
   const resultPeaks = useMemo<Partial<Record<ResultMode, string>>>(() => {
     if (!resultSummaryForUi || !isStructuralResultSummary(resultSummaryForUi)) return {};
+    const { peak } = structuralHeadlineLabels(resultSummaryForUi);
     return {
-      stress: `Peak ${formatResultMetric(resultSummaryForUi.maxStress, resultSummaryForUi.maxStressUnits)}`,
-      displacement: `Peak ${formatResultMetric(resultSummaryForUi.maxDisplacement, resultSummaryForUi.maxDisplacementUnits)}`
+      stress: `${peak} ${formatResultMetric(resultSummaryForUi.maxStress, resultSummaryForUi.maxStressUnits)}`,
+      displacement: `${peak} ${formatResultMetric(resultSummaryForUi.maxDisplacement, resultSummaryForUi.maxDisplacementUnits)}`
     };
   }, [resultSummaryForUi]);
   const resultPeakLocations = resultSummary && isStructuralResultSummary(resultSummary) ? resultSummary.peakLocations : undefined;
