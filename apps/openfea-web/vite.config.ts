@@ -5,6 +5,7 @@ import { gzipSync } from "node:zlib";
 import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
 import { gmshPthreadAsset } from "./gmshPthreadAsset";
+import { troikaFallbackFonts } from "./troikaFallbackFonts";
 import { VitePWA } from "vite-plugin-pwa";
 import { DONT_CACHE_BUST_URLS, MAX_PRECACHE_FILE_BYTES, PRECACHE_GLOB_IGNORES, PRECACHE_GLOB_PATTERNS, SW_FORCE_REFRESH_SCRIPT } from "./src/lib/offlinePrecache";
 
@@ -168,28 +169,16 @@ function offlineAssetCaching(): PluginOption {
       dontCacheBustURLsMatching: DONT_CACHE_BUST_URLS,
       maximumFileSizeToCacheInBytes: MAX_PRECACHE_FILE_BYTES,
       navigateFallback: "index.html",
-      cleanupOutdatedCaches: true,
-      // The 3D viewer's labels set a self-hosted, precached Plex face
-      // (SCENE_LABEL_FONT_URL). Only glyphs outside it (Greek, arrows) make
-      // troika resolve a fallback font from cdn.jsdelivr.net; cache those
-      // opportunistically so they keep working offline after one online use.
-      runtimeCaching: [
-        {
-          urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/.*/i,
-          handler: "CacheFirst",
-          options: {
-            cacheName: "jsdelivr-fonts",
-            expiration: { maxEntries: 64, maxAgeSeconds: 365 * 24 * 60 * 60 },
-            cacheableResponse: { statuses: [0, 200] }
-          }
-        }
-      ]
+      cleanupOutdatedCaches: true
+      // No runtime caching: the 3D viewer's labels use a self-hosted,
+      // precached Plex face and SceneLabelText keeps their text inside its
+      // glyph coverage, so troika never fetches fallback fonts from a CDN.
     }
   });
 }
 
 export default defineConfig({
-  plugins: [react(), wasmMeshingDisabled ? null : gmshPthreadAsset(), stubJsPdfHtmlDependencies(), stubMeshWorkerClientWhenDisabled(), compressGmshWasmForDeploy(), offlineAssetCaching()],
+  plugins: [react(), wasmMeshingDisabled ? null : gmshPthreadAsset(), troikaFallbackFonts(), stubJsPdfHtmlDependencies(), stubMeshWorkerClientWhenDisabled(), compressGmshWasmForDeploy(), offlineAssetCaching()],
   worker: {
     format: "es",
     // Worker sub-builds resolve their own imports, including nested worker

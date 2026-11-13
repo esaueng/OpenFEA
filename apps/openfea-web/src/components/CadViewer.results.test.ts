@@ -1827,7 +1827,7 @@ describe("CadViewer result coloring", () => {
     expect(plane?.normal.toArray()).toEqual([1, 0, 0]);
     expect(flipped?.normal.toArray()).toEqual([-1, 0, 0]);
     expect(cadViewerSource).toContain("localClippingEnabled = true");
-    expect(cadViewerSource).toContain(">Open section</Text>");
+    expect(cadViewerSource).toContain(">Open section</SceneLabelText>");
   });
 
   test("keeps uploaded result geometry undeformed when the active displacement frame is zero", () => {
@@ -3073,11 +3073,11 @@ describe("mesh view draws the generated mesh (2026-09 review D13)", () => {
 
 describe("scene label typeface", () => {
   test("every in-scene label uses the self-hosted Plex face, not the runtime CDN default", () => {
-    const textElements = cadViewerSource.match(/<Text\n[\s\S]*?>/g) ?? [];
-    expect(textElements.length).toBeGreaterThan(0);
-    for (const element of textElements) expect(element).toContain("font={SCENE_LABEL_FONT_URL}");
+    // Labels render through SceneLabelText (bundled face + glyph-safe text);
+    // drei's bare Text would let troika fetch fonts from cdn.jsdelivr.net.
+    expect(cadViewerSource).not.toMatch(/<Text\b/);
+    expect(cadViewerSource.match(/<SceneLabelText\n/g)?.length ?? 0).toBeGreaterThan(0);
     // troika 0.52 throws on WOFF2 ("woff2 fonts not supported"), so the label face is WOFF.
-    expect(cadViewerSource).toContain('from "../assets/fonts/ibm-plex-sans-latin-500-normal.woff"');
     expect(SCENE_LABEL_FONT_URL).toMatch(/ibm-plex-sans-latin-500-normal.*\.woff$/);
   });
 });

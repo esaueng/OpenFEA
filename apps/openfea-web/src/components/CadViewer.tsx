@@ -1,10 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ViewerToolbar } from "./ViewerToolbar";
 import type { CSSProperties, ElementRef, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { Billboard, Bounds, Edges, GizmoHelper, Html, Line, OrbitControls, Text, useBounds } from "@react-three/drei";
+import { Billboard, Bounds, Edges, GizmoHelper, Html, Line, OrbitControls, useBounds } from "@react-three/drei";
 import { addAfterEffect, Canvas, useFrame, useThree } from "@react-three/fiber";
-import { configureTextBuilder } from "troika-three-text";
-import sceneLabelFontUrl from "../assets/fonts/ibm-plex-sans-latin-500-normal.woff";
+import { SceneLabelText } from "./SceneLabelText";
+import { installThreeConsoleFilter } from "./threeConsoleFilter";
+import { SectionCap, SectionCulled, SectionPlaneContext, hasSectionClippableAncestor } from "./sectionView";
 import type { ThreeEvent } from "@react-three/fiber";
 import { finiteExtrema } from "@openfea/core";
 import type { DisplayFace, DisplayModel, MeshSummary, ResultField, ResultPeakLocation, ResultRenderBounds } from "@openfea/schema";
@@ -104,23 +105,16 @@ interface CadViewerProps {
   onRegisterCapture?: (capture: (() => Promise<string>) | null) => void;
 }
 
-// Troika's worker-based typesetter rehydrates its code with new Function()
-// inside a blob worker, which the production CSP (script-src 'self') forbids —
-// the gizmo <Text> labels would suspend forever and hide the whole viewer
-// behind the Suspense fallback. Typeset on the main thread instead.
-configureTextBuilder({ useWorker: false });
+// Every in-scene label renders through SceneLabelText: the bundled Plex face,
+// with text limited to glyphs that face covers, so troika never reaches for
+// its CDN fallback font resolver (see SceneLabelText.tsx).
+export { SCENE_LABEL_FONT_URL } from "./SceneLabelText";
 
-/**
- * Every in-scene label (load and support callouts, probes, dimensions, the axis
- * triad and the view cube) sets this. Without a `font`, troika resolves glyphs
- * through unicode-font-resolver, which fetched Noto Sans from cdn.jsdelivr.net
- * at runtime: labels rendered in a face the rest of the UI never uses, and a
- * user offline before the viewer's first online use had none. Self-hosted and
- * precached; WOFF because troika 0.52 rejects WOFF2. Weight 500 because scene
- * labels render at ~9-12px. Glyphs outside Latin-1 (Greek, arrows) still fall
- * back to the resolver.
- */
-export const SCENE_LABEL_FONT_URL = sceneLabelFontUrl;
+// Mute fiber's per-mount THREE.Clock deprecation warning (see threeConsoleFilter.ts).
+installThreeConsoleFilter();
+
+// The section cap (SectionCap) draws through the stencil buffer.
+const VIEWER_GL_OPTIONS = { stencil: true } as const;
 
 const BRACKET_DEPTH = 1.1;
 const RIB_DEPTH = 0.38;
@@ -361,6 +355,7 @@ export function CadViewer(props: CadViewerProps) {
     const base = new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(baseModelRotation[0], baseModelRotation[1], baseModelRotation[2]));
     return localBounds.clone().applyMatrix4(outer.multiply(base));
   }, [baseModelRotation, modelRotation, props.displayModel, uploadedPreviewBounds]);
+  const sectionClipPlane = useMemo(() => sectionPlaneForBounds(props.sectionPlane, sectionBounds), [props.sectionPlane, sectionBounds]);
   const resultFields = props.resultFields;
   const stressComponent = props.stressComponent ?? "von_mises";
   const effectiveShowDeformed = props.showDeformed && !shouldDisableResultDeformation(props.displayModel, resultFields);
@@ -420,13 +415,14 @@ export function CadViewer(props: CadViewerProps) {
     <ResultColorScaleContext.Provider value={resultColorScale}>
       <SceneThemeContext.Provider value={props.themeMode}>
       <StressComponentContext.Provider value={stressComponent}>
+      <SectionPlaneContext.Provider value={sectionClipPlane}>
     <section
       className={`viewer-shell ${effectiveViewMode === "results" ? "results-view" : ""}`}
       aria-busy={props.importingModelFilename ? true : undefined}
       aria-label="3D CAD viewer"
       onPointerDown={orbitHintDismissed ? undefined : dismissOrbitHint}
     >
-      <Canvas frameloop="demand" dpr={viewerDpr} camera={{ position: [4.8, 4.8, 4.8], up: ISO_CAMERA_UP.toArray(), fov: DEFAULT_CAMERA_FOV }} onCreated={({ gl }) => { gl.localClippingEnabled = true; }} onPointerMissed={props.onViewerMiss}>
+      <Canvas frameloop="demand" dpr={viewerDpr} gl={VIEWER_GL_OPTIONS} camera={{ position: [4.8, 4.8, 4.8], up: ISO_CAMERA_UP.toArray(), fov: DEFAULT_CAMERA_FOV }} onCreated={({ gl }) => { gl.localClippingEnabled = true; }} onPointerMissed={props.onViewerMiss}>
         <SceneFirstFrameSignal onPainted={handleScenePainted} />
         <ProjectionCameraController projectionMode={projectionMode} controlsRef={controlsRef} />
         <SectionClippingController state={props.sectionPlane} bounds={sectionBounds} />
@@ -530,6 +526,7 @@ export function CadViewer(props: CadViewerProps) {
           <GizmoCameraReset view={gizmoViewRequest.view} signal={gizmoViewRequest.signal} controlsRef={controlsRef} />
         </Bounds>
         {props.sectionPlane.enabled && sectionBounds ? <OpenSectionLabel bounds={sectionBounds} state={props.sectionPlane} /> : null}
+        <SectionCap bounds={sectionBounds} color={isLightTheme ? SECTION_CAP_COLOR_LIGHT : SECTION_CAP_COLOR_DARK} />
         <DemandOrbitControls controlsRef={controlsRef} onInteractionChange={handleViewerInteractionChange} reducedMotion={prefersReducedMotion} />
         <ShiftPanControls controlsRef={controlsRef} onInteractionChange={handleViewerInteractionChange} />
         <GizmoHelper alignment={VIEWER_GIZMO_ALIGNMENT} margin={compactViewer ? VIEWER_GIZMO_COMPACT_MARGIN : VIEWER_GIZMO_MARGIN} userData={{ openfeaCaptureExclude: true }}>
@@ -603,6 +600,7 @@ export function CadViewer(props: CadViewerProps) {
       />
       {effectiveViewMode === "results" && <ResultLegend resultMode={props.resultMode} resultFields={resultFields} unitSystem={props.unitSystem} meshSummary={props.meshSummary} surfaceMesh={props.surfaceMesh} showDeformed={effectiveShowDeformed} deformationScale={props.stressExaggeration} peakLabel={props.resultPeaks?.[props.resultMode]} stale={props.resultsStale} />}
     </section>
+      </SectionPlaneContext.Provider>
       </StressComponentContext.Provider>
       </SceneThemeContext.Provider>
     </ResultColorScaleContext.Provider>
@@ -623,8 +621,8 @@ function boxFitKey(bounds: THREE.Box3) {
 function ViewerRendererStatsProbe() {
   const { gl } = useThree();
   const lastLogRef = useRef(0);
-  useFrame(({ clock }) => {
-    const nowMs = clock.elapsedTime * 1000;
+  useFrame(() => {
+    const nowMs = performance.now();
     if (nowMs - lastLogRef.current < VIEWER_STATS_LOG_INTERVAL_MS) return;
     lastLogRef.current = nowMs;
     console.debug("[OpenFEA viewer stats]", {
@@ -892,16 +890,6 @@ function restoreSectionClipping(previous: Map<THREE.Material, SectionClippingMat
   previous.clear();
 }
 
-function hasSectionClippableAncestor(object: THREE.Object3D): boolean {
-  let current: THREE.Object3D | null = object;
-  while (current) {
-    if (current.userData.openfeaSectionExclude === true) return false;
-    if (current.userData.openfeaSectionClippable === true) return true;
-    current = current.parent;
-  }
-  return false;
-}
-
 function SectionClippingController({ state, bounds }: { state: SectionPlaneState; bounds: THREE.Box3 | null }) {
   const { invalidate, scene } = useThree();
   const previousRef = useRef(new Map<THREE.Material, SectionClippingMaterialState>());
@@ -918,17 +906,24 @@ function SectionClippingController({ state, bounds }: { state: SectionPlaneState
   return null;
 }
 
+const SECTION_CAP_COLOR_DARK = "#5b6878";
+const SECTION_CAP_COLOR_LIGHT = "#9aa6b4";
+
 function OpenSectionLabel({ bounds, state }: { bounds: THREE.Box3; state: SectionPlaneState }) {
   const plane = sectionPlaneForBounds(state, bounds);
   if (!plane) return null;
   const center = bounds.getCenter(new THREE.Vector3());
   const axisIndex = state.axis === "x" ? 0 : state.axis === "y" ? 1 : 2;
   center.setComponent(axisIndex, -plane.constant / plane.normal.getComponent(axisIndex));
-  center.y = bounds.max.y + Math.max(0.12, bounds.getSize(new THREE.Vector3()).y * 0.06);
+  // Keep the label on the section plane: lift it above the model along world up
+  // (Z), or, for a Z section, past the far Y edge. Lifting along the cut axis
+  // itself would park it over the cut-away half.
+  const size = bounds.getSize(new THREE.Vector3());
+  const liftAxis = axisIndex === 2 ? 1 : 2;
+  center.setComponent(liftAxis, bounds.max.getComponent(liftAxis) + Math.max(0.12, size.getComponent(liftAxis) * 0.06));
   return (
     <Billboard position={center.toArray() as [number, number, number]} follow>
-      <Text
-        font={SCENE_LABEL_FONT_URL}
+      <SceneLabelText
         color="#f8fafc"
         fontSize={0.11 * boundaryMarkerScale(bounds)}
         anchorX="center"
@@ -936,7 +931,7 @@ function OpenSectionLabel({ bounds, state }: { bounds: THREE.Box3; state: Sectio
         outlineColor="#111827"
         outlineWidth={0.012}
         renderOrder={30}
-      >Open section</Text>
+      >Open section</SceneLabelText>
     </Billboard>
   );
 }
@@ -1449,8 +1444,7 @@ function AxisCap({
         <circleGeometry args={[VIEWER_AXIS_LABEL_BADGE_RADIUS, 36]} />
         <meshBasicMaterial color={VIEWER_AXIS_LABEL_BADGE_COLOR} depthTest={false} toneMapped={false} />
       </mesh>
-      <Text
-        font={SCENE_LABEL_FONT_URL}
+      <SceneLabelText
         anchorX="center"
         anchorY="middle"
         color={VIEWER_AXIS_LABEL_COLOR}
@@ -1462,9 +1456,8 @@ function AxisCap({
         position={[0, 0, 0.01]}
       >
         {label}
-      </Text>
-      <Text
-        font={SCENE_LABEL_FONT_URL}
+      </SceneLabelText>
+      <SceneLabelText
         anchorX="center"
         anchorY="middle"
         color="#d7e3ee"
@@ -1475,7 +1468,7 @@ function AxisCap({
         position={[0, -0.095, 0.011]}
       >
         +
-      </Text>
+      </SceneLabelText>
     </Billboard>
   );
 }
@@ -1773,8 +1766,7 @@ function GizmoTextLabel({
   position?: [number, number, number];
 }) {
   return (
-    <Text
-      font={SCENE_LABEL_FONT_URL}
+    <SceneLabelText
       anchorX="center"
       anchorY="middle"
       color={color}
@@ -1792,7 +1784,7 @@ function GizmoTextLabel({
       renderOrder={5}
     >
       {children}
-    </Text>
+    </SceneLabelText>
   );
 }
 
@@ -2011,15 +2003,19 @@ function BracketModel({
       {showBoundaryMarkers && loadMarkers.map((marker) => {
         const face = displayModel.faces.find((item) => item.id === marker.faceId);
         if (!face) return null;
-        return marker.preview
-          ? <PickedLoadLocationMarker key={marker.id} marker={marker} face={face} active={activeStep === "loads"} scale={markerScale} />
-          : <LoadGlyph key={marker.id} marker={marker} face={face} active={activeStep === "loads"} labelPosition={boundaryLabelPositions.get(boundaryLabelKey("load", marker.id))} scale={markerScale} />;
+        return (
+          <SectionCulled key={marker.id} anchor={loadMarkerAnchor(marker, face)}>
+            {marker.preview
+              ? <PickedLoadLocationMarker marker={marker} face={face} active={activeStep === "loads"} scale={markerScale} />
+              : <LoadGlyph marker={marker} face={face} active={activeStep === "loads"} labelPosition={boundaryLabelPositions.get(boundaryLabelKey("load", marker.id))} scale={markerScale} />}
+          </SectionCulled>
+        );
       })}
       {showBoundaryMarkers && supportMarkers.map((marker) => {
         const face = displayModel.faces.find((item) => item.id === marker.faceId);
-        return face ? <SupportGlyph key={marker.id} kind={modelKind} marker={marker} face={face} active={activeStep === "supports"} labelPosition={boundaryLabelPositions.get(boundaryLabelKey("support", marker.id))} scale={markerScale * SUPPORT_GLYPH_EMPHASIS} /> : null;
+        return face ? <SectionCulled key={marker.id} anchor={face.center}><SupportGlyph kind={modelKind} marker={marker} face={face} active={activeStep === "supports"} labelPosition={boundaryLabelPositions.get(boundaryLabelKey("support", marker.id))} scale={markerScale * SUPPORT_GLYPH_EMPHASIS} /></SectionCulled> : null;
       })}
-      {showResultMarkers && resultProbesForKind(modelKind, displayModel.faces, resultMode, resultFields, unitSystem).map((probe) => <ResultProbe key={`${probe.tone}-${probe.label}-${probe.anchor.join(",")}`} {...probe} />)}
+      {showResultMarkers && resultProbesForKind(modelKind, displayModel.faces, resultMode, resultFields, unitSystem).map((probe) => <SectionCulled key={`${probe.tone}-${probe.label}-${probe.anchor.join(",")}`} anchor={probe.anchor}><ResultProbe {...probe} /></SectionCulled>)}
       {isResultView && (
         <SampleResultProbeMarkers
           displayModel={displayModel}
@@ -2561,8 +2557,7 @@ function DimensionLineLabel({ label, position, tangent, scale }: { label: string
   });
   return (
     <group ref={groupRef} position={position}>
-      <Text
-        font={SCENE_LABEL_FONT_URL}
+      <SceneLabelText
         anchorX="center"
         anchorY="middle"
         renderOrder={50}
@@ -2577,7 +2572,7 @@ function DimensionLineLabel({ label, position, tangent, scale }: { label: string
         outlineWidth={0.009 * scale}
       >
         {label}
-      </Text>
+      </SceneLabelText>
     </group>
   );
 }
@@ -4079,7 +4074,7 @@ function SurfaceResultProbeMarkers({
       localPoint[1] * scale + offset[1],
       localPoint[2] * scale + offset[2]
     ] as [number, number, number];
-    return [<UserResultProbeMarker key={reading.id} reading={reading} point={point} index={index} />];
+    return [<SectionCulled key={reading.id} anchor={point}><UserResultProbeMarker reading={reading} point={point} index={index} /></SectionCulled>];
   });
 }
 
@@ -4153,12 +4148,14 @@ function ResultPeakCallout({
   if (!point) return null;
   // The legend carries the same text for assistive technology; this is its on-model pointer.
   return (
-    <Html position={point} zIndexRange={[3, 2]} pointerEvents="none">
-      <span className="result-peak-callout" aria-hidden="true">
-        <span className="result-peak-callout-dot" />
-        <span className="result-peak-callout-label">{label}</span>
-      </span>
-    </Html>
+    <SectionCulled anchor={point}>
+      <Html position={point} zIndexRange={[3, 2]} pointerEvents="none">
+        <span className="result-peak-callout" aria-hidden="true">
+          <span className="result-peak-callout-dot" />
+          <span className="result-peak-callout-label">{label}</span>
+        </span>
+      </Html>
+    </SectionCulled>
   );
 }
 
@@ -5332,7 +5329,8 @@ function SampleResultProbeMarkers({
     if (showDeformed && visualScale <= 0) {
       modelPoint = deformedPointForKind(modelKind, modelPoint, deformationScale, deformationScaleForResultFields(fields) ?? 1);
     }
-    return [<UserResultProbeMarker key={reading.id} reading={reading} point={modelPoint.toArray() as [number, number, number]} index={index} />];
+    const point = modelPoint.toArray() as [number, number, number];
+    return [<SectionCulled key={reading.id} anchor={point}><UserResultProbeMarker reading={reading} point={point} index={index} /></SectionCulled>];
   });
 }
 
@@ -6792,8 +6790,7 @@ function SceneLabel({
   const solidHalo = tone === "probe" || themeMode === "light";
   return (
     <Billboard position={position} renderOrder={50}>
-      <Text
-        font={SCENE_LABEL_FONT_URL}
+      <SceneLabelText
         anchorX="center"
         anchorY="middle"
         color={colors.text}
@@ -6808,7 +6805,7 @@ function SceneLabel({
         outlineWidth={(tone === "probe" ? 0.02 : themeMode === "light" ? 0.016 : 0.011) * scale}
       >
         {label}
-      </Text>
+      </SceneLabelText>
     </Billboard>
   );
 }
