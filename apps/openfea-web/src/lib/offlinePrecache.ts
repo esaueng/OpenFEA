@@ -34,6 +34,11 @@ export const PRECACHE_GLOB_PATTERNS = ["**/*.{js,mjs,css,html,png,ttf,woff,woff2
  */
 export const SW_FORCE_REFRESH_SCRIPT = "sw-force-refresh.js";
 
+/** Worker responses must reach the network instead of the cached app shell.
+ * Workbox matches these expressions against pathname + search.
+ */
+export const SERVER_NAVIGATION_DENYLIST = [/^\/healthz?(?:\?|$)/, /^\/api(?:\/|\?|$)/];
+
 /**
  * Hash-named assets are versioned by URL (revision:null is correct and avoids
  * pointless cache-bust query params) — EXCEPT assets/gmsh-wasm.json, whose URL

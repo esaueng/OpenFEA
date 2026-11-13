@@ -10,7 +10,9 @@
 //    compress plugin rewrote it.
 // 2. Browser proof — spawn `vite preview` + headless Chrome, load the app
 //    once online, wait for the service worker to activate (= full precache,
-//    wasm included) and for the footer to say "Offline-ready"; then KILL the
+//    wasm included) and for the footer to say "Offline-ready". Verify that
+//    health/API navigations still reach the fixture origin as uncached JSON,
+//    rather than the service-worker app shell. Then KILL the
 //    server, force CDP network emulation offline, reload ?meshProof=run and
 //    run the bracket study end-to-end (wasm mesh -> local solve) while
 //    logging every network event. Pass requires zero successful fetches from
@@ -24,7 +26,7 @@
 // The default ports differ from every other browser verifier so proofs can run side by side.
 // Exit codes: 0 proof ok, 1 gate failed, 2 timeout.
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,6 +100,7 @@ function auditDist() {
 
 // ── Process + CDP helpers ───────────────────────────────────────────────────
 const children = [];
+const scratchDirs = [];
 // detached => own process group, so killChild(-pid) takes wrapper AND
 // grandchildren with it (npx/pnpm wrappers otherwise leave the real server
 // alive, which would fake the "offline" phase).
@@ -119,6 +122,7 @@ function killChild(child) {
 }
 function cleanup() {
   for (const child of children) killChild(child);
+  for (const directory of scratchDirs) rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 process.on("exit", cleanup);
 process.on("SIGINT", () => process.exit(2));
@@ -180,13 +184,42 @@ async function evaluate(cdp, expression) {
 
 // ── Phase 2: browser proof ──────────────────────────────────────────────────
 async function browserProof() {
-  const preview = spawnChild("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
+  // Vite normally serves the SPA shell for these paths itself. Give the test
+  // origin Worker-like JSON routes so a service-worker fallback cannot hide a
+  // broken health/API navigation. Worker unit tests cover the real handlers.
+  const fixtureDir = mkdtempSync(join(tmpdir(), "openfea-offline-origin-"));
+  scratchDirs.push(fixtureDir);
+  const fixtureConfig = join(fixtureDir, "vite.config.mjs");
+  writeFileSync(fixtureConfig, `
+import config from ${JSON.stringify(join(repoRoot, "apps/openfea-web/vite.config.ts"))};
+export default { ...config, plugins: [...config.plugins, {
+  name: "offline-proof-worker-routes",
+  configurePreviewServer(server) {
+    server.middlewares.use((request, response, next) => {
+      const path = new URL(request.url, "http://proof.invalid").pathname;
+      const bodies = {
+        "/health": { ok: true, mode: "cloudflare-worker", service: "openfea-web", solverRuntime: "browser-openfea-core" },
+        "/healthz": { status: "ok", service: "openfea" },
+        "/api/__offline_proof__": { error: "Worker route not found" }
+      };
+      if (!Object.hasOwn(bodies, path)) return next();
+      response.statusCode = path.startsWith("/api/") ? 404 : 200;
+      response.setHeader("Content-Type", "application/json; charset=utf-8");
+      response.setHeader("Cache-Control", "no-store");
+      response.setHeader("X-OpenFEA-Proof-Network", "1");
+      response.end(JSON.stringify(bodies[path]));
+    });
+  }
+}] };
+`);
+  const preview = spawnChild("npx", ["vite", "preview", "--config", fixtureConfig, "--port", String(PORT), "--strictPort"], {
     cwd: join(repoRoot, "apps/openfea-web")
   });
   await waitFor("preview server", async () => (await fetch(`http://localhost:${PORT}/`)).ok);
   console.log(`[serve] vite preview on :${PORT}`);
 
   const profileDir = mkdtempSync(join(tmpdir(), "openfea-offline-proof-"));
+  scratchDirs.push(profileDir);
   const chrome = spawnChild(chromeBinary(), [
     "--headless=new",
     "--disable-gpu",
@@ -205,11 +238,15 @@ async function browserProof() {
   const requests = new Map();
   const postOfflineResponses = [];
   const postOfflineFailures = [];
+  const onlineDocuments = [];
   cdp.on("Network.requestWillBeSent", (params) => {
     requests.set(params.requestId, params.request.url);
   });
   cdp.on("Network.responseReceived", (params) => {
-    if (!offline) return;
+    if (!offline) {
+      if (params.type === "Document") onlineDocuments.push({ requestId: params.requestId, ...params.response });
+      return;
+    }
     postOfflineResponses.push({
       url: params.response.url,
       status: params.response.status,
@@ -261,6 +298,33 @@ async function browserProof() {
     500
   );
   console.log(`[online] footer: "${footerText.trim()}"`);
+
+  await waitFor("service-worker control", () => evaluate(cdp, "Boolean(navigator.serviceWorker.controller)"));
+  for (const path of ["/health", "/health?probe=browser", "/healthz", "/healthz?probe=browser", "/api/__offline_proof__"]) {
+    const before = onlineDocuments.length;
+    await cdp.send("Page.navigate", { url: `http://localhost:${PORT}${path}` });
+    const response = await waitFor(`network navigation ${path}`, async () => onlineDocuments.slice(before).find((entry) => {
+      const url = new URL(entry.url);
+      return url.pathname + url.search === path;
+    }));
+    const expectedStatus = path.startsWith("/api/") ? 404 : 200;
+    const headers = Object.fromEntries(Object.entries(response.headers).map(([key, value]) => [key.toLowerCase(), value]));
+    if (response.status !== expectedStatus || response.fromServiceWorker || response.mimeType !== "application/json" || headers["x-openfea-proof-network"] !== "1" || headers["cache-control"] !== "no-store") {
+      throw new Error(`Server navigation ${path} was intercepted or cached: ${JSON.stringify({ status: response.status, mimeType: response.mimeType, fromServiceWorker: response.fromServiceWorker, headers })}`);
+    }
+    const body = await waitFor(`JSON body for ${path}`, async () => {
+      const result = await cdp.send("Network.getResponseBody", { requestId: response.requestId });
+      return result.result?.body;
+    });
+    const json = JSON.parse(body);
+    const validBody = path.startsWith("/healthz") ? json.status === "ok"
+      : path.startsWith("/health") ? json.ok === true
+        : json.error === "Worker route not found";
+    if (!validBody) {
+      throw new Error(`Unexpected server navigation response for ${path}: ${body}`);
+    }
+    console.log(`[online] ${path}: network JSON ${response.status}, no-store, not served by SW`);
+  }
 
   // Go offline for real: dead server + CDP network emulation.
   killChild(preview);

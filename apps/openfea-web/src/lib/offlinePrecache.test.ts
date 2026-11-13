@@ -10,6 +10,7 @@ import {
   MAX_PRECACHE_FILE_BYTES,
   PRECACHE_GLOB_IGNORES,
   PRECACHE_GLOB_PATTERNS,
+  SERVER_NAVIGATION_DENYLIST,
   SW_FORCE_REFRESH_SCRIPT,
   auditPrecacheManifest,
   requiredOfflineUrls
@@ -109,6 +110,16 @@ describe("auditPrecacheManifest", () => {
 });
 
 describe("workbox settings", () => {
+  test.each(["/health", "/health?probe=monitor", "/healthz", "/healthz?probe=monitor", "/api", "/api?probe=monitor", "/api/project-backups/example", "/api/glimpse/usage"])(
+    "keeps server navigation %s out of the app-shell fallback",
+    (path) => expect(SERVER_NAVIGATION_DENYLIST.some((pattern) => pattern.test(path))).toBe(true)
+  );
+
+  test.each(["/", "/?meshProof=run", "/?project=example", "/healthcare", "/healthz-other", "/apiary"])(
+    "preserves app navigation %s",
+    (path) => expect(SERVER_NAVIGATION_DENYLIST.some((pattern) => pattern.test(path))).toBe(false)
+  );
+
   test("header changes force a service-worker update", () => {
     expect(PRECACHE_GLOB_PATTERNS).toContain("_headers");
     expect(PRECACHE_GLOB_PATTERNS[0]).toContain("ttf");

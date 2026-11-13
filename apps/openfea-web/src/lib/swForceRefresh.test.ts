@@ -24,6 +24,9 @@ describe("service-worker forced refresh lifecycle", () => {
         clients: { matchAll: async () => [
           { url: "https://example.test/?project=qa", navigate },
           { url: "https://example.test/?openfea-sw-refresh=123", navigate },
+          { url: "https://example.test/health", navigate },
+          { url: "https://example.test/healthz?probe=monitor", navigate },
+          { url: "https://example.test/api/project-backups/example", navigate },
           { url: "https://other.test/", navigate }
         ] },
         addEventListener: (_: string, listener: typeof activate) => { activate = listener; }
