@@ -44,7 +44,7 @@ The full product runs in the web app; `pnpm dev` is shorthand for the last comma
 
 - Geometry processing, meshing, solving, result inspection, and reports run in the browser. Workspace state uses localStorage and IndexedDB; **Save project** writes a portable `.openfea.json` file.
 - After the app reports **Offline-ready**, its service worker has cached the app and analysis assets for offline use.
-- If browser autosave runs out of space, OpenFEA asks before uploading a recovery snapshot. It encrypts the snapshot in the browser; the server stores ciphertext without the decryption key. Recovery backups expire after 30 days. Saving a local file remains available.
+- If browser autosave runs out of space, OpenFEA asks before uploading a recovery snapshot. It encrypts the snapshot in the browser; the server stores ciphertext without the decryption key. Recovery backups expire after 30 days, and all users share a daily upload cap (10 GiB per UTC day by default). Saving a local file remains available.
 - Production enables Glimpse aggregate backend statistics. Browser usage analytics require an explicit opt-in under **Storage → Optional usage analytics** and remain off until granted. Withdrawal stops future collection; DNT/GPC suppress browser sends. Metrics use fixed categories and coarse buckets without model contents, filenames, project names, or visitor identifiers. See [Glimpse collection and controls](docs/glimpse.md) for payload limits and deployment/verification details.
 
 ## Development and verification
@@ -86,9 +86,9 @@ Build command: pnpm run build
 Deploy command: npx wrangler deploy
 ```
 
-Non-production branch builds use `npx wrangler preview`. The checked-in `previews` block disables analytics and omits production service, R2 and rate-limiter bindings. Browser-local modeling and simulation remain available; encrypted cloud recovery returns unavailable on previews. Preview resource isolation is enforced by `verify:cloudflare-config`.
+Non-production branch builds use `npx wrangler preview`. The checked-in `previews` block disables analytics and omits production service, R2, rate-limiter and Durable Object bindings. Browser-local modeling and simulation remain available; encrypted cloud recovery returns unavailable on previews. Preview resource isolation is enforced by `verify:cloudflare-config`.
 
-`pnpm deploy:cloudflare` is also a supported deploy command. Do not use `npx wrangler versions upload` for the production Worker: version uploads cannot apply the retired Durable Object cleanup migration. The separate `deploy:cloudflare:static` target is non-production and omits the production domain. See [local development](docs/local-development/README.md) and [cloud retirement](docs/cloud-retirement.md) for deployment commands and the one-off retired Durable Object cleanup procedure.
+`pnpm deploy:cloudflare` is also a supported deploy command. Do not use `npx wrangler versions upload` for the production Worker: version uploads cannot apply a pending Durable Object migration. `wrangler.jsonc` carries the append-only migration history (the retired container class and the `v5-project-backup-daily-quota` backup quota ledger); the first `wrangler deploy` after a new tag applies it. The separate `deploy:cloudflare:static` target is non-production and omits the production domain. See [local development](docs/local-development/README.md) and [cloud retirement](docs/cloud-retirement.md) for deployment commands and the one-off retired Durable Object cleanup procedure.
 
 ## Production Uptime
 

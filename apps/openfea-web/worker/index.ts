@@ -1,5 +1,17 @@
 /// <reference types="./worker-configuration" />
+import {
+  BACKUP_DAILY_CAP_REACHED_CODE,
+  commitDailyBackupBytes,
+  parseDailyCapBytes,
+  releaseDailyBackupBytes,
+  reserveDailyBackupBytes,
+  type ReserveResult
+} from "./backupDailyQuota";
 import { handleGlimpseUsage, countApi } from "./glimpse";
+
+// The global daily backup byte ledger. Wrangler binds it as
+// PROJECT_BACKUP_DAILY_QUOTA (migration tag v5-project-backup-daily-quota).
+export { ProjectBackupDailyQuota } from "./backupDailyQuota";
 
 // Local-first Cloudflare Worker: serves the built web app from Workers Static
 // Assets with security headers and stores only explicitly approved,
@@ -126,48 +138,78 @@ async function handleProjectBackup(request: Request, env: Env, backupId: string)
     const rateLimit = await env.PROJECT_BACKUP_RATE_LIMITER.limit({ key: actor });
     if (!rateLimit.success) return backupJson({ error: "Cloud backup rate limit exceeded. Save a local project file and try again later." }, 429);
     const contentLength = Number(request.headers.get("content-length"));
-    if (!Number.isFinite(contentLength) || contentLength <= 12 || contentLength > PROJECT_BACKUP_MAX_BYTES) {
+    // An integral Content-Length is required: it is the size reserved against
+    // the daily cap below.
+    if (!Number.isSafeInteger(contentLength) || contentLength <= 12 || contentLength > PROJECT_BACKUP_MAX_BYTES) {
       return backupJson({ error: "Encrypted cloud backups must be between 13 bytes and 95 MiB. Save this project to a local file instead." }, 413);
     }
     if (!request.body) return backupJson({ error: "Cloud backup body is missing." }, 400);
+    // The daily cap is global across clients. Misconfiguration fails closed
+    // for uploads only; existing backups stay restorable and deletable.
+    const dailyCap = parseDailyCapBytes(env.PROJECT_BACKUP_DAILY_CAP_BYTES);
+    if (!env.PROJECT_BACKUP_DAILY_QUOTA || !dailyCap.ok) {
+      if (!dailyCap.ok) console.error(`Encrypted backup uploads disabled: ${dailyCap.reason}`);
+      return backupJson({ error: "Encrypted cloud recovery is unavailable on this deployment." }, 503);
+    }
     const tokenHash = await sha256Hex(token);
     const existing = await env.PROJECT_BACKUPS.head(key);
     if (existing && !constantTimeEqual(existing.customMetadata?.tokenHash ?? "", tokenHash)) {
       return backupJson({ error: "Cloud backup authorization failed." }, 403);
     }
-    const expiresAt = new Date(Date.now() + PROJECT_BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
-    // The content-length header is client-claimed, so enforce the size cap on
-    // the stored bytes too: count the stream, then verify with head().
-    let storedBytes = 0;
-    const countingBody = request.body.pipeThrough(new TransformStream({
-      transform(chunk, controller) {
-        storedBytes += chunk.byteLength;
-        if (storedBytes > PROJECT_BACKUP_MAX_BYTES) {
-          controller.error(new Error("Backup exceeds the 95 MiB cap."));
-          return;
-        }
-        controller.enqueue(chunk);
-      }
-    }));
+    // Reserve the declared size before streaming so concurrent uploads cannot
+    // overshoot the cap together; the stream below never exceeds it.
+    let reservation: ReserveResult;
     try {
-      await env.PROJECT_BACKUPS.put(key, countingBody, {
-        httpMetadata: { contentType: "application/octet-stream" },
-        customMetadata: {
-          tokenHash,
-          expiresAt,
-          runId: sanitizeMetadata(request.headers.get("x-opencae-run-id"))
-        }
-      });
+      reservation = await reserveDailyBackupBytes(env.PROJECT_BACKUP_DAILY_QUOTA, contentLength, dailyCap.capBytes);
     } catch {
-      await env.PROJECT_BACKUPS.delete(key).catch(() => undefined);
-      return backupJson({ error: "Encrypted cloud backups must be between 13 bytes and 95 MiB. Save this project to a local file instead." }, 413);
+      return backupJson({ error: "Encrypted cloud recovery is temporarily unavailable. Save this project to a local file instead." }, 503);
     }
-    const stored = await env.PROJECT_BACKUPS.head(key);
-    if (!stored || stored.size > PROJECT_BACKUP_MAX_BYTES || stored.size <= 12) {
-      await env.PROJECT_BACKUPS.delete(key).catch(() => undefined);
-      return backupJson({ error: "Encrypted cloud backups must be between 13 bytes and 95 MiB. Save this project to a local file instead." }, 413);
+    if (!reservation.ok) return dailyCapReachedResponse(reservation.retryAfterSeconds, reservation.resetsAt);
+    const reservationId = reservation.reservationId;
+    let committed = false;
+    try {
+      const expiresAt = new Date(Date.now() + PROJECT_BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      // The content-length header is client-claimed, so enforce the size cap on
+      // the stored bytes too: count the stream, then verify with head(). The
+      // stream may not exceed the declared (and reserved) length either.
+      let storedBytes = 0;
+      const countingBody = request.body.pipeThrough(new TransformStream({
+        transform(chunk, controller) {
+          storedBytes += chunk.byteLength;
+          if (storedBytes > PROJECT_BACKUP_MAX_BYTES || storedBytes > contentLength) {
+            controller.error(new Error("Backup exceeds its declared length or the 95 MiB cap."));
+            return;
+          }
+          controller.enqueue(chunk);
+        }
+      }));
+      try {
+        await env.PROJECT_BACKUPS.put(key, countingBody, {
+          httpMetadata: { contentType: "application/octet-stream" },
+          customMetadata: {
+            tokenHash,
+            expiresAt,
+            runId: sanitizeMetadata(request.headers.get("x-opencae-run-id"))
+          }
+        });
+      } catch {
+        await env.PROJECT_BACKUPS.delete(key).catch(() => undefined);
+        return backupJson({ error: "Encrypted cloud backups must be between 13 bytes and 95 MiB. Save this project to a local file instead." }, 413);
+      }
+      const stored = await env.PROJECT_BACKUPS.head(key);
+      if (!stored || stored.size > PROJECT_BACKUP_MAX_BYTES || stored.size > contentLength || stored.size <= 12) {
+        await env.PROJECT_BACKUPS.delete(key).catch(() => undefined);
+        return backupJson({ error: "Encrypted cloud backups must be between 13 bytes and 95 MiB. Save this project to a local file instead." }, 413);
+      }
+      // The object is stored; a failed commit leaves the full reservation
+      // counted until UTC midnight, which only errs toward refusing earlier.
+      committed = true;
+      await commitDailyBackupBytes(env.PROJECT_BACKUP_DAILY_QUOTA, reservationId, stored.size).catch(() => undefined);
+      return backupJson({ backupId, expiresAt }, 201);
+    } finally {
+      // Every path that did not store the backup returns its reserved bytes.
+      if (!committed) await releaseDailyBackupBytes(env.PROJECT_BACKUP_DAILY_QUOTA, reservationId).catch(() => undefined);
     }
-    return backupJson({ backupId, expiresAt }, 201);
   }
 
   const object = await env.PROJECT_BACKUPS.get(key);
@@ -220,6 +262,18 @@ async function deleteExpiredProjectBackups(env: Env): Promise<void> {
     if (expiredKeys.length > 0) await env.PROJECT_BACKUPS.delete(expiredKeys);
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
+}
+
+function dailyCapReachedResponse(retryAfterSeconds: number, resetsAt: string): Response {
+  return Response.json(
+    {
+      error: "The shared daily limit for encrypted cloud recovery backups has been reached. Save this project to a local file; cloud recovery reopens after 00:00 UTC.",
+      code: BACKUP_DAILY_CAP_REACHED_CODE,
+      retryAfterSeconds,
+      resetsAt
+    },
+    { status: 507, headers: { ...jsonHeaders, "retry-after": String(retryAfterSeconds) } }
+  );
 }
 
 function backupJson(body: Record<string, unknown>, status: number): Response {

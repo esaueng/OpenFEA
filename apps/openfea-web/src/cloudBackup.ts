@@ -6,6 +6,8 @@ import { getBrowserStorage, readStorageItem, type StorageLike } from "./autosave
 const CLOUD_BACKUP_STORAGE_KEY = "opencae.workspace.cloud-backup.v1";
 const CLOUD_BACKUP_PREFERENCE_STORAGE_KEY = "opencae.workspace.cloud-backup.preference.v1";
 const CLOUD_BACKUP_PATH = "/api/project-backups";
+// Mirrors BACKUP_DAILY_CAP_REACHED_CODE in worker/backupDailyQuota.ts.
+const DAILY_CAP_REACHED_CODE = "backup_daily_cap_reached";
 
 export type CloudBackupPreference = "cloud" | "local";
 
@@ -165,10 +167,28 @@ function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
 }
 
 async function cloudBackupError(response: Response, fallback: string): Promise<string> {
+  let body: { error?: unknown; code?: unknown } = {};
   try {
-    const body = await response.json() as { error?: unknown };
-    return typeof body.error === "string" ? body.error : fallback;
+    body = await response.json() as { error?: unknown; code?: unknown };
   } catch {
-    return fallback;
+    // Fall through to the status-based message or the fallback.
   }
+  if (response.status === 507 || body.code === DAILY_CAP_REACHED_CODE) {
+    return dailyCapReachedMessage(response.headers.get("retry-after"));
+  }
+  return typeof body.error === "string" ? body.error : fallback;
+}
+
+/**
+ * The server enforces a shared daily byte cap across all users. Nothing was
+ * uploaded and the local project is untouched, so say when cloud recovery
+ * reopens instead of surfacing a raw HTTP status.
+ */
+export function dailyCapReachedMessage(retryAfter: string | null): string {
+  const seconds = Number(retryAfter);
+  const hours = Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds / 3600) : null;
+  const reopens = hours === null
+    ? "after 00:00 UTC"
+    : `after 00:00 UTC (in about ${hours} ${hours === 1 ? "hour" : "hours"})`;
+  return `Encrypted cloud recovery has reached today's shared storage limit, so this backup was not uploaded. Your project is still open in this browser. Cloud recovery reopens ${reopens}.`;
 }

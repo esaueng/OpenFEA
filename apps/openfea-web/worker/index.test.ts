@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { parseJsonc } from "../../../scripts/verify-cloudflare-config.mjs";
 
-const { default: worker } = await import("./index");
+const { default: worker, ProjectBackupDailyQuota } = await import("./index");
 
 function dispatchWorker(request: Request, env: Env): Promise<Response> {
   return worker.fetch(request, env);
@@ -13,9 +13,37 @@ function readJsonc(path: string) {
   return parseJsonc(readFileSync(resolve(__dirname, path), "utf8"), path);
 }
 
+/** One in-memory Durable Object instance per namespace, like the global ledger in production. */
+function createQuotaNamespace() {
+  const values = new Map<string, unknown>();
+  const storage = {
+    get: async (key: string) => structuredClone(values.get(key)),
+    put: async (key: string, value: unknown) => { values.set(key, structuredClone(value)); }
+  };
+  const names = new Set<string>();
+  let instance: InstanceType<typeof ProjectBackupDailyQuota> | null = null;
+  return {
+    names,
+    idFromName: (name: string) => { names.add(name); return { name }; },
+    get: () => ({
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+        instance ??= new ProjectBackupDailyQuota({ storage } as unknown as DurableObjectState, {});
+        return instance.fetch(new Request(input, init));
+      }
+    })
+  };
+}
+
 function createEnv(
   assetBody = "asset",
-  options?: { listPageSize?: number; backups?: Array<{ key: string; expiresAt?: string }> }
+  options?: {
+    listPageSize?: number;
+    backups?: Array<{ key: string; expiresAt?: string }>;
+    dailyCapBytes?: string;
+    quota?: ReturnType<typeof createQuotaNamespace> | null;
+    putDelayMs?: number;
+    failPut?: () => boolean;
+  }
 ): Env {
   const objects = new Map<string, { bytes: Uint8Array; customMetadata: Record<string, string> }>();
   for (const backup of options?.backups ?? []) {
@@ -27,10 +55,14 @@ function createEnv(
   return {
     ASSETS: { fetch: async () => new Response(assetBody, { headers: { "content-type": "text/html" } }) },
     PROJECT_BACKUP_RATE_LIMITER: { limit: async () => ({ success: true }) },
+    ...(options?.quota === null ? {} : { PROJECT_BACKUP_DAILY_QUOTA: options?.quota ?? createQuotaNamespace() }),
+    ...(options?.dailyCapBytes === undefined ? {} : { PROJECT_BACKUP_DAILY_CAP_BYTES: options.dailyCapBytes }),
     PROJECT_BACKUPS: {
-      put: async (key: string, value: ReadableStream, options: { customMetadata: Record<string, string> }) => {
+      put: async (key: string, value: ReadableStream, putOptions: { customMetadata: Record<string, string> }) => {
+        if (options?.putDelayMs) await new Promise((done) => setTimeout(done, options.putDelayMs));
         const bytes = new Uint8Array(await new Response(value).arrayBuffer());
-        objects.set(key, { bytes, customMetadata: options.customMetadata });
+        if (options?.failPut?.()) throw new Error("R2 write failed");
+        objects.set(key, { bytes, customMetadata: putOptions.customMetadata });
         return null;
       },
       get: async (key: string) => {
@@ -109,22 +141,31 @@ describe("Cloudflare local-first worker", () => {
       containers?: unknown;
       durable_objects?: unknown;
       r2_buckets?: unknown;
-      migrations?: Array<{ tag?: string; deleted_classes?: string[] }>;
+      migrations?: Array<{ tag?: string; deleted_classes?: string[]; new_sqlite_classes?: string[] }>;
       assets?: { run_worker_first?: string[] };
       triggers?: { crons?: string[] };
+      vars?: Record<string, string>;
     };
 
     expect(defaultConfig.name).toBe("openfea");
     expect(defaultConfig.routes).toEqual([{ pattern: "fea.esau.app", custom_domain: true }]);
     expect(defaultConfig.containers).toBeUndefined();
-    expect(defaultConfig.durable_objects).toBeUndefined();
+    // The only Durable Object is the global daily backup quota ledger.
+    expect(defaultConfig.durable_objects).toEqual({
+      bindings: [{ name: "PROJECT_BACKUP_DAILY_QUOTA", class_name: "ProjectBackupDailyQuota" }]
+    });
+    expect(defaultConfig.vars?.PROJECT_BACKUP_DAILY_CAP_BYTES).toBe(String(10 * 1024 * 1024 * 1024));
     expect(defaultConfig.r2_buckets).toEqual([{ binding: "PROJECT_BACKUPS", bucket_name: "opencae-project-backups" }]);
     expect(defaultConfig.assets?.run_worker_first).toEqual(expect.arrayContaining(["/api/*", "/health"]));
     expect(defaultConfig.triggers?.crons).toEqual(["17 3 * * *"]);
-    // Checked-in migrations break Workers Builds version uploads; the retired
-    // Durable Object cleanup is a one-off manual deploy step documented in
-    // docs/cloud-retirement.md.
-    expect(defaultConfig.migrations).toBeUndefined();
+    // Append-only migration history: the retired container tags stay verbatim
+    // and the quota class rides its own new tag.
+    expect(defaultConfig.migrations?.map((migration) => migration.tag)).toEqual([
+      "v3-opencae-core-cloud-container",
+      "v4-retire-opencae-core-cloud-container",
+      "v5-project-backup-daily-quota"
+    ]);
+    expect(defaultConfig.migrations?.at(-1)?.new_sqlite_classes).toEqual(["ProjectBackupDailyQuota"]);
   });
 
   test("deploy scripts target the retired-cloud config without container gates", () => {
@@ -388,6 +429,168 @@ describe("Cloudflare local-first worker", () => {
     const defaultConfig = readJsonc("../../../wrangler.jsonc") as { triggers?: { crons?: string[] } };
 
     expect(defaultConfig.triggers?.crons).toHaveLength(1);
+  });
+
+  describe("global daily backup cap", () => {
+    const token = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN1234567890-_";
+    const backupUrl = (index: number) => `https://fea.esau.app/api/project-backups/${String(index).padStart(8, "0")}-1111-4111-8111-111111111111`;
+    const putBackup = (env: Env, index: number, size: number) => dispatchWorker(new Request(backupUrl(index), {
+      method: "PUT",
+      headers: { "content-length": String(size), "x-opencae-backup-token": token, "cf-connecting-ip": `203.0.113.${index}` },
+      body: new Uint8Array(size).fill(index)
+    }), env);
+    const stored = (env: Env, index: number) => env.PROJECT_BACKUPS.head(new URL(backupUrl(index)).pathname.replace("/api/", ""));
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test("accepts uploads under the cap and refuses the one that would exceed it with 507 + Retry-After", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-13T21:00:00.000Z"));
+      const quota = createQuotaNamespace();
+      const env = createEnv("asset", { dailyCapBytes: "100", quota });
+
+      expect((await putBackup(env, 1, 60)).status).toBe(201);
+      expect((await putBackup(env, 2, 40)).status).toBe(201);
+      const refused = await putBackup(env, 3, 13);
+
+      expect(refused.status).toBe(507);
+      expect(refused.headers.get("retry-after")).toBe(String(3 * 3600));
+      expect(refused.headers.get("cache-control")).toBe("no-store");
+      await expect(refused.json()).resolves.toEqual({
+        error: expect.stringContaining("shared daily limit"),
+        code: "backup_daily_cap_reached",
+        retryAfterSeconds: 3 * 3600,
+        resetsAt: "2026-11-14T00:00:00.000Z"
+      });
+      await expect(stored(env, 3)).resolves.toBeNull();
+      // Every client shares one ledger instance.
+      expect([...quota.names]).toEqual(["project-backups-daily-bytes"]);
+    });
+
+    test("concurrent uploads reserve before streaming and cannot overshoot the cap", async () => {
+      const env = createEnv("asset", { dailyCapBytes: "100", putDelayMs: 5 });
+
+      const responses = await Promise.all([1, 2, 3, 4, 5].map((index) => putBackup(env, index, 40)));
+      const statuses = responses.map((response) => response.status).sort();
+
+      expect(statuses).toEqual([201, 201, 507, 507, 507]);
+      const storedSizes = await Promise.all([1, 2, 3, 4, 5].map(async (index) => (await stored(env, index))?.size ?? 0));
+      expect(storedSizes.reduce((sum, size) => sum + size, 0)).toBe(80);
+    });
+
+    test("releases the reservation when the R2 upload fails", async () => {
+      let fail = true;
+      const env = createEnv("asset", { dailyCapBytes: "64", failPut: () => fail });
+
+      expect((await putBackup(env, 1, 64)).status).toBe(413);
+      await expect(stored(env, 1)).resolves.toBeNull();
+      fail = false;
+      // The failed upload's 64 bytes were returned, so a full-cap upload fits.
+      expect((await putBackup(env, 2, 64)).status).toBe(201);
+      expect((await putBackup(env, 3, 13)).status).toBe(507);
+    });
+
+    test("does not charge the cap for refused overwrites of another client's backup", async () => {
+      const env = createEnv("asset", { dailyCapBytes: "64" });
+      expect((await putBackup(env, 1, 32)).status).toBe(201);
+      const hijack = await dispatchWorker(new Request(backupUrl(1), {
+        method: "PUT",
+        headers: { "content-length": "32", "x-opencae-backup-token": "zyxwvutsrqponmlkjihgfedcbaABCDEFGHIJ1234567890-_" },
+        body: new Uint8Array(32)
+      }), env);
+      expect(hijack.status).toBe(403);
+      expect((await putBackup(env, 2, 32)).status).toBe(201);
+    });
+
+    test("reopens at the next UTC midnight", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-13T23:59:30.000Z"));
+      const env = createEnv("asset", { dailyCapBytes: "50" });
+
+      expect((await putBackup(env, 1, 50)).status).toBe(201);
+      const refused = await putBackup(env, 2, 50);
+      expect(refused.status).toBe(507);
+      expect(refused.headers.get("retry-after")).toBe("30");
+
+      vi.setSystemTime(new Date("2026-11-14T00:00:01.000Z"));
+      expect((await putBackup(env, 2, 50)).status).toBe(201);
+    });
+
+    test("defaults to 10 GiB when the cap var is unset", async () => {
+      const env = createEnv();
+      expect((env as unknown as Record<string, unknown>).PROJECT_BACKUP_DAILY_CAP_BYTES).toBeUndefined();
+      expect((await putBackup(env, 1, 95 * 1024 * 1024)).status).toBe(201);
+    });
+
+    test.each(["10GiB", "0", "-1", "", "1.5"])("fails closed for uploads when the cap var is misconfigured (%j)", async (dailyCapBytes) => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const env = createEnv("asset", { dailyCapBytes });
+      const seeded = createEnv("asset", { dailyCapBytes: "1000" });
+      // Seed a backup through a correctly configured env sharing the bucket.
+      env.PROJECT_BACKUPS = seeded.PROJECT_BACKUPS;
+      expect((await putBackup(seeded, 1, 32)).status).toBe(201);
+
+      const response = await putBackup(env, 2, 32);
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({ error: "Encrypted cloud recovery is unavailable on this deployment." });
+      await expect(stored(env, 2)).resolves.toBeNull();
+      expect(errors).toHaveBeenCalledWith(expect.stringContaining("PROJECT_BACKUP_DAILY_CAP_BYTES"));
+      // Existing backups stay restorable while uploads are disabled.
+      const restored = await dispatchWorker(new Request(backupUrl(1), { headers: { "x-opencae-backup-token": token } }), env);
+      expect(restored.status).toBe(200);
+      await restored.arrayBuffer();
+      errors.mockRestore();
+    });
+
+    test("fails closed for uploads when the quota Durable Object is not bound", async () => {
+      const env = createEnv("asset", { quota: null });
+      const response = await putBackup(env, 1, 32);
+      expect(response.status).toBe(503);
+      await expect(stored(env, 1)).resolves.toBeNull();
+    });
+
+    test("requires an integral Content-Length before reserving anything", async () => {
+      const env = createEnv("asset", { dailyCapBytes: "64" });
+      const streamed = (headers: Record<string, string>) => new Request(backupUrl(1), {
+        method: "PUT",
+        headers: { "x-opencae-backup-token": token, ...headers },
+        body: new Blob([new Uint8Array(32)]).stream(),
+        duplex: "half"
+      } as RequestInit);
+
+      expect((await dispatchWorker(streamed({}), env)).status).toBe(413);
+      expect((await dispatchWorker(streamed({ "content-length": "32.5" }), env)).status).toBe(413);
+      // Nothing was reserved by the refused requests.
+      expect((await putBackup(env, 2, 64)).status).toBe(201);
+    });
+
+    test("refuses a streamed body longer than its declared (reserved) length", async () => {
+      const env = createEnv("asset", { dailyCapBytes: "1000" });
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(32).fill(1));
+          controller.enqueue(new Uint8Array(32).fill(2));
+          controller.close();
+        }
+      });
+      const request = new Request(backupUrl(1), {
+        method: "PUT",
+        headers: { "content-length": "32", "x-opencae-backup-token": token },
+        body,
+        duplex: "half"
+      } as RequestInit);
+      expect(request.headers.get("content-length")).toBe("32");
+
+      const response = await dispatchWorker(request, env);
+
+      expect(response.status).toBe(413);
+      await expect(stored(env, 1)).resolves.toBeNull();
+      // The 32 reserved bytes were released.
+      expect((await putBackup(env, 2, 1000)).status).toBe(201);
+    });
   });
 
   test("includes an inert queue handler for stale legacy Workers Builds consumers", async () => {

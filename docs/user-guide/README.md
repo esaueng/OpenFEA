@@ -61,6 +61,10 @@ site storage to reduce eviction and then asks before any network upload.
   ciphertext to the private `opencae-project-backups` R2 bucket. The
   decryption key stays in the browser. Backups expire automatically after 30
   days and are used only if the normal IndexedDB reload restore is unavailable.
+  All users share a daily cloud-recovery storage limit (10 GiB per UTC day by
+  default). If it is reached, OpenFEA says so, keeps the project open in the
+  browser, and cloud recovery reopens after 00:00 UTC; use **Save project**
+  meanwhile.
 
 Browser code cannot silently expand its own quota or write to arbitrary system
 directories. A user-selected file is the only standards-based route outside

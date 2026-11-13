@@ -36,6 +36,6 @@ pnpm deploy:cloudflare:static
 
 Use the default Cloudflare deploy for the production app domain. It deploys the local-first Worker with the default `wrangler.jsonc` (static assets + security headers, no solver bindings) and targets `openfea`. Use the static commands only for the explicitly non-production `openfea-static` Worker. (The cloud container deploy commands were retired in July 2026; see [docs/cloud-retirement.md](../cloud-retirement.md).)
 
-Use `pnpm deploy:cloudflare:retired-do-cleanup` only once if Cloudflare still has the retired `OpenCaeCoreCloudContainer` Durable Object class recorded and rejects the normal deploy with code `10064`.
+Use `pnpm deploy:cloudflare:retired-do-cleanup` only once if Cloudflare still has the retired `OpenCaeCoreCloudContainer` Durable Object class recorded and rejects the normal deploy with code `10064`. The default `wrangler.jsonc` now carries the full migration history through `v5-project-backup-daily-quota` (the encrypted-backup daily cap ledger), so the normal deploy applies v4 as well when it is still pending; never run the cleanup config after v5 is applied.
 
 Deploy and CI runners may start from a standalone checkout of this repo. Use `pnpm install --frozen-lockfile` followed by `pnpm run build` or another script that runs `pnpm build:core`.
