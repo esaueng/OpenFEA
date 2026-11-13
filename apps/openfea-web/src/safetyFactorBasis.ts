@@ -2,6 +2,7 @@ import { isStructuralResultSummary } from "@openfea/schema";
 import type { CustomMaterial, DisplayModel, Material, ResultField, ResultSummary, SafetyFactorBasis, SafetyFactorStrength, Study } from "@openfea/schema";
 import { effectiveMaterialProperties, resolveMaterial } from "@openfea/materials";
 import { inferGlobalCriticalPrintAxis } from "@openfea/study-core";
+import { pressureToPascals } from "@openfea/units";
 import { SAFETY_FACTOR_DISPLAY_CAP, SAFETY_FACTOR_DISPLAY_FLOOR } from "./resultFields";
 import { formatMaterialStress, type UnitSystem } from "./unitDisplay";
 
@@ -38,6 +39,8 @@ export interface ResolvedSafetyFactorBasis {
   strength: SafetyFactorStrength;
   /** Multiplier from the solver's yield-basis safety factor to the applied basis. */
   factor: number;
+  /** Applied strength in Pa, for reconstructing display-clamped nodal ratios from stress. */
+  strengthPascals?: number;
   /** Short qualifier for labels: "yield, von Mises". */
   shortLabel: string;
   /** One sentence for the report and exports: "Yield strength over von Mises stress". */
@@ -127,6 +130,7 @@ export function resolveSafetyFactorBasis(input: {
       stored,
       strength: "ultimate",
       factor: ultimateStrength / yieldStrength,
+      strengthPascals: ultimateStrength,
       shortLabel: "ultimate, von Mises",
       description: `Ultimate strength (${formatMaterialStress(ultimateStrength, input.unitSystem)}) over von Mises stress`,
       limitNote: "below it the stress exceeds the ultimate strength",
@@ -142,6 +146,7 @@ export function resolveSafetyFactorBasis(input: {
     stored,
     strength: "allowable",
     factor: allowableStress / yieldStrength,
+    strengthPascals: allowableStress,
     shortLabel: `allowable ${allowableText}, von Mises`,
     description: `Allowable stress (${allowableText}) over von Mises stress`,
     limitNote: "below it the stress exceeds the allowable",
@@ -218,17 +223,30 @@ export function rebaseSafetyFactorSummary<T extends ResultSummary>(summary: T, f
 
 /**
  * Re-bases every safety-factor field. Element fields keep 0 as "undefined";
- * node fields follow the solver's display clamp: the cap (no stress) stays at
- * the cap, a value already pinned at the floor stays at the floor (its true
- * value is unknown below it), and the rest scale and clamp again.
+ * node fields are reconstructed from the matching von Mises stress when the
+ * applied strength is known. A display-clamped ratio cannot be scaled exactly:
+ * a capped yield ratio may fall below one on a much lower allowable basis.
+ * Older fields without matching stress use a conservative scaled lower bound.
  */
-export function rebaseSafetyFactorFields(fields: ResultField[], factor: number): ResultField[] {
+export function rebaseSafetyFactorFields(fields: ResultField[], factor: number, strengthPascals?: number): ResultField[] {
   if (factor === 1 || !isUsableFactor(factor) || !fields.some((field) => field.type === "safety_factor")) return fields;
   return fields.map((field) => {
     if (field.type !== "safety_factor") return field;
     const clamped = field.location === "node";
+    const stress = clamped && field.surfaceMeshRef && strengthPascals !== undefined && isUsableFactor(strengthPascals)
+      ? fields.find((candidate) => candidate.type === "stress" && (candidate.component ?? "von_mises") === "von_mises"
+        && candidate.location === "node" && candidate.surfaceMeshRef === field.surfaceMeshRef
+        && candidate.runId === field.runId && candidate.variantId === field.variantId
+        && candidate.frameIndex === field.frameIndex && candidate.values.length === field.values.length)
+      : undefined;
     const scale = (value: number) => rebaseValue(value, factor, clamped);
-    const values = field.values.map(scale);
+    const values = field.values.map((value, index) => {
+      const stressPascals = stress ? pressureToPascals(Math.abs(stress.values[index]!), stress.units) : undefined;
+      if (stressPascals === undefined || !Number.isFinite(stressPascals)) return scale(value);
+      return stressPascals > 0
+        ? Math.min(SAFETY_FACTOR_DISPLAY_CAP, Math.max(SAFETY_FACTOR_DISPLAY_FLOOR, strengthPascals! / stressPascals))
+        : SAFETY_FACTOR_DISPLAY_CAP;
+    });
     const extent = finiteExtent(values);
     return {
       ...field,
@@ -239,14 +257,15 @@ export function rebaseSafetyFactorFields(fields: ResultField[], factor: number):
   });
 }
 
-export function rebaseSafetyFactorResults(summary: ResultSummary, fields: ResultField[], factor: number): { summary: ResultSummary; fields: ResultField[] } {
-  return { summary: rebaseSafetyFactorSummary(summary, factor), fields: rebaseSafetyFactorFields(fields, factor) };
+export function rebaseSafetyFactorResults(summary: ResultSummary, fields: ResultField[], factor: number, strengthPascals?: number): { summary: ResultSummary; fields: ResultField[] } {
+  return { summary: rebaseSafetyFactorSummary(summary, factor), fields: rebaseSafetyFactorFields(fields, factor, strengthPascals) };
 }
 
 function rebaseValue(value: number, factor: number, clamped: boolean): number {
   if (!Number.isFinite(value) || value <= 0) return value;
   if (!clamped) return value * factor;
-  if (value >= SAFETY_FACTOR_DISPLAY_CAP) return SAFETY_FACTOR_DISPLAY_CAP;
+  // A capped ratio is a lower bound. Scale that bound so a lower allowable
+  // cannot leave the old cap looking safe. A floored ratio stays conservative.
   if (value <= SAFETY_FACTOR_DISPLAY_FLOOR) return SAFETY_FACTOR_DISPLAY_FLOOR;
   return Math.min(SAFETY_FACTOR_DISPLAY_CAP, Math.max(SAFETY_FACTOR_DISPLAY_FLOOR, value * factor));
 }

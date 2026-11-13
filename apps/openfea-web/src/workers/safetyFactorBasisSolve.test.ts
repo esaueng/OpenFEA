@@ -68,8 +68,10 @@ function cantilever(materialId: string, safetyFactorBasis?: unknown): Study {
 
 type Solved = { summary: StructuralResultSummary; fields: ResultField[] };
 
-function solve(materialId: string): Solved {
-  const outcome = trySolveOpenFeaCoreStudy({ study: cantilever(materialId), runId: `run-${materialId}`, displayModel, customMaterials: CUSTOM_MATERIALS });
+function solve(materialId: string, force = 500, customMaterials = CUSTOM_MATERIALS): Solved {
+  const study = cantilever(materialId);
+  study.loads[0]!.parameters.value = force;
+  const outcome = trySolveOpenFeaCoreStudy({ study, runId: `run-${materialId}`, displayModel, customMaterials });
   if (!outcome.ok) throw new Error(outcome.reason);
   return outcome.result as unknown as Solved;
 }
@@ -108,7 +110,7 @@ describe("safety-factor basis against the solver", { timeout: 120000 }, () => {
     expect(basis.strength).toBe("ultimate");
     const reference = solve(YIELDS_AT_ULTIMATE.id);
     expectRelative(rebaseSafetyFactorSummary(yieldResult.summary, basis.factor).safetyFactor, reference.summary.safetyFactor);
-    expectSameSafetyFactors(rebaseSafetyFactorFields(yieldResult.fields, basis.factor), reference.fields);
+    expectSameSafetyFactors(rebaseSafetyFactorFields(yieldResult.fields, basis.factor, basis.strengthPascals), reference.fields);
   });
 
   test("allowable: re-based yield result equals a solve that divides by the allowable", () => {
@@ -119,7 +121,18 @@ describe("safety-factor basis against the solver", { timeout: 120000 }, () => {
     expectRelative(summary.safetyFactor, reference.summary.safetyFactor);
     // ...which is the allowable over the element-peak von Mises the summary reports.
     expectRelative(summary.safetyFactor, (ALLOWABLE_PA / 1e6) / yieldResult.summary.maxStress);
-    expectSameSafetyFactors(rebaseSafetyFactorFields(yieldResult.fields, basis.factor), reference.fields);
+    expectSameSafetyFactors(rebaseSafetyFactorFields(yieldResult.fields, basis.factor, basis.strengthPascals), reference.fields);
+  });
+
+  test("a low allowable reconstructs capped yield contours and matches a fresh solve", () => {
+    const strength = 25;
+    const referenceMaterial = { ...YIELDS_AT_ALLOWABLE, yieldStrength: strength };
+    const original = solve(BASE.id, 0.001);
+    const reference = solve(referenceMaterial.id, 0.001, [BASE, referenceMaterial]);
+    const originalSurface = original.fields.find((field) => field.type === "safety_factor" && field.location === "node")!;
+    expect(originalSurface.values.some((value) => value === 10000)).toBe(true);
+    expect(reference.fields.some((field) => field.type === "safety_factor" && field.location === "node" && field.values.some((value) => value < 1))).toBe(true);
+    expectSameSafetyFactors(rebaseSafetyFactorFields(original.fields, strength / YIELD_PA, strength), reference.fields);
   });
 
   test("yield (default): the solver result is shown as solved", () => {
