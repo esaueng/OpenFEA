@@ -105,8 +105,8 @@ importers:
         specifier: ^0.187.0
         version: 0.187.0
       troika-three-text:
-        specifier: ^0.53.1
-        version: 0.53.1(three@0.187.0)
+        specifier: 0.52.5
+        version: 0.52.5(three@0.187.0)
     devDependencies:
       '@types/react':
         specifier: ^19.3.0
@@ -3104,26 +3104,13 @@ packages:
     peerDependencies:
       three: '>=0.125.0'
 
-  troika-three-text@0.53.1:
-    resolution: {integrity: sha512-vVcWolk0/LoVjIwYL8OxDKXP2P/NDGKPA9l7EaSyuc/DLSSK0wpBuD+vrnEKG5E0E3DhW5MIXNfgVp85hbkE7w==}
-    peerDependencies:
-      three: '>=0.125.0'
-
   troika-three-utils@0.52.5:
     resolution: {integrity: sha512-WsePbcX8RtfidRfsxK1eCZCjF81ZDzAKHH/evLs0hdV2wpoCb0vArGZHdzdOJrSS3k4zfdtbKDaBh8+phkrYnw==}
     peerDependencies:
       three: '>=0.125.0'
 
-  troika-three-utils@0.53.1:
-    resolution: {integrity: sha512-xgf/risxw+sYt0uiAEhpiNvS9l0kQwiqvLMBCik4Ikx+IWYkVVfMtH/QN5UnYH2bYAre6+tSsY/Lwep6HCW2hg==}
-    peerDependencies:
-      three: '>=0.125.0'
-
   troika-worker-utils@0.52.0:
     resolution: {integrity: sha512-W1CpvTHykaPH5brv5VHLfQo9D1OYuo0cSBEUQFFT/nBUzM8iD6Lq2/tgG/f1OelbAS1WtaTPQzE5uM49egnngw==}
-
-  troika-worker-utils@0.53.0:
-    resolution: {integrity: sha512-k0/w24ogNHJ8fjD1rxvLkzxiB+5j4H7fRdtBNjTaECQAS6c5Rrn4dxKtsSBjc+IfVnEG6YeAsyyPYnpRC9x8Nw==}
 
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
@@ -6483,25 +6470,11 @@ snapshots:
       troika-worker-utils: 0.52.0
       webgl-sdf-generator: 1.1.1
 
-  troika-three-text@0.53.1(three@0.187.0):
-    dependencies:
-      bidi-js: 1.1.0
-      three: 0.187.0
-      troika-three-utils: 0.53.1(three@0.187.0)
-      troika-worker-utils: 0.53.0
-      webgl-sdf-generator: 1.1.1
-
   troika-three-utils@0.52.5(three@0.187.0):
     dependencies:
       three: 0.187.0
 
-  troika-three-utils@0.53.1(three@0.187.0):
-    dependencies:
-      three: 0.187.0
-
   troika-worker-utils@0.52.0: {}
-
-  troika-worker-utils@0.53.0: {}
 
   ts-api-utils@2.5.0(typescript@6.0.3):
     dependencies:
