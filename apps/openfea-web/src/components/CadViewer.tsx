@@ -26,6 +26,7 @@ import { shouldBlockPreviewResultsForDisplayModel } from "../resultProvenance";
 import { stepPreviewFromBase64 } from "../stepPreview";
 import { tryNormalizedStlGeometryFromBuffer } from "../stlPreview";
 import { lengthForUnits, stressForUnits, type UnitSystem } from "../unitDisplay";
+import { stepFaceLabelForUnits } from "../stepFaceLabels";
 import { loadMarkerViewportPresentation } from "../loadPreview";
 import { highlightPayloadObjectMeshes } from "../payloadObjectHighlight";
 import { layoutOutsideModelLabels, payloadMassLabelOffset, type LabelAnchor } from "../calloutLabelLayout";
@@ -80,6 +81,8 @@ interface CadViewerProps {
   resultsStale?: boolean;
   /** Headline peak per result mode for the legend, e.g. `Peak 2.147 MPa` (2026-09 review F8). */
   resultPeaks?: Partial<Record<ResultMode, string>>;
+  /** What the safety factor divides by (plan 036 R3.4); the legend names it. Yield when absent. */
+  safetyFactorBasis?: SafetyFactorLegendBasis;
   /** Where the solver located those peaks on the result surface mesh, when it did. */
   resultPeakLocations?: Partial<Record<"stress" | "displacement", ResultPeakLocation>>;
   resultPlaybackBufferCache?: PackedPreparedPlaybackCache | null;
@@ -409,7 +412,7 @@ export function CadViewer(props: CadViewerProps) {
   }, [props.displayModel, props.onResultRenderBoundsChange, uploadedPreviewBounds]);
   // The pick the setup steps act on, named on the canvas where the eye already is.
   const selectedFaceChip = (props.activeStep === "supports" || props.activeStep === "loads") && props.selectedFaceId
-    ? props.displayModel.faces.find((face) => face.id === props.selectedFaceId)?.label ?? null
+    ? viewerFaceLabelForId(props.displayModel.faces, props.selectedFaceId, props.unitSystem)
     : null;
 
   return (
@@ -573,7 +576,7 @@ export function CadViewer(props: CadViewerProps) {
               aria-pressed={face.id === props.selectedFaceId}
               onClick={() => props.onSelectFace(face, face.center)}
             >
-              {face.label || face.id}
+              {face.label ? viewerFaceLabel(face, props.unitSystem) : face.id}
             </button>
           ))}
           {props.displayModel.faces.length > MAX_A11Y_FACE_BUTTONS ? <span>Use pointer selection for additional faces.</span> : null}
@@ -599,7 +602,7 @@ export function CadViewer(props: CadViewerProps) {
         onToggleMesh={() => props.onViewModeChange?.(props.viewMode === "mesh" ? "model" : "mesh")}
         onSectionPlaneChange={props.onSectionPlaneChange}
       />
-      {effectiveViewMode === "results" && <ResultLegend resultMode={props.resultMode} resultFields={resultFields} unitSystem={props.unitSystem} meshSummary={props.meshSummary} surfaceMesh={props.surfaceMesh} showDeformed={effectiveShowDeformed} deformationScale={props.stressExaggeration} peakLabel={props.resultPeaks?.[props.resultMode]} stale={props.resultsStale} />}
+      {effectiveViewMode === "results" && <ResultLegend resultMode={props.resultMode} resultFields={resultFields} unitSystem={props.unitSystem} meshSummary={props.meshSummary} surfaceMesh={props.surfaceMesh} showDeformed={effectiveShowDeformed} deformationScale={props.stressExaggeration} peakLabel={props.resultPeaks?.[props.resultMode]} stale={props.resultsStale} safetyFactorBasis={props.safetyFactorBasis} />}
     </section>
       </SectionPlaneContext.Provider>
       </StressComponentContext.Provider>
@@ -2000,7 +2003,7 @@ function BracketModel({
           scene (MeshPreviewSurface); the decorative wireframe boxes that used to
           stand in for it were removed (2026-09 review D13). */}
       {placementMode && !isResultView && <SnapVisualization result={snapResult} mode={activeStep === "supports" ? "supports" : "loads"} />}
-      {showModelHitLabel && hoveredHit && <ModelHitLabel hit={hoveredHit} active={hoveredHit.face.id === selectedFaceId} />}
+      {showModelHitLabel && hoveredHit && <ModelHitLabel hit={hoveredHit} active={hoveredHit.face.id === selectedFaceId} unitSystem={unitSystem} />}
       {showBoundaryMarkers && loadMarkers.map((marker) => {
         const face = displayModel.faces.find((item) => item.id === marker.faceId);
         if (!face) return null;
@@ -6753,9 +6756,28 @@ function UserResultProbeMarker({ reading, point, index }: { reading: ResolvedRes
   );
 }
 
-function ModelHitLabel({ hit, active }: { hit: ModelSelectionHit; active: boolean }) {
+/**
+ * A face name as the viewer shows it, in the project's units. STEP face labels
+ * store their area suffix in mm²; a US project shows it in in², through the same
+ * helper the side panels use.
+ */
+export function viewerFaceLabel(face: Pick<DisplayFace, "label" | "area">, unitSystem: UnitSystem): string {
+  return stepFaceLabelForUnits(face.label, face.area, unitSystem);
+}
+
+function viewerFaceLabelForId(faces: DisplayFace[], faceId: string, unitSystem: UnitSystem): string | null {
+  const face = faces.find((candidate) => candidate.id === faceId);
+  return face ? viewerFaceLabel(face, unitSystem) : null;
+}
+
+/** Text of the hover/pick label drawn next to the pointer on the model. */
+export function modelHitLabelText(hit: Pick<ModelSelectionHit, "face" | "payloadObject">, unitSystem: UnitSystem): string {
+  return hit.payloadObject?.label ?? compactFaceLabel(viewerFaceLabel(hit.face, unitSystem));
+}
+
+function ModelHitLabel({ hit, active, unitSystem }: { hit: ModelSelectionHit; active: boolean; unitSystem: UnitSystem }) {
   const anchor = hit.payloadObject?.center ?? hit.point;
-  const label = hit.payloadObject?.label ?? compactFaceLabel(hit.face.label);
+  const label = modelHitLabelText(hit, unitSystem);
   const labelPosition = new THREE.Vector3(...anchor).add(new THREE.Vector3(0, 0.12, 0.12));
   return (
     <group>
@@ -7041,7 +7063,10 @@ export function resultLegendKeyboardResize(
   });
 }
 
-export function resultLegendTitle(resultMode: ResultMode, stressComponent: StressComponent): string {
+/** The basis wording the legend needs; `ResolvedSafetyFactorBasis` satisfies it. */
+export type SafetyFactorLegendBasis = { shortLabel: string; limitNote: string };
+
+export function resultLegendTitle(resultMode: ResultMode, stressComponent: StressComponent, safetyFactorBasis?: Pick<SafetyFactorLegendBasis, "shortLabel">): string {
   if (resultMode === "stress") {
     if (stressComponent === "principal_max") return "Principal stress σ₁";
     if (stressComponent === "principal_min") return "Principal stress σ₃";
@@ -7054,7 +7079,7 @@ export function resultLegendTitle(resultMode: ResultMode, stressComponent: Stres
   if (resultMode === "mode_shape") return "Normalized mode shape";
   if (resultMode === "temperature") return "Temperature";
   if (resultMode === "heat_flux") return "Heat flux";
-  return "Safety factor";
+  return safetyFactorBasis ? `Safety factor (${safetyFactorBasis.shortLabel})` : "Safety factor";
 }
 
 export function legendMeshStats(meshSummary: MeshSummary | undefined) {
@@ -7135,7 +7160,7 @@ export function resultLegendContentScale(size: ResultLegendSize) {
   ).toFixed(2));
 }
 
-function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfaceMesh, showDeformed, deformationScale, peakLabel, stale = false }: { resultMode: ResultMode; resultFields: ResultField[]; unitSystem: UnitSystem; meshSummary?: MeshSummary; surfaceMesh?: SolverSurfaceMesh; showDeformed?: boolean; deformationScale?: number; peakLabel?: string; stale?: boolean }) {
+function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfaceMesh, showDeformed, deformationScale, peakLabel, stale = false, safetyFactorBasis }: { resultMode: ResultMode; resultFields: ResultField[]; unitSystem: UnitSystem; meshSummary?: MeshSummary; surfaceMesh?: SolverSurfaceMesh; showDeformed?: boolean; deformationScale?: number; peakLabel?: string; stale?: boolean; safetyFactorBasis?: SafetyFactorLegendBasis }) {
   const stressComponent = useContext(StressComponentContext);
   const contextColorScale = useContext(ResultColorScaleContext);
   const legendRef = useRef<HTMLDivElement | null>(null);
@@ -7157,7 +7182,7 @@ function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfa
     if (resolved.kind === "mode_shape") return `${resolved.factor.toFixed(1)}x visual`;
     return legendDeformationLabel(resolved.factor);
   }, [deformationScale, resultFields, resultMode, showDeformed, surfaceMesh]);
-  const title = resultLegendTitle(resultMode, stressComponent);
+  const title = resultLegendTitle(resultMode, stressComponent, safetyFactorBasis);
   // Prefer the field actually rendered on the solver surface mesh so the legend
   // range matches the contours; fall back to the face/sample field otherwise.
   const surfaceField = surfaceMesh ? resultFields.find((candidate) => isSolverSurfaceNodeField(candidate, surfaceMesh, resultMode)) : undefined;
@@ -7303,7 +7328,7 @@ function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfa
           <span>{RESULT_LEGEND_NO_VALUE}</span>
         </div>
       )}
-      {safetyLimit !== null ? <span className="legend-limit-note"><i aria-hidden="true" />Line marks SF = {SAFETY_FACTOR_LIMIT}: below it the part yields</span> : null}
+      {safetyLimit !== null ? <span className="legend-limit-note"><i aria-hidden="true" />Line marks SF = {SAFETY_FACTOR_LIMIT}: {safetyFactorBasis?.limitNote ?? "below it the part yields"}</span> : null}
       {legendBasis ? <span className="legend-basis">{legendBasis}</span> : null}
       {/* The bar shows the averaged surface field; the summary peak is the unaveraged element value (2026-09 review F8). */}
       {peakLabel && <span className="legend-peak">{peakLabel} (element, unaveraged)</span>}

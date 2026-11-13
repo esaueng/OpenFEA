@@ -21,6 +21,12 @@ export interface SelectedResultExportInput {
   model: Pick<OpenFEAModelJson, "schemaVersion" | "nodes" | "elementBlocks" | "coordinateSystem">;
   surfaceMesh: SolverSurfaceMesh;
   fields: ResultField[];
+  /**
+   * What the exported safety-factor fields divide by, e.g. "Yield strength over
+   * von Mises stress" (plan 036 R3.4). Written as `safety_factor_basis` metadata
+   * when a safety-factor field is exported.
+   */
+  safetyFactorBasis?: string;
 }
 
 export type SelectedResultExportFormat = "csv" | "vtu";
@@ -425,6 +431,9 @@ function exportMetadata(context: ExportContext): Array<[string, string]> {
     ["variant_id", input.variant?.id ?? "default"],
     ["variant_name", input.variant?.name ?? "Default"],
     ...state,
+    ...(input.safetyFactorBasis && context.fields.some((field) => field.type === "safety_factor")
+      ? [["safety_factor_basis", input.safetyFactorBasis] as [string, string]]
+      : []),
     ["node_count", String(context.nodeCount)],
     ["element_count", String(context.cells.length)],
     ["surface_triangle_count", String(input.surfaceMesh.triangles.length)]
