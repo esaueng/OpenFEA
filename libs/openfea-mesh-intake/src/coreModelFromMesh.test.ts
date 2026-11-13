@@ -87,7 +87,7 @@ describe("buildCoreModelFromCloudMesh", () => {
       study: {
         id: "study-unknown-material",
         type: "static_stress",
-        materialAssignments: [{ id: "assign-1", materialId: "deleted-custom-material", selectionRef: "selection-body", parameters: {}, status: "complete" }],
+        materialAssignments: [{ materialId: "deleted-custom-material", parameters: {} }],
         namedSelections: [],
         constraints: [],
         loads: []
@@ -106,18 +106,18 @@ describe("buildCoreModelFromCloudMesh", () => {
       study: {
         id: "study-1",
         type: "static_stress",
-        materialAssignments: [{ id: "assign-1", materialId: "mat-aluminum-6061", selectionRef: "selection-body", parameters: {}, status: "complete" }],
+        materialAssignments: [{ materialId: "mat-aluminum-6061", parameters: {} }],
         namedSelections: [
           { id: "selection-fs-a", name: "FS 1", entityType: "face", geometryRefs: [{ entityType: "face", entityId: "step-face-4" }] },
           { id: "selection-fs-b", name: "FS 2", entityType: "face", geometryRefs: [{ entityType: "face", entityId: "step-face-4" }] },
           { id: "selection-l1", name: "L 1", entityType: "face", geometryRefs: [{ entityType: "face", entityId: "step-face-9" }] }
         ],
         constraints: [
-          { id: "constraint-1", type: "fixed", selectionRef: "selection-fs-a", parameters: {}, status: "complete" },
-          { id: "constraint-2", type: "fixed", selectionRef: "selection-fs-b", parameters: {}, status: "complete" }
+          { id: "constraint-1", type: "fixed", selectionRef: "selection-fs-a", parameters: {} },
+          { id: "constraint-2", type: "fixed", selectionRef: "selection-fs-b", parameters: {} }
         ],
         loads: [
-          { id: "load-1", type: "force", selectionRef: "selection-l1", parameters: { value: 5, units: "N", direction: [0, 0, -1] }, status: "complete" }
+          { id: "load-1", type: "force", selectionRef: "selection-l1", parameters: { value: 5, units: "N", direction: [0, 0, -1] } }
         ]
       },
       volumeMesh: singleTetArtifact(),

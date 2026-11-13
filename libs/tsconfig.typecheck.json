@@ -1,12 +1,5 @@
 {
   // `pnpm typecheck` entry for libs. ESLint's project service keeps using
   // tsconfig.json so every lib file stays typed for lint.
-  "extends": "./tsconfig.json",
-  // Test files with known type drift, pending fixes in their owning libs.
-  // Remove each entry once `tsc -p libs/tsconfig.json --noEmit` is clean for it.
-  "exclude": [
-    "openfea-core-adapter/src/index.test.ts",
-    "openfea-mesh-intake/src/coreModelFromMesh.test.ts",
-    "openfea-mesh-intake/src/wasmMesherMultiBody.test.ts"
-  ]
+  "extends": "./tsconfig.json"
 }

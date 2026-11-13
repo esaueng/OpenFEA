@@ -74,7 +74,7 @@ describe("per-body STEP meshing (plan 036 R1.3)", () => {
     // symmetry rollers on x0/y0/z0 so the exact state is uniaxial.
     const faceOf = (center: [number, number, number]) =>
       Math.abs(center[0]) < 1e-9 ? "x0" : Math.abs(center[0] - 0.1) < 1e-9 ? "xL" : Math.abs(center[1]) < 1e-9 ? "y0" : Math.abs(center[2]) < 1e-9 ? "z0" : undefined;
-    const tagged = { ...artifact, surfaceFacets: artifact.surfaceFacets.map((facet) => ({ ...facet, sourceSelectionRef: faceOf(facet.center) })) };
+    const tagged = { ...artifact, surfaceFacets: artifact.surfaceFacets.map((facet) => ({ ...facet, sourceSelectionRef: facet.center && faceOf(facet.center) })) };
     const E1 = 200e9;
     const E2 = 70e9;
     const material = (id: string, youngModulus: number, poissonRatio: number) => ({ id, name: id, youngModulus, poissonRatio, density: 7850, yieldStrength: 250e6 });
