@@ -399,17 +399,17 @@ describe("RightPanel payload mass controls", () => {
     // Default draft direction is -Z: the axis choice is selected and the axis select shows it.
     const axis = renderPanel("loads");
     expect(axis).toContain('role="radiogroup" aria-label="Direction"');
-    expect(axis).toMatch(/role="radio" aria-checked="true" class="active" title="Acts along a global axis">Along axis</);
+    expect(axis).toMatch(/role="radio" aria-checked="true" tabindex="0" class="active" title="Acts along a global axis">Along axis</);
     expect(axis).toContain('<select aria-label="Axis direction"><option value="-Y">Global -Y</option>');
     expect(axis).toContain('<option value="-Z" selected="">Global -Z</option>');
     expect(axis).not.toContain('<option value="Opposite normal"');
 
     // "Opposite normal" (into the face) and "Normal" (out of it) map to the face choices.
     const into = renderPanel("loads", { draftLoadDirection: "Opposite normal" });
-    expect(into).toMatch(/role="radio" aria-checked="true" class="active" title="Pushes into the selected face[^"]*">Into face</);
+    expect(into).toMatch(/role="radio" aria-checked="true" tabindex="0" class="active" title="Pushes into the selected face[^"]*">Into face</);
     expect(into).not.toContain('aria-label="Axis direction"');
     const out = renderPanel("loads", { draftLoadDirection: "Normal" });
-    expect(out).toMatch(/role="radio" aria-checked="true" class="active" title="Pulls away from the selected face[^"]*">Out of face</);
+    expect(out).toMatch(/role="radio" aria-checked="true" tabindex="0" class="active" title="Pulls away from the selected face[^"]*">Out of face</);
   });
 
   test("folds load type, its explanation and extra faces into More options", () => {
@@ -2512,7 +2512,11 @@ describe("workspace notice and readiness text (2026-09 review D7, F7)", () => {
 
 describe("select-then-act and re-targeting (2026-09 review F1, D3, F3)", () => {
   test("edit forms offer to move an entry to the face picked in the viewer", () => {
-    expect(rightPanelSource).toContain("Move to {pickedElsewhere.label} (picked in the viewer)");
+    // Both edit forms name the picked face in project units (stored labels carry a mm²
+    // suffix); SupportsLoadsPanels.test renders them on imperial and metric projects.
+    expect(rightPanelSource.match(/<span>Move to \{pickedFaceLabel\} \(picked in the viewer\)<\/span>/g)).toHaveLength(2);
+    expect(rightPanelSource.match(/const pickedFaceLabel = pickedElsewhere \? stepFaceLabelForUnits\(pickedElsewhere\.label, pickedElsewhere\.area, unitSystem\) : "";/g)).toHaveLength(2);
+    expect(rightPanelSource).not.toContain("Move to {pickedElsewhere.label}");
     expect(rightPanelSource).toContain("onSave(previewLoad, targetFace)");
     expect(rightPanelSource).toContain("support.parameters }, targetFace)");
   });

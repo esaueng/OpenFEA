@@ -1296,8 +1296,12 @@ img {
    bar that fills in as the workflow progresses. It replaced the 124px left rail, so
    the viewer gets that width back. The rail's state rules carry over: a bar means
    present and valid, a warning glyph means blocked, never colour alone. */
+/* The stepper keeps its measured width and the project-name chip (which ellipsizes)
+   gives way. Shrinking alongside the name used to clip the list: the thermal labels
+   ("Temperatures", "Heat loads") overflowed by 7px at 1024px with Temperatures current
+   and by ~32px just above 1180px, where every label shows. */
 .step-nav {
-  flex: 0 1 auto;
+  flex: none;
   min-width: 0;
   margin: 0 auto;
 }
@@ -1427,7 +1431,8 @@ img {
   }
 }
 
-/* Measured: every label needs ~400px, which the bar has down to 1181px. Below that
+/* Measured: every label needs ~400px (~452px with the thermal labels), which the bar
+   has down to 1181px, the project name giving way for the rest. Below that
    the other steps show an icon over their bar and only the current step keeps its
    name (measured: 247px against 241px at 981px with an icon as well).
    The labels are clipped, not removed, so each keeps its accessible name (and a
@@ -1557,6 +1562,11 @@ img {
 
 .project-menu-row .segmented {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.project-menu-tools .secondary {
+  justify-content: flex-start;
+  gap: var(--sp-2);
 }
 
 .project-menu-row .segmented button {
@@ -4623,6 +4633,21 @@ button:disabled {
   color: var(--color-warning);
 }
 
+/* Assembly connection rows: kind, approximation chip (contact), then the face pair. */
+.connection-row > span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-2);
+  min-width: 0;
+}
+
+.connection-row > span > small {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .load-combination-row {
   grid-template-columns: minmax(0, 1fr) auto;
 }
@@ -5584,6 +5609,23 @@ input[aria-invalid="true"] {
   border-color: var(--color-border);
 }
 
+.log-clear-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.log-clear-confirm-copy {
+  color: var(--color-text);
+  font-size: var(--fs-xs);
+}
+
+.log-clear-confirm-button {
+  font-weight: var(--fw-medium);
+}
+
 .tips-content {
   display: grid;
   /* Two rows, not three: the drawer used to repeat the top bar's keyboard-shortcut
@@ -5862,8 +5904,11 @@ input[aria-invalid="true"] {
     background: var(--color-surface);
   }
 
+  /* One layer above the sticky step strip (z-index 1, later in the DOM), which
+     otherwise painted over the top bar's Project menu and shortcut popovers. */
   .topbar {
     top: 0;
+    z-index: var(--z-sticky-topbar);
   }
 
   .bottom-panel {
@@ -5995,14 +6040,27 @@ input[aria-invalid="true"] {
   }
 
   /* Undo and redo stay: hiding the whole group left a phone with no way to take back a
-     change. The validation gallery and the keyboard guide are desktop references and give
-     way; the group's gap goes with them. */
+     change. The validation gallery and keyboard-guide buttons give way and move into
+     the Project menu (ProjectMenuTools); the group's gap goes with them. The guide's
+     popover still lives here, so it is exempt, and it pins to the viewport because the
+     narrowed group no longer reaches the bar's right edge. */
   .topbar-tools {
     gap: 0;
   }
 
-  .topbar-tools > :not(.history-tools) {
+  .topbar-tools > :not(.history-tools, .shortcut-popover, .shortcut-popover-backdrop) {
     display: none;
+  }
+
+  .topbar-tools > .shortcut-popover,
+  .project-menu-popover {
+    position: fixed;
+    top: calc(var(--topbar-h) + var(--sp-2));
+    right: var(--sp-3);
+    left: var(--sp-3);
+    width: auto;
+    max-height: calc(100dvh - var(--topbar-h) - var(--sp-6));
+    overflow-y: auto;
   }
 
   .history-tools {

@@ -78,7 +78,7 @@ describe("design token contrast", () => {
   });
 
   test("status and body text reach 4.5:1 on every ground", () => {
-    const textTokens = ["--color-text", "--color-text-muted", "--color-accent", "--color-warning", "--color-error", "--color-success"];
+    const textTokens = ["--color-text", "--color-text-muted", "--color-text-subtle", "--color-accent", "--color-warning", "--color-error", "--color-success"];
     for (const theme of THEMES) {
       for (const name of textTokens) {
         for (const ground of GROUNDS) {
@@ -91,18 +91,25 @@ describe("design token contrast", () => {
   test("error and success text stay legible on their own 12% tints", () => {
     // Badges and notices set the status colour on a 12% wash of itself
     // (.validation-pass-badge, .workspace-notice.error, .text-button.danger-text:hover).
-    const cases: Array<[Theme, string, string[]]> = [
-      ["dark", "--color-error", GROUNDS],
-      ["dark", "--color-success", GROUNDS],
-      ["light", "--color-success", GROUNDS],
-      ["light", "--color-error", ["--color-bg", "--color-surface", "--color-surface-2"]]
-    ];
-    for (const [theme, name, grounds] of cases) {
-      const ink = token(theme, name);
-      for (const ground of grounds) {
-        expect(contrastRatio(ink, tint(ink, 0.12, token(theme, ground))), `${theme} ${name} on its tint over ${ground}`).toBeGreaterThanOrEqual(4.5);
+    // Every ground, hover included: a hovered danger button tints the hover surface.
+    for (const theme of THEMES) {
+      for (const name of ["--color-error", "--color-success"]) {
+        const ink = token(theme, name);
+        for (const ground of GROUNDS) {
+          expect(contrastRatio(ink, tint(ink, 0.12, token(theme, ground))), `${theme} ${name} on its tint over ${ground}`).toBeGreaterThanOrEqual(4.5);
+        }
       }
     }
+  });
+
+  test("light subtle text and error tint clear 4.5:1 on the hover surface", () => {
+    // The two pairs an earlier review measured below the floor (4.38:1 and 4.31:1).
+    const hover = token("light", "--color-surface-hover");
+    const error = token("light", "--color-error");
+    expect(contrastRatio(token("light", "--color-text-subtle"), hover)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(error, tint(error, 0.12, hover))).toBeGreaterThanOrEqual(4.5);
+    // Subtle stays a step quieter than muted rather than collapsing onto it.
+    expect(token("light", "--color-text-subtle")).not.toBe(token("light", "--color-text-muted"));
   });
 
   test("destructive buttons keep white text above 4.5:1", () => {

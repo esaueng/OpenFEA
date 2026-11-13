@@ -98,7 +98,7 @@ export function MeshPanel({ project, displayModel, study, viewMode, onViewModeCh
             kinematics: "small_sliding",
             status: "ready"
           }])}><Plus size={16} />Add connection</button>
-          {study.contacts.map((connection) => <div className="load-case-row" key={connection.id}><span><strong>{connection.type === "tie" ? "Tied" : connection.type === "contact" ? "Frictionless contact" : "Boolean fuse"}</strong><small>{selectionLabelForPanel(study, connection.source)} → {selectionLabelForPanel(study, connection.target)}</small></span><button className="remove-glyph" type="button" aria-label="Remove connection" onClick={() => onConnectionsChange?.(study.contacts.filter((candidate) => candidate.id !== connection.id))}><X size={15} /></button></div>)}
+          {study.contacts.map((connection) => <div className="load-case-row connection-row" key={connection.id}><span><strong>{connection.type === "tie" ? "Tied" : connection.type === "contact" ? "Frictionless contact" : "Boolean fuse"}</strong>{connection.type === "contact" && <span className="result-tier-chip approximation" title="Small-sliding, frictionless node-to-surface penalty contact">Penalty contact (approximation)</span>}<small>{selectionLabelForPanel(study, connection.source)} → {selectionLabelForPanel(study, connection.target)}</small></span><button className="remove-glyph" type="button" aria-label="Remove connection" onClick={() => onConnectionsChange?.(study.contacts.filter((candidate) => candidate.id !== connection.id))}><X size={15} /></button></div>)}
           {connectionType === "contact" && <Callout>Small-sliding, frictionless node-to-surface penalty contact. Large sliding and friction are outside this beta.</Callout>}
         </section>
       ) : null}
@@ -276,8 +276,8 @@ function ConvergenceRecordCard({ record, unitSystem }: { record: MeshConvergence
         {record.rungs.map((rung) => (
           <div key={rung.requestedPreset} className={`convergence-rung ${rung.status}`}>
             <span>{capitalize(rung.requestedPreset)}</span>
-            <small>{rung.totalDofs?.toLocaleString() ?? "—"} total · {rung.freeDofs?.toLocaleString() ?? "—"} free DOF</small>
-            <small>{rung.actualNodeCount?.toLocaleString() ?? "—"} nodes · {rung.actualElementCount?.toLocaleString() ?? "—"} elements · {formatCompactQuantity(rung.actualMeshSizeMm, "mm", unitSystem, lengthForUnits)}</small>
+            <small>{rung.totalDofs?.toLocaleString() ?? "--"} total · {rung.freeDofs?.toLocaleString() ?? "--"} free DOF</small>
+            <small>{rung.actualNodeCount?.toLocaleString() ?? "--"} nodes · {rung.actualElementCount?.toLocaleString() ?? "--"} elements · {formatCompactQuantity(rung.actualMeshSizeMm, "mm", unitSystem, lengthForUnits)}</small>
             <small>{rung.status === "complete"
               ? `${formatCompactQuantity(rung.probeDisplacement, rung.displacementUnits, unitSystem, lengthForUnits)} · ${formatCompactQuantity(rung.rawElementPeakVonMises, rung.stressUnits, unitSystem, stressForUnits)}`
               : rung.skipReason ?? capitalize(rung.status)}</small>
@@ -357,12 +357,12 @@ function formatCompactQuantity(
   unitSystem: UnitSystem,
   convert: (value: number, units: string, unitSystem: UnitSystem) => { value: number; units: string }
 ): string {
-  if (value === undefined || !Number.isFinite(value)) return "—";
+  if (value === undefined || !Number.isFinite(value)) return "--";
   const converted = units ? convert(value, units, unitSystem) : { value, units: "" };
   return `${formatCompact(converted.value)} ${converted.units}`.trim();
 }
 
 function formatCompact(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) return "—";
+  if (value === undefined || !Number.isFinite(value)) return "--";
   return Math.abs(value) >= 100 ? value.toFixed(1) : Math.abs(value) >= 1 ? value.toFixed(3) : value.toExponential(3);
 }

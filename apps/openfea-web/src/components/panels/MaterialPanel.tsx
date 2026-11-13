@@ -11,6 +11,7 @@ import { inferGlobalCriticalPrintAxis } from "@openfea/study-core";
 import { formatDensity, formatDisplayNumber, formatMaterialStress } from "../../unitDisplay";
 
 import { MaterialLibraryModal } from "../SimulationWorkflow";
+import { handleRadioGroupKeyDown, radioTabIndex } from "../radioGroupKeyboard";
 
 import type { RightPanelProps } from "./RightPanelProps";
 import { Panel } from "./PanelChrome";
@@ -231,7 +232,7 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
 
       <SectionTitle helpId="manufacturingProcess">Manufacturing process</SectionTitle>
       <p className="material-process-helper">Compatible with {selectedMaterial.name}. Only validated options are shown.</p>
-      <div className="material-process-list" role="radiogroup" aria-label="Manufacturing process">
+      <div className="material-process-list" role="radiogroup" aria-label="Manufacturing process" onKeyDown={handleRadioGroupKeyDown}>
         {compatibleProcesses.map((process) => {
           const active = process.id === selectedProcessId;
           return (
@@ -241,6 +242,7 @@ export function MaterialPanel({ project, displayModel, study, onAssignMaterial, 
               type="button"
               role="radio"
               aria-checked={active}
+              tabIndex={radioTabIndex(active)}
               aria-label={`${process.label}. ${process.description}`}
               onClick={() => handleProcessChange(process.id)}
             >

@@ -16,6 +16,7 @@ import { supportDisplayLabel } from "../../supportLabels";
 
 import { formatDensity, formatDisplayNumber, formatMass, formatVolume, lengthForUnits, loadValueForUnits, temperatureForUnits, type UnitSystem } from "../../unitDisplay";
 import { stepFaceLabelForUnits } from "../../stepFaceLabels";
+import { handleRadioGroupKeyDown, radioTabIndex } from "../radioGroupKeyboard";
 
 import type { RightPanelProps } from "./RightPanelProps";
 import { noopDraftPayloadPreviewChange } from "./RightPanelProps";
@@ -582,13 +583,14 @@ function DirectionChoice({ value, onChange }: { value: LoadDirectionLabel; onCha
   return (
     <div className="field direction-field">
       <HelpLabel helpId="loadDirection">Direction</HelpLabel>
-      <div className="segmented direction-choice" role="radiogroup" aria-label="Direction">
+      <div className="segmented direction-choice" role="radiogroup" aria-label="Direction" onKeyDown={handleRadioGroupKeyDown}>
         {choices.map((choice) => (
           <button
             key={choice.id}
             type="button"
             role="radio"
             aria-checked={mode === choice.id}
+            tabIndex={radioTabIndex(mode === choice.id)}
             className={mode === choice.id ? "active" : ""}
             title={choice.title}
             onClick={() => { if (mode !== choice.id) onChange(choice.direction); }}
@@ -870,7 +872,7 @@ function LoadEditorList({ editingId, onEditingIdChange, study, displayModel, uni
   );
 }
 
-function LoadEditForm({ load, study, displayModel, unitSystem, accessibleName, retargetFace, onSave, onCancel, onPreviewChange }: { load: Load; study: Study; displayModel: DisplayModel; unitSystem: UnitSystem; accessibleName: string; retargetFace?: DisplayFace | null; onSave: (load: Load, targetFace?: DisplayFace) => void; onCancel: () => void; onPreviewChange: (load: Load | null) => void }) {
+export function LoadEditForm({ load, study, displayModel, unitSystem, accessibleName, retargetFace, onSave, onCancel, onPreviewChange }: { load: Load; study: Study; displayModel: DisplayModel; unitSystem: UnitSystem; accessibleName: string; retargetFace?: DisplayFace | null; onSave: (load: Load, targetFace?: DisplayFace) => void; onCancel: () => void; onPreviewChange: (load: Load | null) => void }) {
   const [type, setType] = useState<LoadType>(load.type);
   // Re-targeting (2026-09 review D3): a face picked while editing can become
   // the new target; the direction preview follows it.
@@ -909,6 +911,8 @@ function LoadEditForm({ load, study, displayModel, unitSystem, accessibleName, r
         : {}, [payloadMassMode, payloadMaterialId, payloadVolumeM3, remotePoint, secondarySelectionRef, type]);
   const selectedPayloadMaterial = payloadMaterialForId(payloadMaterialId);
   const pickedElsewhere = retargetFace && !selectionIsBody && retargetFace.id !== selectedFace?.entityId ? retargetFace : null;
+  // The stored face label carries the importer's mm² suffix; show it in the project's units.
+  const pickedFaceLabel = pickedElsewhere ? stepFaceLabelForUnits(pickedElsewhere.label, pickedElsewhere.area, unitSystem) : "";
   const targetFace = moveToPicked && pickedElsewhere ? pickedElsewhere : undefined;
   const directionFace: DisplayFace = useMemo(() => targetFace ?? selectedDisplayFace ?? ({
     id: selectedFace?.entityId ?? "selected-face",
@@ -1010,8 +1014,8 @@ function LoadEditForm({ load, study, displayModel, unitSystem, accessibleName, r
       </label>
       {pickedElsewhere && (
         <label className="toggle">
-          <input type="checkbox" aria-label={`Move to ${pickedElsewhere.label}`} checked={moveToPicked} onChange={(event) => setMoveToPicked(event.currentTarget.checked)} />
-          <span>Move to {pickedElsewhere.label} (picked in the viewer)</span>
+          <input type="checkbox" aria-label={`Move to ${pickedFaceLabel}`} checked={moveToPicked} onChange={(event) => setMoveToPicked(event.currentTarget.checked)} />
+          <span>Move to {pickedFaceLabel} (picked in the viewer)</span>
         </label>
       )}
       <div className="edit-actions">
@@ -1153,7 +1157,7 @@ function LoadTypeIcon({ type }: { type: LoadType }) {
   return <ScanLine size={16} />;
 }
 
-function SupportEditForm({ support, study, displayModel, unitSystem, retargetFace, onSave, onCancel }: { support: Constraint; study: Study; displayModel: DisplayModel; unitSystem: UnitSystem; retargetFace?: DisplayFace | null; onSave: (support: Constraint, targetFace?: DisplayFace) => void; onCancel: () => void }) {
+export function SupportEditForm({ support, study, displayModel, unitSystem, retargetFace, onSave, onCancel }: { support: Constraint; study: Study; displayModel: DisplayModel; unitSystem: UnitSystem; retargetFace?: DisplayFace | null; onSave: (support: Constraint, targetFace?: DisplayFace) => void; onCancel: () => void }) {
   const thermal = study.type === "steady_state_thermal";
   const [type, setType] = useState<Constraint["type"]>(support.type);
   const [temperature, setTemperature] = useState(Number(support.parameters.value ?? 20));
@@ -1168,13 +1172,14 @@ function SupportEditForm({ support, study, displayModel, unitSystem, retargetFac
   // the new target; before, the pick added a second support instead.
   const [moveToPicked, setMoveToPicked] = useState(false);
   const pickedElsewhere = retargetFace && !selectedRef?.geometryRefs.some((ref) => ref.entityId === retargetFace.id) ? retargetFace : null;
+  const pickedFaceLabel = pickedElsewhere ? stepFaceLabelForUnits(pickedElsewhere.label, pickedElsewhere.area, unitSystem) : "";
   const targetFace = moveToPicked && pickedElsewhere ? pickedElsewhere : undefined;
   return (
     <div className="edit-form">
       {pickedElsewhere && (
         <label className="toggle">
-          <input type="checkbox" aria-label={`Move to ${pickedElsewhere.label}`} checked={moveToPicked} onChange={(event) => setMoveToPicked(event.currentTarget.checked)} />
-          <span>Move to {pickedElsewhere.label} (picked in the viewer)</span>
+          <input type="checkbox" aria-label={`Move to ${pickedFaceLabel}`} checked={moveToPicked} onChange={(event) => setMoveToPicked(event.currentTarget.checked)} />
+          <span>Move to {pickedFaceLabel} (picked in the viewer)</span>
         </label>
       )}
       <label className="field">

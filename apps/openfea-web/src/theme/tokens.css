@@ -164,6 +164,9 @@
      visible stacking change and needs its own review. */
   --z-base: 0;
   --z-viewer-overlay: 2;
+  /* The sticky top bar at narrow widths: above the sticky step strip (bare 1), so
+     the strip cannot paint over the bar's popovers; below every modal layer. */
+  --z-sticky-topbar: 3;
   --z-log-drawer: 5;
   --z-viewer-import-overlay: 20;
   --z-modal-backdrop: 30;
@@ -183,12 +186,16 @@
   --color-border-input: #748190; /* 3.21-3.80:1 against bg / surface / surface-2 / hover */
   --color-text: #17202b;
   --color-text-muted: #536170;
-  --color-text-subtle: #5f6b7a;
+  /* #5f6b7a read 4.38:1 on the hover surface; 4.58:1 or better on every ground now. */
+  --color-text-subtle: #5c6877;
   --color-accent: #0b63b6;
   --color-accent-dim: rgba(22, 119, 210, 0.12);
   --color-accent-border: rgba(22, 119, 210, 0.42);
   --color-warning: #854d0e; /* #a16207 fell to 3.7-4.0:1 on its own 12% warning tint */
-  --color-error: #b91c1c;
+  /* #b91c1c read 4.31:1 on its own 12% tint over the hover surface (a hovered
+     danger button); 4.55:1 or better on every ground and tint now. The fill keeps
+     #b91c1c, which already holds white text at 6.5:1. */
+  --color-error: #b21a1a;
   --color-error-fill: #b91c1c;
   /* #15803d fell to 4.33:1 on surface-2 and 4.05:1 on hover; 4.52:1 or better now,
      including its own 12% tint. */

@@ -11,7 +11,7 @@ import { assignedFaceTintsForStudy, LOAD_FACE_TINT, SUPPORT_FACE_TINT } from "..
 import { stepFaceLabelForUnits } from "../../stepFaceLabels";
 import { areaForUnits, formatArea, temperatureForUnits } from "../../unitDisplay";
 import { directionVectorForLabel } from "../../loadPreview";
-import { additionalFacesReducer, DisplacementField, duplicateLoadFeedback, justAddedLoadAfterChange, loadDirectionDescription, multiFaceLoadNote, storedLoadDirectionLabel, TemperatureField } from "./SupportsLoadsPanels";
+import { additionalFacesReducer, DisplacementField, duplicateLoadFeedback, justAddedLoadAfterChange, LoadEditForm, loadDirectionDescription, multiFaceLoadNote, storedLoadDirectionLabel, SupportEditForm, TemperatureField } from "./SupportsLoadsPanels";
 
 // An imperial (US) project on an imported STEP part. Face labels carry the
 // importer's mm² area suffix, exactly as stepFaces.ts writes and saves them.
@@ -232,6 +232,82 @@ describe("imperial project walk-through: supports, loads and mesh read in projec
     expect(convergenceHtml).toContain("elements · 1.000 in");
     expect(convergenceHtml).toContain("1.000 in · 1.000 ksi");
     expect(convergenceHtml).not.toContain(" mm<");
+  });
+
+  test("a rung missing counts shows the app's -- placeholder, not an em dash", () => {
+    const record = convergenceRecord();
+    const sparse: MeshConvergenceRecord = { ...record, rungs: [{ ...record.rungs[0]!, totalDofs: undefined, freeDofs: undefined, actualNodeCount: undefined, actualMeshSizeMm: undefined }, record.rungs[1]!] };
+    const html = renderPanel("mesh", { project: { ...imperialProject, convergenceRecords: [sparse] }, study: convergenceStudy() });
+    expect(html).toContain("-- total · -- free DOF");
+    expect(html).toContain("-- nodes · 300 elements · --");
+    expect(html).not.toContain("—");
+  });
+});
+
+describe("edit forms name a face picked in the viewer in project units", () => {
+  const fixedSupport: Study["constraints"][number] = { id: "support-1", type: "fixed", selectionRef: namedSelections[0]!.id, parameters: {}, status: "complete" };
+  const faceForce: Load = { id: "load-1", type: "force", selectionRef: namedSelections[0]!.id, parameters: { value: 10, units: "N", direction: [0, 0, -1] }, status: "complete" };
+  const editingStudy: Study = { ...study, constraints: [fixedSupport], loads: [faceForce] };
+  const picked = displayModel.faces[1]!;
+
+  function supportForm(unitSystem: "SI" | "US") {
+    return renderToStaticMarkup(<SupportEditForm support={fixedSupport} study={editingStudy} displayModel={displayModel} unitSystem={unitSystem} retargetFace={picked} onSave={vi.fn()} onCancel={vi.fn()} />);
+  }
+
+  function loadForm(unitSystem: "SI" | "US") {
+    return renderToStaticMarkup(<LoadEditForm load={faceForce} study={editingStudy} displayModel={displayModel} unitSystem={unitSystem} accessibleName="Load 1" retargetFace={picked} onSave={vi.fn()} onCancel={vi.fn()} onPreviewChange={vi.fn()} />);
+  }
+
+  test("an imperial project reads the picked face's area in in², not the stored mm² suffix", () => {
+    for (const html of [supportForm("US"), loadForm("US")]) {
+      expect(html).toContain("<span>Move to -Z planar face F2 (2 in²) (picked in the viewer)</span>");
+      expect(html).toContain('aria-label="Move to -Z planar face F2 (2 in²)"');
+      expect(html).not.toContain("mm²");
+    }
+  });
+
+  test("a metric project keeps the stored label", () => {
+    for (const html of [supportForm("SI"), loadForm("SI")]) {
+      expect(html).toContain("<span>Move to -Z planar face F2 (1,290 mm²) (picked in the viewer)</span>");
+    }
+  });
+
+  test("the offer is absent when the pick is the entry's own face", () => {
+    const html = renderToStaticMarkup(<SupportEditForm support={fixedSupport} study={editingStudy} displayModel={displayModel} unitSystem="US" retargetFace={displayModel.faces[0]!} onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).not.toContain("picked in the viewer");
+  });
+});
+
+describe("load direction radio group", () => {
+  test("keeps one Tab stop, on the checked direction", () => {
+    const html = renderPanel("loads", { selectedFace: displayModel.faces[0]!, draftLoadDirection: "-Z" });
+    const group = html.match(/<div class="segmented direction-choice" role="radiogroup"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+    const radios = group.match(/<button[^>]*role="radio"[^>]*>/g) ?? [];
+    expect(radios).toHaveLength(3);
+    expect(radios.filter((radio) => radio.includes('aria-checked="true"') && radio.includes('tabindex="0"'))).toHaveLength(1);
+    expect(radios.filter((radio) => radio.includes('aria-checked="false"') && radio.includes('tabindex="-1"'))).toHaveLength(2);
+  });
+});
+
+describe("assembly connections", () => {
+  const twoBodies: DisplayModel = { ...displayModel, bodyCount: 2 };
+  const connected: Study = {
+    ...study,
+    contacts: [
+      { id: "connection-contact", type: "contact", source: namedSelections[0]!.id, target: namedSelections[1]!.id, formulation: "frictionless", kinematics: "small_sliding", status: "ready" },
+      { id: "connection-tie", type: "tie", source: namedSelections[1]!.id, target: namedSelections[2]!.id, kinematics: "small_sliding", status: "ready" }
+    ]
+  };
+
+  test("labels every existing contact connection as a penalty approximation, not just the draft", () => {
+    const html = renderPanel("mesh", { displayModel: twoBodies, study: connected });
+    expect(html.match(/<div class="load-case-row connection-row">/g)).toHaveLength(2);
+    // One chip, on the contact row only: tied and fused rows are not approximated that way.
+    expect(html.match(/<span class="result-tier-chip approximation"[^>]*>Penalty contact \(approximation\)<\/span>/g)).toHaveLength(1);
+    const contactRow = html.slice(html.indexOf("Frictionless contact</strong>"), html.indexOf("Tied</strong>"));
+    expect(contactRow).toContain("Penalty contact (approximation)");
+    // The draft form defaults to Tied, so the draft callout is not what carries the caveat here.
+    expect(html).not.toContain("node-to-surface penalty contact. Large sliding");
   });
 });
 

@@ -203,6 +203,14 @@ describe("stepper CSS", () => {
     expect(css).not.toMatch(/\.step-nav-glyph|\.step-nav-dot|\.step-badge/);
   });
 
+  test("never shrinks the stepper below its labels; the project name gives way", () => {
+    // The thermal labels ("Temperatures", "Heat loads") overflowed a shrinking stepper
+    // at 1024px and just above 1180px when measured in Chromium.
+    expect(css).toMatch(/^\.step-nav \{\s*flex:\s*none;/m);
+    expect(css).toMatch(/^\.breadcrumb \{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;/m);
+    expect(css).toMatch(/^\.breadcrumb-chip \{[^}]*max-width:\s*220px;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;/m);
+  });
+
   test("hides inactive step labels visually, never from assistive tech", () => {
     // display:none would strip the accessible name; the narrow tiers clip instead.
     expect(css).not.toMatch(/\.step-nav-label[^{]*\{[^}]*display:\s*none/);

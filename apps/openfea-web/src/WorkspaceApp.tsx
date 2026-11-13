@@ -2699,6 +2699,8 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
             onThemeModeChange={setThemeMode}
             onUnitSystemChange={handleUnitSystemChange}
             onOpen={() => { setShortcutGuideOpen(false); setStorageRecoveryNoticeOpen(false); }}
+            onOpenValidationGallery={() => setValidationGalleryOpen(true)}
+            onOpenShortcutGuide={() => { setStorageRecoveryNoticeOpen(false); setShortcutGuideOpen(true); }}
           />
         </div>
         <button

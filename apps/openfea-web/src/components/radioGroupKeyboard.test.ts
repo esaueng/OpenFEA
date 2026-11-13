@@ -76,4 +76,13 @@ describe("radio group keyboard", () => {
     expect(source.match(/role="radiogroup"[^>]*onKeyDown=\{handleRadioGroupKeyDown\}/g)).toHaveLength(2);
     expect(source.match(/tabIndex=\{radioTabIndex\(/g)).toHaveLength(4);
   });
+
+  test("wires the manufacturing process and load direction groups", () => {
+    const material = readFileSync(resolve(__dirname, "panels/MaterialPanel.tsx"), "utf8");
+    expect(material).toContain('role="radiogroup" aria-label="Manufacturing process" onKeyDown={handleRadioGroupKeyDown}');
+    expect(material).toMatch(/role="radio"\s+aria-checked=\{active\}\s+tabIndex=\{radioTabIndex\(active\)\}/);
+    const supportsLoads = readFileSync(resolve(__dirname, "panels/SupportsLoadsPanels.tsx"), "utf8");
+    expect(supportsLoads).toContain('role="radiogroup" aria-label="Direction" onKeyDown={handleRadioGroupKeyDown}');
+    expect(supportsLoads).toMatch(/role="radio"\s+aria-checked=\{mode === choice\.id\}\s+tabIndex=\{radioTabIndex\(mode === choice\.id\)\}/);
+  });
 });

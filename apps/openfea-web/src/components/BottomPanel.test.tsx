@@ -10,7 +10,8 @@ import {
   statusForDisplay,
   studySummaryLine,
   WORKSPACE_SHORTCUT_GUIDE,
-  resolveLogClearIntent,
+  clearLogsQuestion,
+  isDeliberateClick,
   workspaceLogLevel,
   writeWorkspaceLogsToClipboard
 } from "./BottomPanel";
@@ -166,19 +167,27 @@ describe("BottomPanel", () => {
     expect(bottomPanelSource).not.toContain("scrollTop = ");
   });
 
-  test("requires two clicks before clearing run logs", () => {
-    expect(resolveLogClearIntent(0, false)).toBe("confirm");
-    expect(resolveLogClearIntent(1, false)).toBe("confirm");
-    expect(resolveLogClearIntent(2, false)).toBe("clear");
-    expect(resolveLogClearIntent(0, true)).toBe("clear");
-    expect(resolveLogClearIntent(1, true)).toBe("clear");
+  test("a double-click can neither open nor accept the clear-logs confirm", () => {
+    expect(isDeliberateClick(0)).toBe(true); // keyboard activation
+    expect(isDeliberateClick(1)).toBe(true);
+    expect(isDeliberateClick(2)).toBe(false);
+    expect(isDeliberateClick(3)).toBe(false);
+    expect(clearLogsQuestion(1)).toBe("Clear 1 log line?");
+    expect(clearLogsQuestion(12)).toBe("Clear 12 log lines?");
   });
 
-  test("defines a double-click clear logs control wired to workspace logs", () => {
+  test("clears run logs only through an explicit inline confirm", () => {
     expect(bottomPanelSource).toContain('className="log-clear-button"');
     expect(bottomPanelSource).toContain("Clear logs");
-    expect(bottomPanelSource).toContain("Double-click to clear");
-    expect(bottomPanelSource).toContain("onClearLogs");
+    // Both steps reject a double-click's follow-up click before acting.
+    expect(bottomPanelSource).toMatch(/function requestClearLogs[^}]*!isDeliberateClick\(event\.detail\)\) return;\s*setClearConfirmOpen\(true\);/);
+    expect(bottomPanelSource).toMatch(/function confirmClearLogs[\s\S]*?if \(!isDeliberateClick\(event\.detail\)\) return;\s*setClearConfirmOpen\(false\);\s*onClearLogs\(\);/);
+    // onClearLogs runs from the confirm only, and the old "click again" arm is gone.
+    expect(bottomPanelSource.match(/onClearLogs\(\)/g)).toHaveLength(1);
+    expect(bottomPanelSource).not.toContain("Double-click to clear");
+    expect(bottomPanelSource).toContain('aria-label="Confirm clearing run logs"');
+    expect(bottomPanelSource).toContain("Keep logs");
+    expect(bottomPanelSource).toContain("onClick={confirmClearLogs}");
     expect(workspaceSource).toContain("onClearLogs={clearLogs}");
   });
 

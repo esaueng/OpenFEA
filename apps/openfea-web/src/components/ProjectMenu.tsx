@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Moon, Settings2, Sun, X } from "lucide-react";
+import { FlaskConical, Keyboard, Moon, Settings2, Sun, X } from "lucide-react";
 import { useFocusTrap } from "../hooks/useFocusTrap";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { handleRadioGroupKeyDown, radioTabIndex } from "./radioGroupKeyboard";
 import { GITHUB_URL, KofiLink } from "./KofiLink";
 import type { UnitSystem } from "../unitDisplay";
@@ -13,16 +14,23 @@ interface ProjectMenuProps {
   onUnitSystemChange: (unitSystem: UnitSystem) => void;
   /** Called when the menu opens, so the bar can close its other popovers. */
   onOpen?: () => void;
+  /** Top-bar tools hidden at phone width; the menu lists them there instead. */
+  onOpenValidationGallery?: () => void;
+  onOpenShortcutGuide?: () => void;
 }
+
+/** Matches the app.css breakpoint that hides the validation gallery and shortcut buttons. */
+export const PHONE_TOPBAR_QUERY = "(max-width: 640px)";
 
 /**
  * Appearance, units and project links. Theme and units lived in the workflow rail's footer;
  * when the rail became a top-bar stepper (plan 035, increment 1) they moved here so they stay
  * one click away. The Ko-fi and GitHub links left the status bar in increment 6.
  */
-export function ProjectMenu({ themeMode, unitSystem, onThemeModeChange, onUnitSystemChange, onOpen }: ProjectMenuProps) {
+export function ProjectMenu({ themeMode, unitSystem, onThemeModeChange, onUnitSystemChange, onOpen, onOpenValidationGallery, onOpenShortcutGuide }: ProjectMenuProps) {
   const [open, setOpen] = useState(false);
   const popoverRef = useFocusTrap<HTMLDivElement>(open, () => setOpen(false));
+  const phoneTopbar = useMediaQuery(PHONE_TOPBAR_QUERY);
 
   return (
     <>
@@ -69,11 +77,36 @@ export function ProjectMenu({ themeMode, unitSystem, onThemeModeChange, onUnitSy
                 </button>
               </div>
             </div>
+            {phoneTopbar && onOpenValidationGallery && onOpenShortcutGuide ? (
+              <ProjectMenuTools
+                onOpenValidationGallery={() => { setOpen(false); onOpenValidationGallery(); }}
+                onOpenShortcutGuide={() => { setOpen(false); onOpenShortcutGuide(); }}
+              />
+            ) : null}
             <ProjectMenuLinks />
           </div>
         </>
       ) : null}
     </>
+  );
+}
+
+/**
+ * The validation gallery and keyboard guide, which the top bar drops below 640px
+ * (only undo and redo keep their buttons there). Choosing one closes this menu
+ * and opens that dialog, whose focus trap returns focus to the Project button.
+ */
+export function ProjectMenuTools({ onOpenValidationGallery, onOpenShortcutGuide }: { onOpenValidationGallery: () => void; onOpenShortcutGuide: () => void }) {
+  return (
+    <div className="project-menu-row project-menu-tools" role="group" aria-labelledby="project-menu-tools">
+      <span id="project-menu-tools">Tools</span>
+      <button type="button" className="secondary" onClick={onOpenValidationGallery}>
+        <FlaskConical size={14} aria-hidden="true" />Validation gallery
+      </button>
+      <button type="button" className="secondary" onClick={onOpenShortcutGuide}>
+        <Keyboard size={14} aria-hidden="true" />Keyboard shortcuts
+      </button>
+    </div>
   );
 }
 
