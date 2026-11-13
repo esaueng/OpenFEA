@@ -75,8 +75,9 @@ since B4a). The cloud solve infrastructure was removed in two steps:
   logs a one-time migration note.
 - **OpenFEA Core packages**: `packages/core`, `packages/examples`,
   `packages/solver-cpu`, `packages/solver-wasm`, `packages/solver-webgpu`, and
-  `packages/viewer` are now part of this repository and build before the web
-  bundle.
+  `packages/viewer` became part of this repository and build before the web
+  bundle. `packages/solver-wasm` was later removed (July 2026) and
+  `packages/viewer` was removed in November 2026 (plan 036 item 0.10).
 - **The guard**: `scripts/cloud-retirement-guard.test.mjs` fails CI if any
   retired surface token reappears outside a short, justified allowlist.
 

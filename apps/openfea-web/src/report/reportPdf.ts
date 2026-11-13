@@ -127,7 +127,7 @@ class PdfReport {
     if (this.data.loadCapacity.length) {
       this.subheading("Load capacity (reverse check)");
       this.keyValueRows(this.data.loadCapacity);
-      const note = "Estimated by linearly scaling the current result against the material yield limit; verify with a run at the target load.";
+      const note = this.data.loadCapacityNote ?? "Estimated by linearly scaling the current result against the material yield limit; verify with a run at the target load.";
       const noteLines = this.splitText(note, this.contentWidth, REPORT_TYPE.caption);
       this.ensureSpace(noteLines.length * 3.5 + 4);
       this.text(noteLines, REPORT_LAYOUT.margin, this.y, REPORT_TYPE.caption, REPORT_THEME.inkMuted);

@@ -368,7 +368,10 @@ export function effectiveMaterialProperties(material: Material, parameters: Reco
     ...material,
     youngsModulus: material.youngsModulus * stiffnessFactor,
     density: material.density * densityFactor,
-    yieldStrength: material.yieldStrength * strengthFactor
+    yieldStrength: material.yieldStrength * strengthFactor,
+    // The homogenized knockdown is a strength factor, so it scales the ultimate
+    // strength with the yield strength and their ratio is unchanged.
+    ...(material.ultimateStrength === undefined ? {} : { ultimateStrength: material.ultimateStrength * strengthFactor })
   };
 }
 

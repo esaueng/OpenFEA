@@ -18,14 +18,17 @@ export type StructuralHeadlineLabels = {
  * matches the static answer to display precision; the label has to say it is a
  * peak over time so it is not read as the static result shown for a dynamic run.
  */
-export function structuralHeadlineLabels(summary: Pick<StructuralResultSummary, "transient">): StructuralHeadlineLabels {
+export function structuralHeadlineLabels(summary: Pick<StructuralResultSummary, "transient">, safetyFactorBasis?: string): StructuralHeadlineLabels {
+  // With a basis (plan 036 R3.4) the label says what the factor divides by and
+  // that it is the model minimum: "Min safety factor (yield, von Mises)".
+  const basis = safetyFactorBasis ? ` (${safetyFactorBasis})` : "";
   if (!summary.transient) {
-    return { stress: "Max stress", displacement: "Max displacement", safetyFactor: "Safety factor", reactionForce: "Reaction force", peak: "Peak" };
+    return { stress: "Max stress", displacement: "Max displacement", safetyFactor: basis ? `Min safety factor${basis}` : "Safety factor", reactionForce: "Reaction force", peak: "Peak" };
   }
   return {
     stress: "Peak stress over time",
     displacement: "Peak displacement over time",
-    safetyFactor: "Min safety factor over time",
+    safetyFactor: `Min safety factor over time${basis}`,
     reactionForce: "Reaction force, final frame",
     peak: "Peak over time"
   };

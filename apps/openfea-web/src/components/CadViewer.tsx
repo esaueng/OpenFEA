@@ -26,7 +26,10 @@ import { shouldBlockPreviewResultsForDisplayModel } from "../resultProvenance";
 import { stepPreviewFromBase64 } from "../stepPreview";
 import { tryNormalizedStlGeometryFromBuffer } from "../stlPreview";
 import { lengthForUnits, stressForUnits, type UnitSystem } from "../unitDisplay";
+import { stepFaceLabelForUnits } from "../stepFaceLabels";
 import { loadMarkerViewportPresentation } from "../loadPreview";
+import { highlightedSelectionFaceIds, isPickClick, pickIntentForModifiers, resolveStepPickFaceId, shouldCreateUploadedFacePlaceholder, type PickIntent } from "./viewer/selection";
+import { FaceSelectionOverlay } from "./viewer/FaceSelectionOverlay";
 import { highlightPayloadObjectMeshes } from "../payloadObjectHighlight";
 import { layoutOutsideModelLabels, payloadMassLabelOffset, type LabelAnchor } from "../calloutLabelLayout";
 import { getSnapSuggestion } from "../snapping/snapController";
@@ -49,13 +52,16 @@ interface CadViewerProps {
   importingModelFilename?: string;
   activeStep: StepId;
   selectedFaceId: string | null;
+  /** Faces in the working selection besides the primary pick (Ctrl/Cmd-click or the Additional faces checklist). */
+  additionalSelectedFaceIds?: readonly string[];
   assignedFaceTints?: ViewerFaceTint[];
   payloadObjectSelectionMode: boolean;
   selectedPayloadObject: PayloadObjectSelection | null;
   /** STEP body (`step-object-<n>`) to highlight, e.g. while its material row is hovered. */
   highlightedBodyId?: string | null;
   onViewerMiss: () => void;
-  onSelectFace: (face: DisplayFace, point?: [number, number, number], payloadObject?: PayloadObjectSelection) => void;
+  /** `pick.intent` is `toggle` for Ctrl/Cmd-click (add or remove the face) and `replace` for a plain pick. */
+  onSelectFace: (face: DisplayFace, point?: [number, number, number], payloadObject?: PayloadObjectSelection, pick?: { intent: PickIntent }) => void;
   viewMode: ViewMode;
   resultsEligible?: boolean;
   resultMode: ResultMode;
@@ -80,6 +86,8 @@ interface CadViewerProps {
   resultsStale?: boolean;
   /** Headline peak per result mode for the legend, e.g. `Peak 2.147 MPa` (2026-09 review F8). */
   resultPeaks?: Partial<Record<ResultMode, string>>;
+  /** What the safety factor divides by (plan 036 R3.4); the legend names it. Yield when absent. */
+  safetyFactorBasis?: SafetyFactorLegendBasis;
   /** Where the solver located those peaks on the result surface mesh, when it did. */
   resultPeakLocations?: Partial<Record<"stress" | "displacement", ResultPeakLocation>>;
   resultPlaybackBufferCache?: PackedPreparedPlaybackCache | null;
@@ -163,9 +171,6 @@ export interface ViewerFaceTint {
   faceId: string;
   color: string;
 }
-const MAX_A11Y_FACE_BUTTONS = 256;
-/** Pointer travel (px) between down and up beyond which a viewer click is an orbit drag, not a pick. */
-export const VIEWER_CLICK_DRAG_THRESHOLD_PX = 4;
 export const VIEWER_GIZMO_ALIGNMENT = "bottom-right";
 export const VIEWER_GIZMO_MARGIN: [number, number] = [112, 112];
 export const VIEWER_GIZMO_SCALE = 40;
@@ -407,10 +412,6 @@ export function CadViewer(props: CadViewerProps) {
     const bounds = kind === "uploaded" && uploadedPreviewBounds ? uploadedPreviewBounds : dimensionBoundsForDisplayModel(props.displayModel);
     props.onResultRenderBoundsChange?.(bounds ? resultRenderBoundsForBox(bounds) : null);
   }, [props.displayModel, props.onResultRenderBoundsChange, uploadedPreviewBounds]);
-  // The pick the setup steps act on, named on the canvas where the eye already is.
-  const selectedFaceChip = (props.activeStep === "supports" || props.activeStep === "loads") && props.selectedFaceId
-    ? props.displayModel.faces.find((face) => face.id === props.selectedFaceId)?.label ?? null
-    : null;
 
   return (
     <ResultColorScaleContext.Provider value={resultColorScale}>
@@ -440,6 +441,7 @@ export function CadViewer(props: CadViewerProps) {
           resultMode={props.resultMode}
           resultPlaybackPlaying={props.resultPlaybackPlaying}
           selectedFaceId={props.selectedFaceId}
+          additionalSelectedFaceIds={props.additionalSelectedFaceIds}
           assignedFaceTints={props.assignedFaceTints}
           selectedPayloadObject={props.selectedPayloadObject}
           sectionPlane={props.sectionPlane}
@@ -563,27 +565,14 @@ export function CadViewer(props: CadViewerProps) {
           <span>Preparing report figures… the view switches briefly.</span>
         </div>
       ) : null}
-      {props.displayModel.faces.length > 0 && (
-        <div className="viewer-a11y-faces" role="group" aria-label="Select a face with the keyboard">
-          <span>Select a face to place supports or loads.</span>
-          {props.displayModel.faces.slice(0, MAX_A11Y_FACE_BUTTONS).map((face) => (
-            <button
-              key={face.id}
-              type="button"
-              aria-pressed={face.id === props.selectedFaceId}
-              onClick={() => props.onSelectFace(face, face.center)}
-            >
-              {face.label || face.id}
-            </button>
-          ))}
-          {props.displayModel.faces.length > MAX_A11Y_FACE_BUTTONS ? <span>Use pointer selection for additional faces.</span> : null}
-        </div>
-      )}
-      {selectedFaceChip ? (
-        <div className="viewer-selection-chip" role="status" aria-live="polite">
-          <span className="viewer-selection-dot" aria-hidden="true" />Selected: {selectedFaceChip}
-        </div>
-      ) : null}
+      <FaceSelectionOverlay
+        faces={props.displayModel.faces}
+        selectedFaceId={props.selectedFaceId}
+        additionalSelectedFaceIds={props.additionalSelectedFaceIds}
+        formatFaceLabel={(face) => (face.label ? viewerFaceLabel(face, props.unitSystem) : face.id)}
+        showSelectionChip={props.activeStep === "supports" || props.activeStep === "loads"}
+        onSelectFace={(face, intent) => props.onSelectFace(face, face.center, undefined, { intent })}
+      />
       {!orbitHintDismissed ? (
         <p className="viewer-orbit-hint">{viewerOrbitHint(coarsePointer)}</p>
       ) : null}
@@ -599,7 +588,7 @@ export function CadViewer(props: CadViewerProps) {
         onToggleMesh={() => props.onViewModeChange?.(props.viewMode === "mesh" ? "model" : "mesh")}
         onSectionPlaneChange={props.onSectionPlaneChange}
       />
-      {effectiveViewMode === "results" && <ResultLegend resultMode={props.resultMode} resultFields={resultFields} unitSystem={props.unitSystem} meshSummary={props.meshSummary} surfaceMesh={props.surfaceMesh} showDeformed={effectiveShowDeformed} deformationScale={props.stressExaggeration} peakLabel={props.resultPeaks?.[props.resultMode]} stale={props.resultsStale} />}
+      {effectiveViewMode === "results" && <ResultLegend resultMode={props.resultMode} resultFields={resultFields} unitSystem={props.unitSystem} meshSummary={props.meshSummary} surfaceMesh={props.surfaceMesh} showDeformed={effectiveShowDeformed} deformationScale={props.stressExaggeration} peakLabel={props.resultPeaks?.[props.resultMode]} stale={props.resultsStale} safetyFactorBasis={props.safetyFactorBasis} />}
     </section>
       </SectionPlaneContext.Provider>
       </StressComponentContext.Provider>
@@ -663,6 +652,7 @@ function ViewerInvalidator({
   resultMode,
   resultPlaybackPlaying,
   selectedFaceId,
+  additionalSelectedFaceIds,
   selectedPayloadObject,
   sectionPlane,
   showDeformed,
@@ -687,6 +677,7 @@ function ViewerInvalidator({
   resultMode: ResultMode;
   resultPlaybackPlaying: boolean;
   selectedFaceId: string | null;
+  additionalSelectedFaceIds?: readonly string[];
   assignedFaceTints?: ViewerFaceTint[];
   selectedPayloadObject: PayloadObjectSelection | null;
   sectionPlane: SectionPlaneState;
@@ -724,6 +715,7 @@ function ViewerInvalidator({
     resultMode,
     resultPlaybackPlaying,
     selectedFaceId,
+    additionalSelectedFaceIds,
     selectedPayloadObject,
     sectionPlane,
     showDeformed,
@@ -1793,6 +1785,7 @@ function BracketModel({
   displayModel,
   activeStep,
   selectedFaceId,
+  additionalSelectedFaceIds,
   assignedFaceTints,
   payloadObjectSelectionMode,
   selectedPayloadObject,
@@ -1905,6 +1898,13 @@ function BracketModel({
     };
   }
 
+  // A plain pick moves the primary selection (and its snapped point); a
+  // Ctrl/Cmd toggle only adds or removes a face, so the primary hit stays.
+  function commitPick(hit: ModelSelectionHit, intent: PickIntent) {
+    if (intent === "replace") setSelectedHit(hit);
+    onSelectFace(hit.face, hit.point, hit.payloadObject, { intent });
+  }
+
   const pickHandlers: ModelPickHandlers = {
     onPointerMove: (event) => {
       const hit = hitFromEvent(event, false);
@@ -1919,12 +1919,11 @@ function BracketModel({
       // R3F dispatches onClick to any object hit at both pointer-down and
       // pointer-up regardless of travel, so an orbit drag that starts and ends
       // on the same face would place a support. Treat travel as a drag.
-      if (event.delta > VIEWER_CLICK_DRAG_THRESHOLD_PX) return;
+      if (!isPickClick(event.delta)) return;
       const hit = hitFromEvent(event, true);
       if (!hit) return;
       event.stopPropagation();
-      setSelectedHit(hit);
-      onSelectFace(hit.face, hit.point, hit.payloadObject);
+      commitPick(hit, pickIntentForModifiers(event.nativeEvent));
     }
   };
   const overlayFallbackPickHandlers: ModelPickHandlers = {
@@ -1934,12 +1933,11 @@ function BracketModel({
     },
     onClick: (event) => {
       if (!isSnapOverlayObject(event.object)) return;
-      if (event.delta > VIEWER_CLICK_DRAG_THRESHOLD_PX) return;
+      if (!isPickClick(event.delta)) return;
       const hit = hoveredHit ?? selectedHit;
       if (!hit) return;
       event.stopPropagation();
-      setSelectedHit(hit);
-      onSelectFace(hit.face, hit.point, hit.payloadObject);
+      commitPick(hit, pickIntentForModifiers(event.nativeEvent));
     }
   };
   const rootPickHandlers: ModelPickHandlers = isResultView
@@ -1983,6 +1981,7 @@ function BracketModel({
             enableHoleWallPicking={activeStep === "supports"}
             activePayloadObjectId={activePayloadObjectId}
             selectedFaceId={selectedFaceId}
+            additionalSelectedFaceIds={additionalSelectedFaceIds}
         assignedFaceTints={assignedFaceTints}
             onMeasureDisplayModelDimensions={onMeasureDisplayModelDimensions}
             onUploadedPreviewBounds={onUploadedPreviewBounds}
@@ -2000,7 +1999,7 @@ function BracketModel({
           scene (MeshPreviewSurface); the decorative wireframe boxes that used to
           stand in for it were removed (2026-09 review D13). */}
       {placementMode && !isResultView && <SnapVisualization result={snapResult} mode={activeStep === "supports" ? "supports" : "loads"} />}
-      {showModelHitLabel && hoveredHit && <ModelHitLabel hit={hoveredHit} active={hoveredHit.face.id === selectedFaceId} />}
+      {showModelHitLabel && hoveredHit && <ModelHitLabel hit={hoveredHit} active={hoveredHit.face.id === selectedFaceId} unitSystem={unitSystem} />}
       {showBoundaryMarkers && loadMarkers.map((marker) => {
         const face = displayModel.faces.find((item) => item.id === marker.faceId);
         if (!face) return null;
@@ -2680,34 +2679,19 @@ function stepFaceHitFromEvent(
   const registry = api.peekStepFaceRegistryForBase64(contentBase64);
   if (!registry) return null;
   const point = viewerPointToModelSpace(event.point, displayModel).toArray() as [number, number, number];
-  const holeWallFaceId = stepFaceIdFromPickObject(event.object);
-  const meshIndex = stepPreviewMeshIndexFor(event.object);
-  const triangleIndex = event.faceIndex;
-  let faceId = holeWallFaceId ?? (meshIndex !== null && typeof triangleIndex === "number"
-    ? api.stepFaceIdForMeshTriangle(registry, meshIndex, triangleIndex)
-    : null);
-  if (!faceId && allowExactFallback) {
-    const worldNormal = event.face?.normal.clone().transformDirection(event.object.matrixWorld).normalize() ?? new THREE.Vector3(0, 0, 1);
-    const normal = viewerNormalToModelSpace(worldNormal, displayModel).toArray() as [number, number, number];
-    faceId = api.resolvePickedStepFace(registry, point, normal)?.faceId ?? null;
-  }
+  const faceId = resolveStepPickFaceId(api, registry, {
+    object: event.object,
+    faceIndex: event.faceIndex,
+    exactFallback: () => {
+      const worldNormal = event.face?.normal.clone().transformDirection(event.object.matrixWorld).normalize() ?? new THREE.Vector3(0, 0, 1);
+      return { point, normal: viewerNormalToModelSpace(worldNormal, displayModel).toArray() as [number, number, number] };
+    }
+  }, { preferHoleWall, allowExactFallback });
   if (!faceId) return null;
-  if (preferHoleWall) faceId = api.stepSupportFaceIdForPickedFace(registry, faceId);
   const face = displayModel.faces.find((candidate) => candidate.id === faceId)
     ?? registry.displayFaces.find((candidate) => candidate.id === faceId);
   if (!face) return null;
   return { face, point };
-}
-
-/** Walk through R3F's picked object ancestry to resolve an invisible hole-opening target. */
-export function stepFaceIdFromPickObject(object: THREE.Object3D): string | null {
-  let current: THREE.Object3D | null = object;
-  while (current) {
-    const faceId = current.userData?.openfeaStepFaceId;
-    if (typeof faceId === "string" && faceId.length > 0) return faceId;
-    current = current.parent;
-  }
-  return null;
 }
 
 function hasLiveStepFaceRegistry(displayModel: DisplayModel): boolean {
@@ -2718,24 +2702,6 @@ function hasLiveStepFaceRegistry(displayModel: DisplayModel): boolean {
     displayModel.nativeCad?.format === "step" &&
     stepFacesApi.peekStepFaceRegistryForBase64(contentBase64)
   );
-}
-
-export function shouldCreateUploadedFacePlaceholder(nativeCadFormat: string | undefined, hasLiveRegistry: boolean): boolean {
-  return nativeCadFormat !== "step" || !hasLiveRegistry;
-}
-
-/** Preview meshes carry userData.openfeaObjectId = "step-object-<n>" in import order. */
-function stepPreviewMeshIndexFor(object: THREE.Object3D): number | null {
-  let current: THREE.Object3D | null = object;
-  while (current) {
-    const id = current.userData?.openfeaObjectId;
-    if (typeof id === "string") {
-      const match = id.match(/^step-object-(\d+)$/);
-      return match ? Number.parseInt(match[1]!, 10) - 1 : null;
-    }
-    current = current.parent;
-  }
-  return null;
 }
 
 function createStepFaceHighlightMesh(registry: import("../stepFaces").StepFaceRegistry, record: import("../stepFaces").StepFaceRecord, color = "#4da3ff", opacity = 0.42): THREE.Mesh {
@@ -2887,6 +2853,7 @@ function SampleSolid({
   enableHoleWallPicking,
   activePayloadObjectId,
   selectedFaceId,
+  additionalSelectedFaceIds,
   assignedFaceTints,
   onMeasureDisplayModelDimensions,
   onUploadedPreviewBounds
@@ -2898,6 +2865,7 @@ function SampleSolid({
   enableHoleWallPicking?: boolean;
   activePayloadObjectId?: string;
   selectedFaceId?: string | null;
+  additionalSelectedFaceIds?: readonly string[];
   assignedFaceTints?: ViewerFaceTint[];
   onMeasureDisplayModelDimensions?: (dimensions: NonNullable<DisplayModel["dimensions"]>) => void;
   onUploadedPreviewBounds?: (bounds: THREE.Box3) => void;
@@ -2912,6 +2880,7 @@ function SampleSolid({
         enableHoleWallPicking={enableHoleWallPicking}
         activePayloadObjectId={activePayloadObjectId}
         selectedFaceId={selectedFaceId}
+        additionalSelectedFaceIds={additionalSelectedFaceIds}
         assignedFaceTints={assignedFaceTints}
         onMeasureDisplayModelDimensions={onMeasureDisplayModelDimensions}
         onUploadedPreviewBounds={onUploadedPreviewBounds}
@@ -2988,6 +2957,7 @@ function UploadedSolid({
   enableHoleWallPicking,
   activePayloadObjectId,
   selectedFaceId,
+  additionalSelectedFaceIds,
   assignedFaceTints,
   onMeasureDisplayModelDimensions,
   onUploadedPreviewBounds
@@ -2998,6 +2968,7 @@ function UploadedSolid({
   enableHoleWallPicking?: boolean;
   activePayloadObjectId?: string;
   selectedFaceId?: string | null;
+  additionalSelectedFaceIds?: readonly string[];
   assignedFaceTints?: ViewerFaceTint[];
   onMeasureDisplayModelDimensions?: (dimensions: NonNullable<DisplayModel["dimensions"]>) => void;
   onUploadedPreviewBounds?: (bounds: THREE.Box3) => void;
@@ -3011,6 +2982,7 @@ function UploadedSolid({
         enableHoleWallPicking={enableHoleWallPicking}
         activePayloadObjectId={activePayloadObjectId}
         selectedFaceId={selectedFaceId}
+        additionalSelectedFaceIds={additionalSelectedFaceIds}
         assignedFaceTints={assignedFaceTints}
         onMeasureDisplayModelDimensions={onMeasureDisplayModelDimensions}
         onUploadedPreviewBounds={onUploadedPreviewBounds}
@@ -3029,6 +3001,7 @@ function UploadedNativeCadModel({
   enableHoleWallPicking,
   activePayloadObjectId,
   selectedFaceId,
+  additionalSelectedFaceIds,
   assignedFaceTints,
   onMeasureDisplayModelDimensions,
   onUploadedPreviewBounds
@@ -3039,6 +3012,7 @@ function UploadedNativeCadModel({
   enableHoleWallPicking?: boolean;
   activePayloadObjectId?: string;
   selectedFaceId?: string | null;
+  additionalSelectedFaceIds?: readonly string[];
   assignedFaceTints?: ViewerFaceTint[];
   onMeasureDisplayModelDimensions?: (dimensions: NonNullable<DisplayModel["dimensions"]>) => void;
   onUploadedPreviewBounds?: (bounds: THREE.Box3) => void;
@@ -3070,15 +3044,23 @@ function UploadedNativeCadModel({
   // Faces that carry a support or load stay tinted in the marker colour, so
   // an assignment is visible on the model itself and not only as a callout
   // label; before, only the transient selection was highlighted (2026-09 review F2).
+  // Every face in the working selection (the primary pick plus Ctrl/Cmd-click
+  // and checklist additions) is highlighted; its assignment tint steps aside.
+  const selectedFaceIds = useMemo(
+    () => highlightedSelectionFaceIds(selectedFaceId, additionalSelectedFaceIds),
+    [additionalSelectedFaceIds, selectedFaceId]
+  );
+  const selectedFaceIdsKey = selectedFaceIds.join("\n");
   useEffect(() => {
     const api = stepFacesApi;
     const target = preview.object;
     if (!api || !nativeCadContentBase64 || !target || !assignedFaceTints?.length) return undefined;
     const registry = api.peekStepFaceRegistryForBase64(nativeCadContentBase64);
     if (!registry) return undefined;
+    const selected = new Set(selectedFaceIdsKey ? selectedFaceIdsKey.split("\n") : []);
     const attached: Array<{ parent: THREE.Mesh; highlight: THREE.Mesh }> = [];
     for (const tint of assignedFaceTints) {
-      if (!api.isStepFaceId(tint.faceId) || tint.faceId === selectedFaceId) continue;
+      if (!api.isStepFaceId(tint.faceId) || selected.has(tint.faceId)) continue;
       const record = api.stepFaceRecordForId(registry, tint.faceId);
       if (!record) continue;
       const parent = target.children[record.meshIndex];
@@ -3094,25 +3076,33 @@ function UploadedNativeCadModel({
         (highlight.material as THREE.Material).dispose();
       }
     };
-  }, [assignedFaceTints, nativeCadContentBase64, preview.object, selectedFaceId, stepRegistryVersion]);
+  }, [assignedFaceTints, nativeCadContentBase64, preview.object, selectedFaceIdsKey, stepRegistryVersion]);
 
   useEffect(() => {
     const api = stepFacesApi;
     const target = preview.object;
-    if (!api || !nativeCadContentBase64 || !target || !selectedFaceId || !api.isStepFaceId(selectedFaceId)) return undefined;
+    if (!api || !nativeCadContentBase64 || !target || !selectedFaceIdsKey) return undefined;
     const registry = api.peekStepFaceRegistryForBase64(nativeCadContentBase64);
-    const record = registry ? api.stepFaceRecordForId(registry, selectedFaceId) : null;
-    if (!registry || !record) return undefined;
-    const parent = target.children[record.meshIndex];
-    if (!(parent instanceof THREE.Mesh)) return undefined;
-    const highlight = createStepFaceHighlightMesh(registry, record);
-    parent.add(highlight);
+    if (!registry) return undefined;
+    const attached: Array<{ parent: THREE.Mesh; highlight: THREE.Mesh }> = [];
+    for (const faceId of selectedFaceIdsKey.split("\n")) {
+      if (!api.isStepFaceId(faceId)) continue;
+      const record = api.stepFaceRecordForId(registry, faceId);
+      if (!record) continue;
+      const parent = target.children[record.meshIndex];
+      if (!(parent instanceof THREE.Mesh)) continue;
+      const highlight = createStepFaceHighlightMesh(registry, record);
+      parent.add(highlight);
+      attached.push({ parent, highlight });
+    }
     return () => {
-      parent.remove(highlight);
-      highlight.geometry.dispose();
-      (highlight.material as THREE.Material).dispose();
+      for (const { parent, highlight } of attached) {
+        parent.remove(highlight);
+        highlight.geometry.dispose();
+        (highlight.material as THREE.Material).dispose();
+      }
     };
-  }, [nativeCadContentBase64, preview.object, selectedFaceId, stepRegistryVersion]);
+  }, [nativeCadContentBase64, preview.object, selectedFaceIdsKey, stepRegistryVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -6753,9 +6743,24 @@ function UserResultProbeMarker({ reading, point, index }: { reading: ResolvedRes
   );
 }
 
-function ModelHitLabel({ hit, active }: { hit: ModelSelectionHit; active: boolean }) {
+/**
+ * A face name as the viewer shows it, in the project's units. STEP face labels
+ * store their area suffix in mm²; a US project shows it in in², through the same
+ * helper the side panels use.
+ */
+export function viewerFaceLabel(face: Pick<DisplayFace, "label" | "area">, unitSystem: UnitSystem): string {
+  return stepFaceLabelForUnits(face.label, face.area, unitSystem);
+}
+
+
+/** Text of the hover/pick label drawn next to the pointer on the model. */
+export function modelHitLabelText(hit: Pick<ModelSelectionHit, "face" | "payloadObject">, unitSystem: UnitSystem): string {
+  return hit.payloadObject?.label ?? compactFaceLabel(viewerFaceLabel(hit.face, unitSystem));
+}
+
+function ModelHitLabel({ hit, active, unitSystem }: { hit: ModelSelectionHit; active: boolean; unitSystem: UnitSystem }) {
   const anchor = hit.payloadObject?.center ?? hit.point;
-  const label = hit.payloadObject?.label ?? compactFaceLabel(hit.face.label);
+  const label = modelHitLabelText(hit, unitSystem);
   const labelPosition = new THREE.Vector3(...anchor).add(new THREE.Vector3(0, 0.12, 0.12));
   return (
     <group>
@@ -7041,7 +7046,10 @@ export function resultLegendKeyboardResize(
   });
 }
 
-export function resultLegendTitle(resultMode: ResultMode, stressComponent: StressComponent): string {
+/** The basis wording the legend needs; `ResolvedSafetyFactorBasis` satisfies it. */
+export type SafetyFactorLegendBasis = { shortLabel: string; limitNote: string };
+
+export function resultLegendTitle(resultMode: ResultMode, stressComponent: StressComponent, safetyFactorBasis?: Pick<SafetyFactorLegendBasis, "shortLabel">): string {
   if (resultMode === "stress") {
     if (stressComponent === "principal_max") return "Principal stress σ₁";
     if (stressComponent === "principal_min") return "Principal stress σ₃";
@@ -7054,7 +7062,7 @@ export function resultLegendTitle(resultMode: ResultMode, stressComponent: Stres
   if (resultMode === "mode_shape") return "Normalized mode shape";
   if (resultMode === "temperature") return "Temperature";
   if (resultMode === "heat_flux") return "Heat flux";
-  return "Safety factor";
+  return safetyFactorBasis ? `Safety factor (${safetyFactorBasis.shortLabel})` : "Safety factor";
 }
 
 export function legendMeshStats(meshSummary: MeshSummary | undefined) {
@@ -7135,7 +7143,7 @@ export function resultLegendContentScale(size: ResultLegendSize) {
   ).toFixed(2));
 }
 
-function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfaceMesh, showDeformed, deformationScale, peakLabel, stale = false }: { resultMode: ResultMode; resultFields: ResultField[]; unitSystem: UnitSystem; meshSummary?: MeshSummary; surfaceMesh?: SolverSurfaceMesh; showDeformed?: boolean; deformationScale?: number; peakLabel?: string; stale?: boolean }) {
+function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfaceMesh, showDeformed, deformationScale, peakLabel, stale = false, safetyFactorBasis }: { resultMode: ResultMode; resultFields: ResultField[]; unitSystem: UnitSystem; meshSummary?: MeshSummary; surfaceMesh?: SolverSurfaceMesh; showDeformed?: boolean; deformationScale?: number; peakLabel?: string; stale?: boolean; safetyFactorBasis?: SafetyFactorLegendBasis }) {
   const stressComponent = useContext(StressComponentContext);
   const contextColorScale = useContext(ResultColorScaleContext);
   const legendRef = useRef<HTMLDivElement | null>(null);
@@ -7157,7 +7165,7 @@ function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfa
     if (resolved.kind === "mode_shape") return `${resolved.factor.toFixed(1)}x visual`;
     return legendDeformationLabel(resolved.factor);
   }, [deformationScale, resultFields, resultMode, showDeformed, surfaceMesh]);
-  const title = resultLegendTitle(resultMode, stressComponent);
+  const title = resultLegendTitle(resultMode, stressComponent, safetyFactorBasis);
   // Prefer the field actually rendered on the solver surface mesh so the legend
   // range matches the contours; fall back to the face/sample field otherwise.
   const surfaceField = surfaceMesh ? resultFields.find((candidate) => isSolverSurfaceNodeField(candidate, surfaceMesh, resultMode)) : undefined;
@@ -7303,7 +7311,7 @@ function ResultLegend({ resultMode, resultFields, unitSystem, meshSummary, surfa
           <span>{RESULT_LEGEND_NO_VALUE}</span>
         </div>
       )}
-      {safetyLimit !== null ? <span className="legend-limit-note"><i aria-hidden="true" />Line marks SF = {SAFETY_FACTOR_LIMIT}: below it the part yields</span> : null}
+      {safetyLimit !== null ? <span className="legend-limit-note"><i aria-hidden="true" />Line marks SF = {SAFETY_FACTOR_LIMIT}: {safetyFactorBasis?.limitNote ?? "below it the part yields"}</span> : null}
       {legendBasis ? <span className="legend-basis">{legendBasis}</span> : null}
       {/* The bar shows the averaged surface field; the summary peak is the unaveraged element value (2026-09 review F8). */}
       {peakLabel && <span className="legend-peak">{peakLabel} (element, unaveraged)</span>}

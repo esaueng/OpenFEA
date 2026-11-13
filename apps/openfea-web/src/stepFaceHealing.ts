@@ -10,6 +10,7 @@
 // silently guessing at physics.
 import type { DisplayFace, DisplayModel, Project } from "@openfea/schema";
 import { resolvePickedStepFace, stepSupportFaceIdForPickedFace, type StepFaceRegistry } from "./stepFaces";
+import { isManagedNamedSelection } from "./namedSelections";
 
 export const LEGACY_UPLOAD_FACE_PREFIX = "face-upload-";
 export const PICKED_UPLOAD_FACE_PREFIX = "face-upload-picked-";
@@ -203,7 +204,9 @@ export function healStepHoleSupportSelections(
     return {
       ...study,
       namedSelections: study.namedSelections.map((selection) => {
-        if (!supportSelectionIds.has(selection.id) || selection.entityType !== "face") return selection;
+        // A managed named selection holds the faces the user saved; it is
+        // never rewritten behind their back (plan 036 R1.2).
+        if (!supportSelectionIds.has(selection.id) || selection.entityType !== "face" || isManagedNamedSelection(selection)) return selection;
         const faceRef = selection.geometryRefs.find((ref) => ref.entityType === "face");
         if (!faceRef) return selection;
         const targetFaceId = stepSupportFaceIdForPickedFace(registry, faceRef.entityId);
@@ -260,7 +263,7 @@ export function remapStepFaceSelectionsInStudy<S extends Pick<Project["studies"]
           ref === placeholderRef ? { ...ref, entityId: match.id, label: match.label } : ref
         )
       } : selection;
-      if (!supportSelectionIds.has(selection.id)) return healedSelection;
+      if (!supportSelectionIds.has(selection.id) || isManagedNamedSelection(selection)) return healedSelection;
       const faceRef = healedSelection.geometryRefs.find((ref) => ref.entityType === "face");
       if (!faceRef) return healedSelection;
       const targetFaceId = stepSupportFaceIdForPickedFace(registry, faceRef.entityId);

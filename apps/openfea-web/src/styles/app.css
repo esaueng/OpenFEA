@@ -6745,6 +6745,96 @@ input[aria-invalid="true"] {
   margin-top: 2px;
 }
 
+/* Plan 036 R1.2: working face selection and the named-selection manager. */
+.working-selection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+
+.viewer-a11y-faces-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--color-text);
+}
+
+.named-selections-dialog {
+  max-width: 560px;
+}
+
+.named-selections-body {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  overflow-y: auto;
+}
+
+.named-selections-body h3 {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.named-selection-create {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: start;
+}
+
+.named-selection-create .field {
+  width: 100%;
+}
+
+.named-selection-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.named-selection-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--card-pad);
+  background: var(--color-surface-2);
+  border: var(--border-thin);
+  border-radius: var(--card-radius);
+}
+
+.named-selection-summary {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.named-selection-summary small {
+  color: var(--color-text-muted);
+}
+
+.named-selection-actions,
+.named-selection-rename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.named-selection-rename {
+  width: 100%;
+}
+
+.named-selection-rename input {
+  flex: 1 1 160px;
+}
+
 /* 2026-09 review D23: the start screen shows the workspace loading. */
 .start-busy {
   margin: 0 0 var(--sp-2);
