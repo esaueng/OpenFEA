@@ -165,7 +165,7 @@ are tracked here until they get their own PRs; they are not new releases.
 
 | # | Finding | Status |
 | - | - | - |
-| U1 | CG reports `converged: true` from its recursive relative residual (1e-10), but on slender static models the true residual ‖Ku − f‖/‖f‖ is 1.9e-7 at 30k Tet4 and 1.1e-6 at 150k Tet10 (ladder finding 3). Answers stay physically sound, but the diagnostic overstates convergence. | In progress in a separate PR (not merged at `12cf5fa`). |
+| U1 | CG reports `converged: true` from its recursive relative residual (1e-10), but on slender static models the true residual ‖Ku − f‖/‖f‖ is 1.9e-7 at 30k Tet4 and 1.1e-6 at 150k Tet10 (ladder finding 3). Answers stay physically sound, but the diagnostic overstates convergence. | Fixed on this branch (b89788a): CG recomputes the true residual, restarts up to two bounded cycles, gates `converged` on it and sets `partialConvergenceWarning` when it misses tolerance. |
 | U2 | Slender modal at 30k DOF drops the near-degenerate first bending pair: it converges 1 of 3 requested modes (correctly labelled mode 3, with `partialConvergenceWarning`) after the 30-iteration subspace cap (ladder finding 4). | Open, unscheduled. Candidate fixes: more iterations or a larger block, a tighter inner solve, or SSOR (overlaps R5.2). |
 
 ## Decisions
