@@ -8,6 +8,7 @@ import {
   bracketMeshSizeMmForPreset,
   buildOpenFeaCoreModelForStudy,
   geometrySourceForStudy,
+  displayComponentToSolverFrame,
   displayDirectionToSolverFrame,
   explicitSolverBackend,
   openFeaCoreEligibility,
@@ -184,6 +185,26 @@ describe("display to solver frame conversion", () => {
     expect(dispatched.loads[0]?.parameters.value).toBe(500);
     // The original study must stay in display space for the viewer and local solves.
     expect(study.loads[0]?.parameters.direction).toEqual([0, -1, 0]);
+  });
+
+  test("maps per-component fixed supports into the solver frame like load directions (plan 036 R1.4)", () => {
+    const sample = cantileverDisplayModel();
+    expect(["x", "y", "z"].map((component) => displayComponentToSolverFrame(component as "x" | "y" | "z", sample))).toEqual(["x", "z", "y"]);
+    expect(displayComponentToSolverFrame("y", { ...sample, id: "display-uploaded" })).toBe("y");
+
+    const study = studyFixture({
+      constraints: [
+        { id: "partial", type: "fixed", selectionRef: "selection-fixed-face", parameters: { components: ["y"] }, status: "complete" },
+        { id: "all", type: "fixed", selectionRef: "selection-fixed-face", parameters: {}, status: "complete" }
+      ]
+    });
+    const dispatched = studyForCoreGeometryDispatch(study, sample);
+    expect(dispatched.constraints[0]?.parameters.components).toEqual(["z"]);
+    expect(dispatched.constraints[1]?.parameters).toEqual({});
+    expect(study.constraints[0]?.parameters.components).toEqual(["y"]);
+
+    const { model } = buildOpenFeaCoreModelForStudy(study, sample);
+    expect(model.boundaryConditions.map((condition) => "components" in condition ? condition.components : undefined)).toEqual([["z"], ["x", "y", "z"]]);
   });
 });
 

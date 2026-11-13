@@ -104,6 +104,19 @@ describe("validateStaticStressStudy", () => {
     );
   });
 
+  it("accepts symmetry and per-component fixed supports and flags an empty component list (plan 036 R1.4)", () => {
+    const study: Study = {
+      ...readyStudy,
+      constraints: [
+        { id: "fs-xz", type: "fixed", selectionRef: "face", parameters: { components: ["x", "z"] }, status: "complete" },
+        { id: "sym", type: "symmetry", selectionRef: "face", parameters: {}, status: "complete" }
+      ]
+    };
+    expect(validateStudy(study)).toEqual([]);
+    const bad: Study = { ...readyStudy, constraints: [{ id: "fs-none", type: "fixed", selectionRef: "face", parameters: { components: [] }, status: "complete" }] };
+    expect(validateStudy(bad).map((item) => item.id)).toContain("validation-support-components-fs-none");
+  });
+
   it("flags an enabled load case that carries no loads", () => {
     // 2026-09 review D10: an empty enabled case solved to numerical noise and
     // was reported as "Unlikely to yield" with a safety factor of 2.8e12.

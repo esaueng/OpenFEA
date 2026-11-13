@@ -1,3 +1,5 @@
+import { SUPPORT_GEOMETRY_POLICY } from "@openfea/core";
+
 export type SettingHelpVisual =
   | "axis"
   | "dimensions"
@@ -200,7 +202,7 @@ export const SETTING_HELP: Record<SettingHelpId, SettingHelp> = {
   },
   supportType: {
     title: "Support type",
-    body: "Fixed support locks the selected face. Prescribed displacement moves it by a known amount (mm along one axis); zero behaves as a fixed component.",
+    body: `Fixed support locks the selected face in all directions, or only in the X, Y or Z components you choose. Symmetry / roller holds only the motion normal to a flat face that lies within ${SUPPORT_GEOMETRY_POLICY.symmetryAxisToleranceDegrees}° of a global axis, as on a symmetry plane or a frictionless slide. Prescribed displacement moves the face by a known amount (mm along one axis); zero behaves as a fixed component.`,
     visual: "support"
   },
   loadPlacement: {

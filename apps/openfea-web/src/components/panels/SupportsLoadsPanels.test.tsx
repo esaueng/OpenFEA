@@ -483,6 +483,53 @@ describe("load rows and the add flow agree with the form that created them (live
   });
 });
 
+describe("per-component fixed and symmetry supports (plan 036 R1.4)", () => {
+  const partial: Study["constraints"][number] = { id: "fs-partial", type: "fixed", selectionRef: namedSelections[0]!.id, parameters: { label: "FS 1", components: ["x", "z"] }, status: "complete" };
+  const symmetry: Study["constraints"][number] = { id: "sym-1", type: "symmetry", selectionRef: namedSelections[1]!.id, parameters: { label: "SYM 1" }, status: "complete" };
+
+  test("support rows describe the components each support holds, and label them development-grade", () => {
+    const html = renderPanel("supports", { study: { ...study, constraints: [partial, symmetry] } });
+    expect(html).toContain("FS 1 · Fixed support (X, Z; Y free)");
+    expect(html).toContain("SYM 1 · Symmetry / roller (holds Z, the face normal)");
+    expect(html).toContain("development-grade");
+    const classic = renderPanel("supports", { study: { ...study, constraints: [{ ...partial, parameters: { label: "FS 1" } }] } });
+    expect(classic).toContain("FS 1 · Fixed support (X, Y, Z)");
+    expect(classic).not.toContain("development-grade");
+  });
+
+  test("the add form offers symmetry, and held directions as a radio group defaulting to all three", () => {
+    const html = renderPanel("supports", { selectedFace: displayModel.faces[0]! });
+    expect(html).toContain('<option value="symmetry">Symmetry / roller</option>');
+    const group = html.match(/<div class="segmented" role="radiogroup" aria-labelledby="fixed-components-label"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "";
+    const radios = group.match(/<button[^>]*role="radio"[^>]*>[^<]*/g) ?? [];
+    expect(radios).toHaveLength(2);
+    expect(radios.filter((radio) => radio.includes('aria-checked="true"') && radio.includes('tabindex="0"'))).toEqual([expect.stringContaining("All (X, Y, Z)")]);
+    expect(html).not.toContain("Components held");
+  });
+
+  test("a modal study offers symmetry but not prescribed displacement", () => {
+    const modal = { ...study, type: "modal_analysis", solverSettings: { modeCount: 6 } } as unknown as Study;
+    const html = renderPanel("supports", { study: modal, selectedFace: displayModel.faces[0]! });
+    expect(html).toContain('<option value="symmetry">Symmetry / roller</option>');
+    expect(html).not.toContain('<option value="prescribed_displacement">');
+  });
+
+  test("editing a partial fixed support shows its held components", () => {
+    const html = renderToStaticMarkup(<SupportEditForm support={partial} study={{ ...study, constraints: [partial] }} displayModel={displayModel} unitSystem="SI" onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).toMatch(/role="radio" aria-checked="true" tabindex="0"[^>]*>Chosen components/);
+    expect(html).toContain("Components held");
+    const boxes = html.match(/<input type="checkbox"[^>]*\/><span>[XYZ]<\/span>/g) ?? [];
+    expect(boxes.map((box) => [box.slice(-8, -7), box.includes('checked=""')])).toEqual([["X", true], ["Y", false], ["Z", true]]);
+  });
+
+  test("editing a symmetry support states the axis tolerance", () => {
+    const html = renderToStaticMarkup(<SupportEditForm support={symmetry} study={{ ...study, constraints: [symmetry] }} displayModel={displayModel} unitSystem="SI" onSave={vi.fn()} onCancel={vi.fn()} />);
+    expect(html).toContain('<option value="symmetry" selected="">Symmetry / roller</option>');
+    expect(html).toContain("within 1° of the global X, Y or Z axis");
+    expect(html).not.toContain("Held directions");
+  });
+});
+
 function sameVector(left: readonly number[], right: readonly number[]) {
   return left.every((value, index) => Math.abs(value - right[index]!) < 1e-9);
 }

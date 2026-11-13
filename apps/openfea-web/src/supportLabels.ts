@@ -13,7 +13,9 @@ export function storedEntryLabel(entry: { parameters?: Record<string, unknown> }
 }
 
 export function supportLabelPrefix(type: Constraint["type"]): string {
-  return type === "fixed" ? "FS" : "PD";
+  if (type === "fixed") return "FS";
+  if (type === "symmetry") return "SYM";
+  return "PD";
 }
 
 export function supportDisplayLabel(support: Pick<Constraint, "type"> & { parameters?: Record<string, unknown> }, ordinal: number) {
