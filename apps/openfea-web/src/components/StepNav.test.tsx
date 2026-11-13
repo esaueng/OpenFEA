@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import type { Project, Study } from "@openfea/schema";
-import { StepNav, stepLabelForStudy } from "./StepNav";
+import { StepNav, stepLabelForStudy, studyHasGeneratedMesh } from "./StepNav";
 import { ProjectMenu } from "./ProjectMenu";
 
 const project: Project = {
@@ -55,7 +55,7 @@ describe("StepNav", () => {
     const meshed = {
       ...study,
       materialAssignments: [{ id: "assignment-1", materialId: "al-6061", selectionRef: "body" }],
-      meshSettings: { preset: "medium" as const, status: "complete" as const }
+      meshSettings: { preset: "medium" as const, status: "complete" as const, summary: { nodes: 1200, elements: 5400, warnings: [], source: "wasm_gmsh" } }
     } as unknown as Study;
     const html = renderToStaticMarkup(<StepNav {...baseProps} activeStep="supports" study={meshed} />);
     const ticked = [...html.matchAll(/<button[^>]*aria-label="([^"]+), completed"[^>]*>[\s\S]*?<\/button>/g)].map((match) => match[1]);
@@ -63,6 +63,29 @@ describe("StepNav", () => {
     expect(html.match(/step-nav-check/g) ?? []).toHaveLength(3);
     // Steps still to do keep their plain name and no tick.
     expect(html).toMatch(/<button type="button" class="step-nav-step active" aria-current="step" title="Supports"><svg[\s\S]*?<span class="step-nav-label">Supports<\/span><\/button>/);
+  });
+
+  test("does not tick Mesh for a seeded or estimated summary with no generated mesh", () => {
+    // Bracket Demo seeds status "complete" with a planning summary; the stepper showed
+    // Mesh green while the Mesh step read "--" nodes and elements.
+    const seeded = { ...study, meshSettings: { preset: "medium", status: "complete", summary: { nodes: 4000, elements: 18000, warnings: [], source: "preset_estimate" } } } as unknown as Study;
+    const seededHtml = renderToStaticMarkup(<StepNav {...baseProps} study={seeded} />);
+    expect(seededHtml).not.toContain('aria-label="Mesh, completed"');
+    expect(seededHtml).toMatch(/<button type="button" class="step-nav-step"[^>]*title="Mesh">/);
+    // A status-only "complete" (no summary at all) is not a mesh either.
+    expect(studyHasGeneratedMesh({ meshSettings: { preset: "medium", status: "complete" } })).toBe(false);
+    // Mesher-produced summaries and a stored volume mesh do count.
+    for (const summary of [
+      { nodes: 1, elements: 1, warnings: [], source: "wasm_gmsh" },
+      { nodes: 1, elements: 1, warnings: [], source: "core_solver" },
+      { nodes: 1, elements: 1, warnings: [], artifacts: { actualCoreModel: { id: "stored" } } }
+    ]) {
+      expect(studyHasGeneratedMesh({ meshSettings: { preset: "medium", status: "complete", summary } } as unknown as Study), JSON.stringify(summary)).toBe(true);
+    }
+    // ...but only while the mesh is current.
+    expect(studyHasGeneratedMesh({ meshSettings: { preset: "medium", status: "ready", summary: { nodes: 1, elements: 1, warnings: [], source: "wasm_gmsh" } } } as unknown as Study)).toBe(false);
+    const meshed = { ...study, meshSettings: { preset: "medium", status: "complete", summary: { nodes: 1, elements: 1, warnings: [], source: "wasm_gmsh" } } } as unknown as Study;
+    expect(renderToStaticMarkup(<StepNav {...baseProps} study={meshed} />)).toContain('aria-label="Mesh, completed"');
   });
 
   test("keeps blockers and notices in the accessible name of a completed step", () => {
