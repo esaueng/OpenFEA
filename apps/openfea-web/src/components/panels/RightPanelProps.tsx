@@ -15,6 +15,7 @@ import { type ResolvedResultProbe } from "../../resultSelection";
 import { type SampleAnalysisType, type SampleModelId } from "../../lib/api";
 import type { WasmMeshPhaseProgress } from "../../lib/wasmMeshing";
 import { type ConvergenceProbe } from "../../meshConvergence";
+import type { NamedSelectionManagerActions } from "./NamedSelectionsDialog";
 
 import { type RotationAxis } from "../../modelOrientation";
 
@@ -100,6 +101,15 @@ export interface RightPanelProps {
   draftLoadDirection: LoadDirectionLabel;
   selectedLoadPoint: LoadApplicationPoint | null;
   selectedPayloadObject: PayloadObjectSelection | null;
+  /**
+   * The working selection's "Additional faces", lifted to the workspace so a
+   * viewer Ctrl/Cmd-click and the panel checklist edit the same list (plan 036
+   * R1.2). Without these props the panels keep their own checklist state.
+   */
+  additionalSelectionRefs?: readonly string[];
+  onToggleAdditionalSelectionRef?: (selectionRef: string) => void;
+  /** Named-selection manager actions; the panels show the manager only when supplied. */
+  namedSelectionManager?: NamedSelectionManagerActions;
   onFitView: () => void;
   onRotateModel: (axis: RotationAxis) => void;
   onResetModelOrientation: () => void;

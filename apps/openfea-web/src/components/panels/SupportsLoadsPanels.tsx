@@ -19,10 +19,12 @@ import { stepFaceLabelForUnits } from "../../stepFaceLabels";
 import { handleRadioGroupKeyDown, radioTabIndex } from "../radioGroupKeyboard";
 
 import type { RightPanelProps } from "./RightPanelProps";
+import { WorkingSelectionBar } from "./NamedSelectionsDialog";
+import { isManagedNamedSelection, selectionFaceIds } from "../../namedSelections";
 import { noopDraftPayloadPreviewChange } from "./RightPanelProps";
 import { Panel, sameLoadDirection, structuralLoadCasesForPanel } from "./PanelChrome";
 import { Callout, Collapsible, EmptyEditableList, HelpLabel, Info, PlacementReadout, SectionTitle, SupportIcon, defaultValueForLoadType, directionOptionLabel, directionPhrase, formatEquivalentForce, formatInputValue, formatNumber, loadTypeLabel, selectionForFace } from "./PanelChrome";
-export function SupportsPanel({ project, displayModel, selectedFace, study, draftSupportTemperature, onDraftSupportTemperatureChange, onAddSupport, onUpdateSupport, onRemoveSupport }: RightPanelProps) {
+export function SupportsPanel({ project, displayModel, selectedFace, study, draftSupportTemperature, onDraftSupportTemperatureChange, onAddSupport, onUpdateSupport, onRemoveSupport, additionalSelectionRefs, onToggleAdditionalSelectionRef, namedSelectionManager }: RightPanelProps) {
   const unitSystem = project.unitSystem;
   const selectedFromViewport = selectedFace ? selectionForFace(study, selectedFace.id) : undefined;
   const thermal = study.type === "steady_state_thermal";
@@ -30,7 +32,7 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
   // Multi-face BCs (Decision 2): the viewer pick seeds the first face;
   // additional faces toggle on from the selection list below. The checklist
   // clears once a support is added, so the next Add starts from one face.
-  const [extraSelectionRefs, toggleExtraRef] = useAdditionalFaces(study.constraints.length);
+  const [extraSelectionRefs, toggleExtraRef] = useAdditionalFaces(study.constraints.length, additionalSelectionRefs, onToggleAdditionalSelectionRef);
   // The draft temperature lives in the workspace so a viewer pick uses the
   // typed value too (2026-09 review D12); fall back to local state for callers
   // that do not supply it. Stored and drafted in °C (the solver's value);
@@ -54,7 +56,7 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
   const duplicateSupportError = existingOnSelection
     ? `${thermal ? "A temperature boundary" : "A support"} already exists on ${selectedFromViewport?.name ?? "this face"}. Edit or remove it below.`
     : null;
-  const faceOptions = study.namedSelections.filter((selection) => selection.entityType === "face");
+  const faceOptions = additionalFaceOptions(study);
   // A face checked here and then picked in the viewer is the primary face, not an extra.
   const extraRefsForAdd = extraSelectionRefs.filter((ref) => ref !== selectedFromViewport?.id);
   const appliedRefs = [selectedFromViewport?.id, ...extraRefsForAdd].filter((ref): ref is string => Boolean(ref));
@@ -90,6 +92,7 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
           onToggle={toggleExtraRef}
         />
       )}
+      {namedSelectionManager && !modal ? <WorkingSelectionBar study={study} manager={namedSelectionManager} /> : null}
       <button className="outline-action wide" disabled={!selectedFromViewport || Boolean(duplicateSupportError) || (thermal && !Number.isFinite(temperature)) || (prescribedDisplacement && !displacementValid)} title={duplicateSupportError ?? undefined} onClick={() => selectedFromViewport && !duplicateSupportError && onAddSupport(selectedFromViewport.id, thermal ? { type: "prescribed_temperature", value: temperature } : prescribedDisplacement ? { type: "prescribed_displacement", value: displacementValueMm, component: displacementComponent } : { type: "fixed" }, extraRefsForAdd.length ? { selectionRefs: extraRefsForAdd } : undefined)}><Plus size={18} />{addLabel}{appliedRefs.length > 1 ? ` (${appliedRefs.length} faces)` : ""}</button>
       <SupportEditorList study={study} displayModel={displayModel} unitSystem={unitSystem} retargetFace={selectedFace} onUpdateSupport={onUpdateSupport} onRemoveSupport={onRemoveSupport} />
       <Callout>{thermal ? "At least one prescribed temperature is required to make the conduction system unique." : "Fixed supports prevent any motion of the selected face."}</Callout>
@@ -141,10 +144,25 @@ export function additionalFacesReducer(state: AdditionalFacesState, action: Addi
   return { refs: action.count > state.entryCount ? [] : state.refs, entryCount: action.count };
 }
 
-function useAdditionalFaces(entryCount: number): [string[], (ref: string) => void] {
+/**
+ * The checklist state. When the workspace supplies `controlledRefs` and
+ * `onToggle` (plan 036 R1.2), viewer Ctrl/Cmd-click and the checklist share
+ * one list owned by the workspace; otherwise the panel keeps its own.
+ */
+function useAdditionalFaces(entryCount: number, controlledRefs?: readonly string[], onToggle?: (ref: string) => void): [readonly string[], (ref: string) => void] {
   const [state, dispatch] = useReducer(additionalFacesReducer, entryCount, (count): AdditionalFacesState => ({ refs: [], entryCount: count }));
   useEffect(() => dispatch({ type: "entries", count: entryCount }), [entryCount]);
+  if (controlledRefs && onToggle) return [controlledRefs, onToggle];
   return [state.refs, (ref: string) => dispatch({ type: "toggle", ref })];
+}
+
+/**
+ * The faces offered as "Additional faces": the automatic per-face selections.
+ * Managed named selections are reused whole through the manager, not ticked
+ * here face by face.
+ */
+function additionalFaceOptions(study: Study) {
+  return study.namedSelections.filter((selection) => selection.entityType === "face" && !isManagedNamedSelection(selection));
 }
 
 /** Boundary temperature: stored in °C, entered in the project's temperature unit. */
@@ -167,6 +185,10 @@ export function DisplacementField({ valueMm, unitSystem, onChange }: { valueMm: 
 function selectionDisplayName(study: Study, displayModel: DisplayModel, selectionRef: string, unitSystem: UnitSystem): string {
   const selection = study.namedSelections.find((candidate) => candidate.id === selectionRef);
   if (!selection) return "selected face";
+  if (isManagedNamedSelection(selection)) {
+    const count = selectionFaceIds(study, selection.id).length;
+    return `${selection.name} (${count} face${count === 1 ? "" : "s"})`;
+  }
   const geometryRef = selection.geometryRefs[0];
   const label = geometryRef?.label ?? selection.name;
   const face = geometryRef?.entityType === "face" ? displayModel.faces.find((candidate) => candidate.id === geometryRef.entityId) : undefined;
@@ -178,8 +200,25 @@ function selectionDisplayName(study: Study, displayModel: DisplayModel, selectio
  * de-duplication the adapter (and the report's selectionLabels) use.
  */
 function entryFaceNames(study: Study, displayModel: DisplayModel, entry: { selectionRef: string; selectionRefs?: string[] }, unitSystem: UnitSystem): string[] {
-  const names = selectionRefsFor(entry).map((ref) => selectionDisplayName(study, displayModel, ref, unitSystem));
+  const names = selectionRefsFor(entry).flatMap((ref) => {
+    const selection = study.namedSelections.find((candidate) => candidate.id === ref);
+    if (!selection || !isManagedNamedSelection(selection)) return [selectionDisplayName(study, displayModel, ref, unitSystem)];
+    // A reused named selection acts on every face in it.
+    return selection.geometryRefs.filter((geometryRef) => geometryRef.entityType === "face").map((geometryRef) => {
+      const face = displayModel.faces.find((candidate) => candidate.id === geometryRef.entityId);
+      return stepFaceLabelForUnits(geometryRef.label, face?.area, unitSystem);
+    });
+  });
   return names.length ? names : ["selected face"];
+}
+
+/** The managed named selection a support or load reuses, named in its row ("Bolt holes · …"). */
+function entryNamedSelectionPrefix(study: Study, entry: { selectionRef: string; selectionRefs?: string[] }): string {
+  const names = selectionRefsFor(entry)
+    .map((ref) => study.namedSelections.find((candidate) => candidate.id === ref))
+    .filter((selection) => isManagedNamedSelection(selection))
+    .map((selection) => selection!.name);
+  return names.length ? `${names.join(", ")} · ` : "";
 }
 
 function additionalFaceCountLabel(names: readonly string[]): string {
@@ -290,7 +329,10 @@ export function LoadsPanel({
   onUpdateLoad,
   onPreviewLoadEdit,
   onRemoveLoad,
-  onLoadCasesChange
+  onLoadCasesChange,
+  additionalSelectionRefs,
+  onToggleAdditionalSelectionRef,
+  namedSelectionManager
 }: RightPanelProps) {
   const [editingLoadId, setEditingLoadId] = useState<string | null>(null);
   const thermal = study.type === "steady_state_thermal";
@@ -312,8 +354,8 @@ export function LoadsPanel({
   // total force is shared by area over the combined faces while a pressure or
   // traction acts in full on each (see multiFaceLoadNote). The checklist
   // clears once a load is added.
-  const [extraLoadRefs, toggleExtraLoadRef] = useAdditionalFaces(study.loads.length);
-  const faceOptionsForLoad = study.namedSelections.filter((selection) => selection.entityType === "face");
+  const [extraLoadRefs, toggleExtraLoadRef] = useAdditionalFaces(study.loads.length, additionalSelectionRefs, onToggleAdditionalSelectionRef);
+  const faceOptionsForLoad = additionalFaceOptions(study);
   const extraFacesApply = !thermal && draftLoadType !== "gravity" && draftLoadType !== "volume_force" && draftLoadType !== "heat_generation" && draftLoadType !== "bolt_preload";
   const extraLoadRefsForAdd = extraFacesApply ? extraLoadRefs.filter((ref) => ref !== placementSelection?.id) : [];
   const draftMultiFaceNote = multiFaceLoadNote(draftLoadType, extraLoadRefsForAdd.length + 1);
@@ -505,6 +547,7 @@ export function LoadsPanel({
       )}
       </Collapsible>
       {draftMultiFaceNote && <Callout>{draftMultiFaceNote}</Callout>}
+      {namedSelectionManager && extraFacesApply ? <WorkingSelectionBar study={study} manager={namedSelectionManager} /> : null}
       {hasDraftPlacement && draftAddError && <p className="field-error" role="alert">{draftAddError}</p>}
       {hasDraftPlacement && !draftAddError && justAddedNotice && <p className="panel-copy" role="status">{justAddedNotice}</p>}
       <button className="outline-action wide" disabled={!canAddDraftLoad} title={draftAddError ?? justAddedNotice ?? undefined} onClick={() => canAddDraftLoad && onAddLoad(
@@ -793,7 +836,7 @@ function LoadEditorList({ editingId, onEditingIdChange, study, displayModel, uni
         const selectedFace = displayModel.faces.find((candidate) => candidate.id === selection?.geometryRefs[0]?.entityId);
         // Multi-face loads list every face, not only the first (Decision 2).
         const faceNames = entryFaceNames(study, displayModel, load, unitSystem);
-        const label = `${faceNames[0]}${additionalFaceCountLabel(faceNames)}`;
+        const label = `${entryNamedSelectionPrefix(study, load)}${faceNames[0]}${additionalFaceCountLabel(faceNames)}`;
         const payloadObject = payloadObjectForLoad(load);
         const payloadMaterial = load.type === "gravity" && typeof load.parameters.payloadMaterialId === "string" ? payloadMaterialForId(load.parameters.payloadMaterialId).name : "";
         // A face force's picked point is only where its arrow is drawn; the solve
@@ -1114,7 +1157,7 @@ function SupportEditorList({ study, displayModel, unitSystem, retargetFace, onUp
             <div className="editable-summary">
               <span className="item-icon warning"><SupportIcon /></span>
               <strong>{displayLabel} · {supportValueLabel(support, unitSystem)}</strong>
-              <small>{faceNames[0]}{additionalFaceCountLabel(faceNames)}</small>
+              <small>{entryNamedSelectionPrefix(study, support)}{faceNames[0]}{additionalFaceCountLabel(faceNames)}</small>
               <button className="remove-glyph" type="button" aria-label="Remove support" onClick={() => onRemoveSupport(support.id)}><X size={16} /></button>
             </div>
             <EntryFaceList names={faceNames} />

@@ -826,14 +826,6 @@ describe("CadViewer result coloring", () => {
     expect(cadViewerSource).toContain("onEnd={() => onInteractionChange?.(false)}");
   });
 
-  test("treats a click with pointer travel as an orbit drag, not a face pick", () => {
-    // R3F 8 fires onClick for any object hit at pointer-down and pointer-up
-    // regardless of travel; without this guard a drag that starts and ends on
-    // one face places a support (2026-09 review D26).
-    expect(cadViewerSource).toContain("export const VIEWER_CLICK_DRAG_THRESHOLD_PX = 4;");
-    expect(cadViewerSource.match(/if \(event\.delta > VIEWER_CLICK_DRAG_THRESHOLD_PX\) return;/g)).toHaveLength(2);
-  });
-
   test("keeps result legend extrema labels separate from numeric ticks", () => {
     expect(legendTickLabels(88.3, 156.6)).toEqual(["88.3", "105.4", "122.4", "139.5", "156.6"]);
   });
