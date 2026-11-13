@@ -19,14 +19,17 @@
       "custom_domain": true
     }
   ],
-  "vars": {"GLIMPSE_BASIC_ENABLED":"true", "GLIMPSE_USAGE_ENABLED":"true"},
+  // PROJECT_BACKUP_DAILY_CAP_BYTES: encrypted-backup bytes accepted per UTC day
+  // across all clients (positive integer byte count; 10737418240 = 10 GiB).
+  "vars": {"GLIMPSE_BASIC_ENABLED":"true", "GLIMPSE_USAGE_ENABLED":"true", "PROJECT_BACKUP_DAILY_CAP_BYTES":"10737418240"},
   // PR previews run the browser workspace without production data or counters.
   // Assets and compatibility settings remain top-level per Wrangler's Preview API.
   "previews": {
     "vars": { "GLIMPSE_BASIC_ENABLED": "false", "GLIMPSE_USAGE_ENABLED": "false" },
     "services": [],
     "r2_buckets": [],
-    "ratelimits": []
+    "ratelimits": [],
+    "durable_objects": { "bindings": [] }
   },
   "services": [{"binding":"GLIMPSE", "service":"glimpse", "entrypoint":"OpenFEAIngest"}],
   "assets": {
@@ -49,16 +52,28 @@
       "simple": { "limit": 2, "period": 60 }
     }
   ],
+  // Strongly consistent global ledger for the daily encrypted-backup byte cap.
+  "durable_objects": {
+    "bindings": [
+      { "name": "PROJECT_BACKUP_DAILY_QUOTA", "class_name": "ProjectBackupDailyQuota" }
+    ]
+  },
   // Proactively enforce backup retention even when an uploaded object is never
   // requested again. The Worker also retains its lazy expiry check on reads.
   "triggers": {
     "crons": ["17 3 * * *"]
   },
-  // No migrations in the checked-in config: Workers Builds uploads PR preview
-  // versions, and pending Durable Object migrations cannot ride a version
-  // upload. Deleting the retired OpenCaeCoreCloudContainer class is a one-off
-  // manual deploy step — see docs/cloud-retirement.md ("Durable Object
-  // cleanup") for the exact migration snippet and command.
+  // Full Durable Object migration history of the production Worker. Append new
+  // tags only; never rewrite, reorder, or drop an applied tag. v3/v4 record the
+  // retired container class (docs/cloud-retirement.md); v5 adds the daily
+  // backup quota ledger. Wrangler sends only the tags after the Worker's
+  // recorded tag, so each migration is pending once and must be applied by
+  // `wrangler deploy`; `wrangler versions upload` refuses pending migrations.
+  "migrations": [
+    { "tag": "v3-opencae-core-cloud-container", "new_sqlite_classes": ["OpenCaeCoreCloudContainer"] },
+    { "tag": "v4-retire-opencae-core-cloud-container", "deleted_classes": ["OpenCaeCoreCloudContainer"] },
+    { "tag": "v5-project-backup-daily-quota", "new_sqlite_classes": ["ProjectBackupDailyQuota"] }
+  ],
   "observability": {
     "enabled": false,
     "head_sampling_rate": 1,

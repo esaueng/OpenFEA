@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import type { AutosavedWorkspace } from "./appPersistence";
-import { readCloudBackupDescriptor, readCloudBackupPreference, requestPersistentBrowserStorage, restoreEncryptedCloudBackup, saveEncryptedCloudBackup, writeCloudBackupPreference } from "./cloudBackup";
+import { dailyCapReachedMessage, readCloudBackupDescriptor, readCloudBackupPreference, requestPersistentBrowserStorage, restoreEncryptedCloudBackup, saveEncryptedCloudBackup, writeCloudBackupPreference } from "./cloudBackup";
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -115,6 +115,36 @@ describe("encrypted cloud backup", () => {
       .rejects.toThrow(/rate limit/);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(readCloudBackupDescriptor(storage)).toEqual(first);
+  });
+
+  test("explains the shared daily cap and keeps the local project and previous backup", async () => {
+    const storage = memoryStorage();
+    const first = await saveEncryptedCloudBackup({ version: 1 } as AutosavedWorkspace, "run-local-1", {
+      storage,
+      fetch: vi.fn(async () => Response.json({ expiresAt: "2099-01-01T00:00:00.000Z" }, { status: 201 })) as typeof fetch
+    });
+    const fetchMock = vi.fn(async () => Response.json(
+      { error: "The shared daily limit for encrypted cloud recovery backups has been reached.", code: "backup_daily_cap_reached", retryAfterSeconds: 4 * 3600 + 5 },
+      { status: 507, headers: { "retry-after": String(4 * 3600 + 5) } }
+    ));
+
+    const failure = saveEncryptedCloudBackup({ version: 1 } as AutosavedWorkspace, "run-local-2", { storage, fetch: fetchMock as typeof fetch });
+
+    await expect(failure).rejects.toThrow(
+      "Encrypted cloud recovery has reached today's shared storage limit, so this backup was not uploaded. Your project is still open in this browser. Cloud recovery reopens after 00:00 UTC (in about 5 hours)."
+    );
+    // Only the refused PUT: no retry loop and no deletion of the previous backup.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readCloudBackupDescriptor(storage)).toEqual(first);
+  });
+
+  test.each([
+    ["3600", "after 00:00 UTC (in about 1 hour)."],
+    ["59", "after 00:00 UTC (in about 1 hour)."],
+    [null, "after 00:00 UTC."],
+    ["soon", "after 00:00 UTC."]
+  ])("daily cap message tolerates Retry-After %s", (retryAfter, ending) => {
+    expect(dailyCapReachedMessage(retryAfter)).toMatch(new RegExp(`${ending.replace(/[().]/gu, "\\$&")}$`, "u"));
   });
 
   test("requests persistent local storage when the browser supports it", async () => {

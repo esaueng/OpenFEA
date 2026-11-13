@@ -17,6 +17,13 @@ in the browser. The production Worker serves assets and supports consent-based,
 client-encrypted recovery backups; there is no separate API server. Identify
 which component a report affects.
 
+Backup uploads are anonymous, so the Worker bounds them with a per-IP rate
+limit, a 95 MiB per-backup limit, and a shared cap on bytes accepted from all
+clients per UTC day (10 GiB by default, `PROJECT_BACKUP_DAILY_CAP_BYTES`). The
+cap is reserved in a strongly consistent Durable Object before any bytes reach
+storage; once reached, uploads get HTTP 507 with `Retry-After` until 00:00 UTC.
+A way to store bytes past the cap is in scope for reports.
+
 Imported geometry and project files are untrusted inputs. Backup authorization,
 confidentiality, bounded input handling, and build/dependency security are
 relevant reporting areas. A dependency alert should identify its affected

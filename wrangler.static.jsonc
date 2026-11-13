@@ -1,6 +1,8 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   // Static/local-first Worker. Do not deploy to the production custom domains.
+  // It binds no backup bucket and no backup-quota Durable Object (and so needs
+  // no migrations): /api/project-backups answers 503 here.
   "name": "openfea-static",
   "main": "apps/openfea-web/worker/index.ts",
   "compatibility_date": "2026-04-27",

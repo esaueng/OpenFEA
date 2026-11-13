@@ -6,6 +6,8 @@
 // package script quietly reintroduces the retired OpenCAE Core Cloud
 // infrastructure (container, Durable Object, R2 artifact bucket) or drops
 // the production domain/asset wiring. See docs/cloud-retirement.md.
+// The only Durable Object allowed is the production encrypted-backup daily
+// quota ledger, whose migration must extend the recorded history unchanged.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -16,6 +18,14 @@ const productionDomains = ["fea.esau.app"];
 const productionWorkerName = "openfea";
 const legacySolverToken = ["calcu", "lix"].join("");
 const retiredCloudTokens = ["CORE_CLOUD_CONTAINER", "CORE_CLOUD_ARTIFACTS", "opencae-core-cloud-artifacts"];
+const retiredContainerMigrations = [
+  { tag: "v3-opencae-core-cloud-container", new_sqlite_classes: ["OpenCaeCoreCloudContainer"] },
+  { tag: "v4-retire-opencae-core-cloud-container", deleted_classes: ["OpenCaeCoreCloudContainer"] }
+];
+export const backupQuotaBinding = { name: "PROJECT_BACKUP_DAILY_QUOTA", class_name: "ProjectBackupDailyQuota" };
+export const backupQuotaMigration = { tag: "v5-project-backup-daily-quota", new_sqlite_classes: ["ProjectBackupDailyQuota"] };
+export const productionMigrations = [...retiredContainerMigrations, backupQuotaMigration];
+const backupDailyCapVar = "PROJECT_BACKUP_DAILY_CAP_BYTES";
 
 export function parseJsonc(source, label = "JSONC input") {
   try {
@@ -61,6 +71,10 @@ function validateProductionConfig(label, config, failures) {
       failures.push(`${label} Preview must not bind production ${binding}`);
     }
   }
+  // Previews have no backup bucket, so they must not bind the quota ledger.
+  if (JSON.stringify(preview?.durable_objects) !== JSON.stringify({ bindings: [] })) {
+    failures.push(`${label} Preview must not bind production durable_objects`);
+  }
 
   validateProductionTarget(label, config, failures);
   validateRetiredCloudAbsent(label, config, failures);
@@ -72,13 +86,24 @@ function validateProductionConfig(label, config, failures) {
     failures.push(`${label} config must schedule the daily encrypted-backup retention cleanup`);
   }
 
-  // The checked-in default config must carry NO migrations: Workers Builds
-  // uploads PR preview versions, and pending Durable Object migrations cannot
-  // ride a version upload. The retired container class is deleted via the
-  // one-off manual deploy config, not the normal production config.
+  // The daily backup cap needs exactly one Durable Object binding: the
+  // global quota ledger. Any other binding (notably the retired container DO)
+  // also fails validateRetiredCloudAbsent.
+  if (JSON.stringify(config.durable_objects) !== JSON.stringify({ bindings: [backupQuotaBinding] })) {
+    failures.push(`${label} config must bind only ${backupQuotaBinding.name} to the ${backupQuotaBinding.class_name} Durable Object`);
+  }
+  const dailyCap = config.vars?.[backupDailyCapVar];
+  if (typeof dailyCap !== "string" || !/^[1-9][0-9]*$/u.test(dailyCap) || !Number.isSafeInteger(Number(dailyCap))) {
+    failures.push(`${label} config vars.${backupDailyCapVar} must be a positive integer byte count string`);
+  }
+
+  // Migration tags are an append-only history: the recorded v3/v4 container
+  // tags stay verbatim and the quota class is added under its own new tag.
+  // Wrangler applies only the tags after the Worker's recorded one, and a
+  // pending migration can only be applied by `wrangler deploy`.
   const migrations = Array.isArray(config.migrations) ? config.migrations : [];
-  if (migrations.length > 0) {
-    failures.push(`${label} config must not declare migrations (DO cleanup uses wrangler.retired-do-cleanup.jsonc)`);
+  if (JSON.stringify(migrations) !== JSON.stringify(productionMigrations)) {
+    failures.push(`${label} config migrations must be the recorded v3/v4 container history followed by ${backupQuotaMigration.tag} (append-only; never rewrite a tag)`);
   }
 }
 
@@ -115,11 +140,7 @@ function validateRetiredDoCleanupConfig(config, productionConfig, failures) {
   }
 
   const migrations = Array.isArray(config.migrations) ? config.migrations : [];
-  const expectedMigrations = [
-    { tag: "v3-opencae-core-cloud-container", new_sqlite_classes: ["OpenCaeCoreCloudContainer"] },
-    { tag: "v4-retire-opencae-core-cloud-container", deleted_classes: ["OpenCaeCoreCloudContainer"] }
-  ];
-  if (JSON.stringify(migrations) !== JSON.stringify(expectedMigrations)) {
+  if (JSON.stringify(migrations) !== JSON.stringify(retiredContainerMigrations)) {
     failures.push(`${label} config must contain only the recorded creation tag and the v4 delete-class migration for OpenCaeCoreCloudContainer`);
   }
 }
@@ -128,8 +149,11 @@ function validateRetiredCloudAbsent(label, config, failures) {
   if (config.containers !== undefined) {
     failures.push(`${label} config must not define containers — the Core Cloud container was retired in 2026-07 (docs/cloud-retirement.md)`);
   }
-  if (config.durable_objects !== undefined) {
-    failures.push(`${label} config must not bind Durable Objects — the Core Cloud container DO was retired in 2026-07`);
+  const doBindings = config.durable_objects?.bindings;
+  const onlyQuotaLedger = label === "default" && Array.isArray(doBindings) &&
+    doBindings.every((binding) => JSON.stringify(binding) === JSON.stringify(backupQuotaBinding));
+  if (config.durable_objects !== undefined && !onlyQuotaLedger) {
+    failures.push(`${label} config must not bind Durable Objects other than the production backup quota ledger — the Core Cloud container DO was retired in 2026-07`);
   }
   if (label !== "default" && config.r2_buckets !== undefined) {
     failures.push(`${label} config must not bind R2 buckets`);

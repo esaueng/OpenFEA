@@ -32,9 +32,14 @@ since B4a). The cloud solve infrastructure was removed in two steps:
   `wrangler.local-first.jsonc` shape was promoted into `wrangler.jsonc`
   (production identity kept: Worker name `openfea`, custom domain
   `fea.esau.app`). `wrangler.static.jsonc` remains the non-production variant.
-  The checked-in config carries **no migrations** — Workers Builds uploads PR
-  preview versions, and pending Durable Object migrations cannot ride a
-  version upload (this failed CI on PR #31 until removed).
+  At retirement the checked-in config carried **no migrations** — Workers
+  Builds then uploaded PR preview versions, and pending Durable Object
+  migrations cannot ride a version upload (this failed CI on PR #31 until
+  removed). Since the encrypted-backup daily cap (November 2026) the
+  checked-in config carries the full, append-only migration history below
+  plus `v5-project-backup-daily-quota` for the `ProjectBackupDailyQuota`
+  ledger; non-production builds now use `wrangler preview`, and production
+  applies a pending tag with `wrangler deploy`.
 
   **Durable Object cleanup (one-off manual deploy step):** once rollback is
   ruled out, delete the retired container class by deploying once with
@@ -51,7 +56,13 @@ since B4a). The cloud solve infrastructure was removed in two steps:
   Run `pnpm deploy:cloudflare:retired-do-cleanup` once from an authenticated
   Wrangler session. After that server-side migration is recorded, normal
   Cloudflare Builds should keep using `npx wrangler deploy` with the default
-  migration-free `wrangler.jsonc`.
+  `wrangler.jsonc`.
+
+  **Superseded by the v5 history:** `wrangler.jsonc` now lists these same two
+  tags before `v5-project-backup-daily-quota`, so a normal `wrangler deploy`
+  also applies v4 if Cloudflare still records v3. Once v5 is applied, do not
+  deploy `wrangler.retired-do-cleanup.jsonc`: its history ends at v4 and lacks
+  the quota binding.
 - **Deploy/CI gates for the cloud path**: `scripts/verify-runner-version.mjs`
   and its CI step; the container assertions in
   `scripts/verify-cloudflare-config.mjs` (now asserting the bindings stay
