@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import type { Constraint, DisplayFace } from "@openfea/schema";
 import { ConstraintSchema } from "@openfea/schema";
-import { fixedSupportParameters, isPartialFixedSupport, structuralSupportDescription, symmetryCheckForDisplayFace, symmetryCheckForFaces } from "./supportDescriptions";
+import { elasticSupportParameters, fixedSupportParameters, foundationModulusForDisplay, foundationModulusFromDisplay, isPartialFixedSupport, structuralSupportDescription, symmetryCheckForDisplayFace, symmetryCheckForFaces } from "./supportDescriptions";
 
 function face(label: string, normal: [number, number, number], surfaceType: DisplayFace["surfaceType"] = "planar"): DisplayFace {
   return { id: label, label, color: "#888", center: [0, 0, 0], normal, stressValue: 0, surfaceType };
@@ -45,6 +45,19 @@ describe("support descriptions (plan 036 R1.4)", () => {
     expect(isPartialFixedSupport(support("fixed"))).toBe(false);
     expect(isPartialFixedSupport(support("fixed", { components: ["x"] }))).toBe(true);
     expect(isPartialFixedSupport(support("symmetry"))).toBe(false);
+  });
+
+  test("elastic support rows show both stiffnesses in project units; the study keeps N/m^3 (plan 036 R1.5)", () => {
+    const elastic = support("elastic_support", elasticSupportParameters({ label: "ES 1" }, 5e7, 2.714471e5));
+    expect(elastic.parameters).toEqual({ label: "ES 1", normalStiffness: 5e7, tangentialStiffness: 2.714471e5, units: "N/m^3" });
+    expect(structuralSupportDescription(elastic, [], "SI")).toBe("Elastic support (normal 0.05 N/mm³, tangential 0.0002714 N/mm³)");
+    expect(structuralSupportDescription(elastic, [], "US")).toMatch(/^Elastic support \(normal 184(\.\d+)? lbf\/in³, tangential 1 lbf\/in³\)$/);
+    expect(foundationModulusFromDisplay(foundationModulusForDisplay(5e7, "US"), "US")).toBeCloseTo(5e7, 3);
+    expect(foundationModulusFromDisplay(0.05, "SI")).toBeCloseTo(5e7, 3);
+    expect(ConstraintSchema.safeParse(elastic).success).toBe(true);
+    for (const parameters of [{ normalStiffness: 0, tangentialStiffness: 0 }, { normalStiffness: -1, tangentialStiffness: 1 }, { normalStiffness: 1, tangentialStiffness: 1, units: "N/mm^3" }, {}]) {
+      expect(ConstraintSchema.safeParse(support("elastic_support", parameters)).success, JSON.stringify(parameters)).toBe(false);
+    }
   });
 
   test("the schema accepts the new support shapes and rejects malformed component lists", () => {

@@ -173,7 +173,7 @@ Dependency notes:
 | 032 Decision: harmonic + buckling | REOPENED by 036 D2 (accepted 2026-10-21) | Buckling (R4.2) before harmonic (R6.1). |
 | 033 Decision: thermal breadth | REOPENED by 036 D1/D3 (accepted 2026-10-21) | Convection (R4.1) and one-way thermal stress (R4.3) in scope; transient thermal behind them. |
 | 034 Decision: export archive | DEFERRED (option B stands) | Selected-state export remains the scope. |
-| 036 Product Roadmap, 2026-Q4 revision | IN PROGRESS (re-verified 2026-11-12 at `12cf5fa`) | R0 done (0.10 closed 2026-11-13: `packages/viewer` deleted after parity tests in `solverSurfaceRenderParity.test.ts`); R1.2 (#225), R1.3 (#203), R1.4 (#228; development-grade), R2.1 (#198), R2.2 (#227) and R3.1 (#196) done; R3.4 (safety-factor basis) done (#223); R5.1 partial (#197, Chromium only). Two unscheduled solve-ladder findings recorded in the plan. Decisions D1–D5 accepted 2026-10-21. |
+| 036 Product Roadmap, 2026-Q4 revision | IN PROGRESS (re-verified 2026-11-12 at `12cf5fa`) | R0 done (0.10 closed 2026-11-13: `packages/viewer` deleted after parity tests in `solverSurfaceRenderParity.test.ts`); R1.2 (#225), R1.3 (#203), R1.4 (#228) and R1.5 (#229) (development-grade), R2.1 (#198), R2.2 (#227) and R3.1 (#196) done; R3.4 (safety-factor basis) done (#223); R5.1 partial (#197, Chromium only). Two unscheduled solve-ladder findings recorded in the plan. Decisions D1–D5 accepted 2026-10-21. |
 
 Run 2 was non-interactive: plans 006–010 are the top findings by leverage (impact ÷ effort, confidence-weighted), selected by default per the advisor skill's non-interactive rule rather than by maintainer choice. Re-cut as desired.
 

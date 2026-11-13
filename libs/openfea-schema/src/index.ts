@@ -1,19 +1,13 @@
+export { isModalResultSummary, isStructuralResultSummary, isThermalResultSummary } from "./resultKinds";
 import { z } from "zod";
+import { SUPPORT_COMPONENTS, type SupportComponent } from "./supports";
+export { SUPPORT_COMPONENTS, elasticSupportStiffness, fixedSupportComponents } from "./supports";
+export type { SupportComponent } from "./supports";
 import { boundedLocalInput, firstIssueOnly, safeParseLocalPayload } from "./localPayloadValidation";
 export { safeParseLocalPayload } from "./localPayloadValidation";
 
-export const MAX_PROJECT_NAME_LENGTH = 128;
-export const MAX_LOAD_CASES = 64;
-export const MAX_LOAD_COMBINATIONS = 64;
-export const MAX_LOAD_COMBINATION_FACTORS = 64;
-export const MAX_DISPLAY_MODEL_FACES = 20_000;
-export const MAX_EMBEDDED_MODEL_BYTES = 32 * 1024 * 1024;
-export const MAX_VISUAL_MESH_BYTES = 8 * 1024 * 1024;
-export const MAX_RESULT_FIELD_VALUES = 500_000;
-export const MAX_RESULT_FIELD_SAMPLES = 50_000;
-export const MAX_RESULT_FIELDS = 8_192;
-export const MAX_RESULT_VARIANTS = 64;
-export const MAX_RESULT_UNIT_LENGTH = 32;
+import { MAX_PROJECT_NAME_LENGTH, MAX_LOAD_CASES, MAX_LOAD_COMBINATIONS, MAX_LOAD_COMBINATION_FACTORS, MAX_DISPLAY_MODEL_FACES, MAX_EMBEDDED_MODEL_BYTES, MAX_VISUAL_MESH_BYTES, MAX_RESULT_FIELD_VALUES, MAX_RESULT_FIELD_SAMPLES, MAX_RESULT_FIELDS, MAX_RESULT_UNIT_LENGTH } from "./limits";
+export { MAX_PROJECT_NAME_LENGTH, MAX_LOAD_CASES, MAX_LOAD_COMBINATIONS, MAX_LOAD_COMBINATION_FACTORS, MAX_DISPLAY_MODEL_FACES, MAX_EMBEDDED_MODEL_BYTES, MAX_VISUAL_MESH_BYTES, MAX_RESULT_FIELD_VALUES, MAX_RESULT_FIELD_SAMPLES, MAX_RESULT_FIELDS, MAX_RESULT_VARIANTS, MAX_RESULT_UNIT_LENGTH } from "./limits";
 
 const MAX_EMBEDDED_MODEL_BASE64_LENGTH = Math.ceil(MAX_EMBEDDED_MODEL_BYTES / 3) * 4;
 const MAX_VISUAL_MESH_BASE64_LENGTH = Math.ceil(MAX_VISUAL_MESH_BYTES / 3) * 4;
@@ -127,24 +121,39 @@ export const NamedSelectionSchema = z.object({
   fingerprint: z.string()
 });
 
-/** Global displacement components a support can constrain. */
-export const SUPPORT_COMPONENTS = ["x", "y", "z"] as const;
-export type SupportComponent = (typeof SUPPORT_COMPONENTS)[number];
+/** Storage unit of elastic-support stiffness (foundation modulus) in studies. */
+export const ELASTIC_SUPPORT_STIFFNESS_UNITS = "N/m^3";
 
 export const ConstraintSchema = z.object({
   id: z.string(),
   /**
    * `symmetry` (plan 036 R1.4) is a symmetry/roller support: it constrains the
-   * displacement component normal to an axis-aligned face. Older readers never
-   * see it; every older type parses unchanged.
+   * displacement component normal to an axis-aligned face. `elastic_support`
+   * (plan 036 R1.5) is a Winkler foundation with `normalStiffness` and
+   * `tangentialStiffness` in N/m^3. Every older type parses unchanged.
    */
-  type: z.enum(["fixed", "prescribed_displacement", "prescribed_temperature", "symmetry"]),
+  type: z.enum(["fixed", "prescribed_displacement", "prescribed_temperature", "symmetry", "elastic_support"]),
   /** One or more face selection ids the constraint applies to (multi-face BCs, Decision 2). */
   selectionRef: z.string(),
   selectionRefs: z.array(z.string()).optional(),
   parameters: z.record(z.string(), z.unknown()),
   status: z.enum(["not_started", "ready", "warning", "complete"])
 }).superRefine((constraint, context) => {
+  if (constraint.type === "elastic_support") {
+    const { normalStiffness, tangentialStiffness, units } = constraint.parameters;
+    const values = [normalStiffness, tangentialStiffness];
+    if (!values.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0) || !values.some((value) => typeof value === "number" && value > 0)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["parameters"],
+        message: "Elastic support stiffnesses must be finite, non-negative numbers in N/m^3, with at least one positive."
+      });
+    }
+    if (units !== undefined && units !== ELASTIC_SUPPORT_STIFFNESS_UNITS) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["parameters", "units"], message: `Elastic support stiffness is stored in ${ELASTIC_SUPPORT_STIFFNESS_UNITS}.` });
+    }
+    return;
+  }
   // Per-component fixed supports (plan 036 R1.4): an optional, non-empty set
   // of distinct global components. Absent means all three, so every fixed
   // support saved before the field existed still holds x, y and z.
@@ -163,18 +172,6 @@ export const ConstraintSchema = z.object({
     });
   }
 });
-
-/**
- * Global components a fixed support holds. A fixed support without
- * `parameters.components` (every project saved before plan 036 R1.4) holds
- * all three. Returns components in x, y, z order.
- */
-export function fixedSupportComponents(constraint: Pick<Constraint, "type" | "parameters">): SupportComponent[] {
-  if (constraint.type !== "fixed") return [];
-  const components = constraint.parameters.components;
-  if (!Array.isArray(components) || components.length === 0) return [...SUPPORT_COMPONENTS];
-  return SUPPORT_COMPONENTS.filter((component) => components.includes(component));
-}
 
 export const LoadSchema = z.object({
   id: z.string(),
@@ -1217,18 +1214,6 @@ export function estimateAllowableLoadForSafetyFactor(
     loadScale: roundAssessmentNumber(loadScale),
     loadUnits: summary.reactionForceUnits
   };
-}
-
-export function isModalResultSummary(summary: ResultSummary): summary is ModalResultSummary {
-  return "analysisType" in summary && summary.analysisType === "modal_analysis";
-}
-
-export function isThermalResultSummary(summary: ResultSummary): summary is ThermalResultSummary {
-  return "analysisType" in summary && summary.analysisType === "steady_state_thermal";
-}
-
-export function isStructuralResultSummary(summary: ResultSummary): summary is StructuralResultSummary {
-  return !isModalResultSummary(summary) && !isThermalResultSummary(summary);
 }
 
 function roundAssessmentNumber(value: number): number {

@@ -138,7 +138,7 @@ export interface RightPanelProps {
   onDeleteCustomMaterial?: (materialId: string) => void;
   /** null suppresses the preview while editing; undefined clears the preview so the assigned orientation shows again. */
   onPreviewPrintLayerOrientation?: (orientation: "x" | "y" | "z" | null | undefined) => void;
-  onAddSupport: (selectionRef?: string, options?: { type: "fixed" | "symmetry" | "prescribed_temperature" | "prescribed_displacement"; value?: number; component?: "x" | "y" | "z"; components?: Array<"x" | "y" | "z"> }, extras?: { selectionRefs?: string[] }) => void;
+  onAddSupport: (selectionRef?: string, options?: { type: "fixed" | "symmetry" | "elastic_support" | "prescribed_temperature" | "prescribed_displacement"; value?: number; component?: "x" | "y" | "z"; components?: Array<"x" | "y" | "z">; normalStiffness?: number; tangentialStiffness?: number }, extras?: { selectionRefs?: string[] }) => void;
   /** `targetFace` moves the support to a newly picked face (2026-09 review D3). */
   onUpdateSupport: (support: Constraint, targetFace?: DisplayFace) => void;
   onRemoveSupport: (supportId: string) => void;

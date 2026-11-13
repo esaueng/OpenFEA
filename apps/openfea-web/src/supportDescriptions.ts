@@ -1,5 +1,7 @@
 import { nearestGlobalAxis, SUPPORT_GEOMETRY_POLICY } from "@openfea/core";
-import { fixedSupportComponents, SUPPORT_COMPONENTS, type Constraint, type DisplayFace, type DisplayModel, type Study, type SupportComponent } from "@openfea/schema";
+import { ELASTIC_SUPPORT_STIFFNESS_UNITS, elasticSupportStiffness, fixedSupportComponents, SUPPORT_COMPONENTS, type Constraint, type DisplayFace, type DisplayModel, type Study, type SupportComponent } from "@openfea/schema";
+import { foundationModulusFromNewtonsPerCubicMetre, foundationModulusToNewtonsPerCubicMetre, type FoundationModulusUnit } from "@openfea/units";
+import { formatDisplayNumber, type UnitSystem } from "./unitDisplay";
 import { selectionRefsFor } from "@openfea/study-core";
 
 /**
@@ -17,6 +19,34 @@ export const SYMMETRY_SUPPORT_TOLERANCE_NOTE =
 
 export const SYMMETRY_MODAL_NOTE =
   "In a modal study a symmetry plane keeps only the modes that are symmetric about it.";
+
+/** Elastic (Winkler foundation) supports, plan 036 R1.5. */
+export const ELASTIC_SUPPORT_APPROXIMATION_NOTE =
+  "Winkler foundation: independent linear springs per unit area, normal and tangential to each face. They pull as well as push (no lift-off) and do not spread load through the foundation.";
+
+export const ELASTIC_SUPPORT_DEVELOPMENT_NOTE =
+  "Elastic supports are development-grade: their closed-form gates pass, but they are not yet verified by an automated browser run.";
+
+/** 0.05 N/mm^3 (50 MN/m^3), a stiff rubber pad or firm soil; both directions positive so the part is held. */
+export const DEFAULT_FOUNDATION_MODULUS_N_PER_M3 = 5e7;
+
+export function foundationModulusDisplayUnit(unitSystem: UnitSystem): { unit: FoundationModulusUnit; label: string } {
+  return unitSystem === "US" ? { unit: "lbf/in^3", label: "lbf/in³" } : { unit: "N/mm^3", label: "N/mm³" };
+}
+
+export function foundationModulusForDisplay(valueNPerM3: number, unitSystem: UnitSystem): number {
+  return foundationModulusFromNewtonsPerCubicMetre(valueNPerM3, foundationModulusDisplayUnit(unitSystem).unit);
+}
+
+export function foundationModulusFromDisplay(value: number, unitSystem: UnitSystem): number {
+  return foundationModulusToNewtonsPerCubicMetre(value, foundationModulusDisplayUnit(unitSystem).unit);
+}
+
+/** Parameters stored for an elastic support: stiffnesses in N/m^3 with the unit named. */
+export function elasticSupportParameters(parameters: Record<string, unknown>, normalStiffness: number, tangentialStiffness: number): Record<string, unknown> {
+  const { components: _components, value: _value, component: _component, ...rest } = parameters;
+  return { ...rest, normalStiffness, tangentialStiffness, units: ELASTIC_SUPPORT_STIFFNESS_UNITS };
+}
 
 export function formatSupportComponents(components: readonly SupportComponent[]): string {
   return components.map((component) => component.toUpperCase()).join(", ");
@@ -93,7 +123,13 @@ export function displayFacesForEntry(study: Pick<Study, "namedSelections">, disp
  * types keep their own value labels. `faces` are the display faces the support
  * acts on; with them a symmetry support names the axis it holds.
  */
-export function structuralSupportDescription(support: Pick<Constraint, "type" | "parameters">, faces: ReadonlyArray<Pick<DisplayFace, "label" | "normal" | "surfaceType">> = []): string | undefined {
+export function structuralSupportDescription(support: Pick<Constraint, "type" | "parameters">, faces: ReadonlyArray<Pick<DisplayFace, "label" | "normal" | "surfaceType">> = [], unitSystem: UnitSystem = "SI"): string | undefined {
+  if (support.type === "elastic_support") {
+    const stiffness = elasticSupportStiffness(support);
+    const unit = foundationModulusDisplayUnit(unitSystem).label;
+    const show = (value: number) => `${formatDisplayNumber(foundationModulusForDisplay(value, unitSystem))}\u00a0${unit}`;
+    return `Elastic support (normal ${show(stiffness.normal)}, tangential ${show(stiffness.tangential)})`;
+  }
   if (support.type === "fixed") {
     const components = fixedSupportComponents(support);
     if (components.length === SUPPORT_COMPONENTS.length) return "Fixed support (X, Y, Z)";

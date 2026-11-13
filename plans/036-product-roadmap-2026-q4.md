@@ -6,8 +6,8 @@ Proposed on 2026-10-21 against `main` at `9d36aa2`. Decisions D1–D5 were
 accepted the same day and R0 started.
 
 Progress re-verified on 2026-11-12 against `main` at `12cf5fa`: R0 is done
-except 0.10 (`packages/viewer`). R1.3, R2.1 and R3.1 are done. R1.4 is done
-(#228, development-grade). R5.1 is
+except 0.10 (`packages/viewer`). R1.3, R2.1 and R3.1 are done. R1.4 and R1.5 are
+done (#228, #229; development-grade). R5.1 is
 partial (Chromium only). Each item below carries its commits and PR.
 On 2026-11-13, 0.10 was closed by deleting `packages/viewer` after parity
 tests (`apps/openfea-web/src/components/solverSurfaceRenderParity.test.ts`), so R0 is done.
@@ -28,7 +28,7 @@ saying so. That index is corrected in the same change as this plan.
 | - | - | - |
 | Studies | Linear static, Newmark transient, modal (block shift-invert subspace, 1–10 modes), steady thermal conduction. | No buckling, harmonic, transient thermal, convection or thermal stress. |
 | Elements | Tet4 and Tet10 only. | No shells or beams. Thin parts cost DOF. |
-| Supports | Fixed (all of x, y and z, or a chosen subset), symmetry/roller on axis-aligned faces (R1.4, this branch), prescribed displacement (one component per constraint), prescribed temperature. | No elastic, skew-symmetry or remote-displacement support. (The unreachable "Coming soon" menu was removed in `d020bba`, #191.) |
+| Supports | Fixed (all of x, y and z, or a chosen subset), symmetry/roller on axis-aligned faces (R1.4, #228), prescribed displacement (one component per constraint), prescribed temperature. Elastic (Winkler foundation) support with normal and tangential stiffness (R1.5, #229). | No skew-symmetry or remote-displacement support. (The unreachable "Coming soon" menu was removed in `d020bba`, #191.) |
 | Loads | Force, pressure, traction, volume force, gravity/payload, remote force (distributed wrench), equivalent bolt preload (static), heat flux, heat generation. Tri6 loads are consistent and area-weighted. | No bearing load. No local coordinate systems. |
 | Selection | Multi-face supports and loads through an "Additional faces" checklist. Ctrl/Cmd-click multi-pick and a named-selection manager (#225; R1.2). | — |
 | Materials | 22 isotropic linear materials, custom project materials, AM print settings applied as homogenized isotropic scale factors. Per-body material assignments mapped to element blocks (`27722d0`, `4edeae6`, #203). | No CTE and no orthotropy. |
@@ -88,7 +88,7 @@ solver capability that already exists.
 | 1.2 | Direct multi-pick (ctrl/cmd-click to add and remove faces) plus a named-selection manager: create, rename, reuse in several BCs. **Done** (#225): Ctrl/Cmd-click and a keyboard face list feed the Additional faces model; the manager saves `selection-named-*` face sets with B-rep face IDs and a `faceset:v1` fingerprint, renames them, deletes unused ones, and lets several supports/loads reference one; the pick/selection seam moved out of `CadViewer.tsx` into `components/viewer/selection.ts` (the 1.1 slice this needed). The adapter maps a multi-face selection by B-rep face identity before the plane heuristic. | M | Selections persist B-rep face IDs and fingerprints. `verify:step-selection-browser` extends to multi-pick at both display LODs. |
 | 1.3 | Per-body materials (second half of decision 030A). **Done:** `27722d0`, `4edeae6` (#203). | M | The solver already supports a material per element block. Map mesh-intake body IDs to blocks and add one report row per body. Gate: a two-material bar in series matches the closed-form series-spring deflection. Old single-material projects round-trip unchanged. |
 | 1.4 | Per-component fixed supports and symmetry/roller supports. **Done (development-grade):** #228. Gates pass (half and quarter cantilever within 1e-6 of the full model, mm/m equivalence, reaction balance); the symmetry half-model browser run is manual, not yet in CI. | M | v1 accepts faces whose normal lies within a named angular tolerance of a global axis and constrains that component. It rejects other faces with an explicit error. Gate: a half-model and a quarter-model of the cantilever match the full-model deflection and stress. |
-| 1.5 | Elastic (foundation) support: normal and/or tangential stiffness per area, in N/m³. | M | Add the consistent face matrix k∫NᵀN dA, which is SPD and removes rigid-body modes. Gate: a block on an elastic foundation matches F/(kA). Unit-equivalence test. |
+| 1.5 | Elastic (foundation) support: normal and/or tangential stiffness per area, in N/m³. **Done (development-grade):** #229. Gates pass (block settles F/(kA) within 1e-6, measured 2e-11; mm/m equivalence; reaction balance; modal with no zero-frequency modes); the in-app browser run is manual, not yet in CI. | M | Add the consistent face matrix k∫NᵀN dA, which is SPD and removes rigid-body modes. Gate: a block on an elastic foundation matches F/(kA). Unit-equivalence test. |
 | 1.6 | Bearing load on a cylindrical face. | S–M | Cosine-weighted projected-area distribution over the loaded half. Gate: the resultant equals F exactly and the moment about the axis is zero within tolerance. |
 | 1.7 | Local coordinate systems: cylindrical and face-aligned, for loads, prescribed displacement and supports. | M | Use robust frame construction (degeneracy and handedness checks), persisted with the study. This also unlocks skew symmetry in 1.4 v2 through the nodal transformation method. |
 | 1.8 | Remote displacement and rigid coupling (RBE2-style). | L | Use master–slave MPC elimination, not penalty, to keep CG conditioning. Report coupling reactions. Gate: a rigid-link cantilever matches the beam solution. |

@@ -1,5 +1,5 @@
 import type { OcctImportResult, OcctMesh } from "occt-import-js";
-import { MAX_EMBEDDED_MODEL_BYTES } from "@openfea/schema";
+import { MAX_EMBEDDED_MODEL_BYTES } from "@openfea/schema/limits";
 import type { StepDisplayLod } from "../stepDisplayTessellation";
 import { reportFailureDiagnostic } from "../diagnosticSink";
 

@@ -25,6 +25,9 @@
 //     (`parameters.components`, all three when absent), and a `symmetry`
 //     support holds the component normal to its axis-aligned face. Both
 //     emit Core `fixed` conditions; upstream always held x, y and z.
+//  8. Elastic supports (plan 036 R1.5) emit Core `elasticSupport` conditions
+//     on the mapped surface set, with N/m^3 study stiffnesses converted to the
+//     mesh's solver unit via @openfea/units.
 import {
   OPENFEA_MODEL_SCHEMA,
   OPENFEA_MODEL_SCHEMA_VERSION,
@@ -53,7 +56,7 @@ import {
   starterMaterials,
   type PrintStrengthContext
 } from "@openfea/materials";
-import { pressureToSolverStress, STANDARD_GRAVITY, type SolverUnitSystem } from "@openfea/units";
+import { foundationModulusToSolverUnits, pressureToSolverStress, STANDARD_GRAVITY, type SolverUnitSystem } from "@openfea/units";
 import type { CloudAnalysisType, CloudStudyLike, CoreVolumeMeshArtifact } from "./types";
 
 type BuildCoreModelInput = {
@@ -130,7 +133,7 @@ export function buildCoreModelFromCloudMesh(rawInput: BuildCoreModelInput): Open
   const meshConnections: NonNullable<OpenFEAModelJson["meshConnections"]> = [];
 
   for (const [index, constraint] of (input.study?.constraints ?? []).entries()) {
-    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement" && constraint.type !== "symmetry") {
+    if (constraint.type !== "fixed" && constraint.type !== "prescribed_temperature" && constraint.type !== "prescribed_displacement" && constraint.type !== "symmetry" && constraint.type !== "elastic_support") {
       throw new Error(
         `OpenFEA Core browser solve does not support ${constraint.type} constraints yet (constraint ${constraint.id ?? index}). Change it to a fixed support or remove it.`
       );
@@ -144,6 +147,17 @@ export function buildCoreModelFromCloudMesh(rawInput: BuildCoreModelInput): Open
       role: "fixed_support",
       diagnostics: input.mappingDiagnostics
     }, surfaceSets);
+    if (constraint.type === "elastic_support") {
+      const solverUnits = input.volumeMesh.coordinateSystem.solverUnits;
+      boundaryConditions.push({
+        name: `elasticSupport${index}`,
+        type: "elasticSupport",
+        surfaceSet: surfaceSet.name,
+        normalStiffness: foundationModulusToSolverUnits(positiveNumber(constraint.parameters?.normalStiffness), solverUnits),
+        tangentialStiffness: foundationModulusToSolverUnits(positiveNumber(constraint.parameters?.tangentialStiffness), solverUnits)
+      });
+      continue;
+    }
     const nodeSetName = ensureNodeSetForSurfaceSet(nodeSets, surfaceSet, input.volumeMesh.surfaceFacets);
     if (constraint.type === "prescribed_displacement") {
       const mm = input.volumeMesh.coordinateSystem.solverUnits === "mm-N-s-MPa";
@@ -834,6 +848,10 @@ function clamp(value: number, min: number, max: number): number {
  * two supports picked on one face must not emit duplicate node-set names
  * (model validation rejects them with "Names must be unique").
  */
+function positiveNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 /** Components held by a fixed support; absent (every older study) means all three. */
 function fixedComponents(raw: unknown): Array<"x" | "y" | "z"> {
   if (!Array.isArray(raw) || raw.length === 0) return ["x", "y", "z"];

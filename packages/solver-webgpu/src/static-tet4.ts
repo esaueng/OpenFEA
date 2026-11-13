@@ -52,6 +52,10 @@ export async function solveStaticTet4ModelWebGpu(
   if (model.elementBlocks.some((block) => block.type !== "Tet4")) return { ok: false, error: { code: "unsupported-element-type", message: "WebGPU matrix-free execution supports Tet4 elements only." } };
   if (model.meshConnections.length) return { ok: false, error: { code: "unsupported-connections", message: "WebGPU matrix-free execution does not yet include tie/contact penalty operators; use the CPU route." } };
 
+  const activeConditions = new Set(step.boundaryConditions);
+  if (model.boundaryConditions.some((condition) => condition.type === "elasticSupport" && activeConditions.has(condition.name))) {
+    return { ok: false, error: { code: "unsupported-elastic-support", message: "WebGPU matrix-free execution does not yet include elastic-support foundation operators; use the CPU route." } };
+  }
   const constraints = collectConstraints(model, step.boundaryConditions);
   if (!constraints.ok) return { ok: false, error: constraints.error };
   for (const value of constraints.values.values()) {

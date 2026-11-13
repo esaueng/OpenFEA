@@ -65,6 +65,7 @@ export function validateModelJson(input: unknown): ValidationReport {
   const loadTypes = validateLoads(input.loads, nodeSetNames, elementSetNames, surfaceSetNames, input.schemaVersion, errors);
   validateSteps(input.steps, boundaryConditionNames, new Set(loadTypes.keys()), loadTypes, errors);
   validateThermalSchemaVersion(input.schemaVersion, input.boundaryConditions, input.loads, input.steps, errors);
+  validateElasticSupportSteps(input.boundaryConditions, input.steps, errors);
   validateCoordinateSystem(input.coordinateSystem, errors);
   validateMeshProvenance(input.meshProvenance, errors);
   validateMeshConnections(input.meshConnections, surfaceSetNames, errors);
@@ -564,6 +565,17 @@ function validateBoundaryConditions(
       return;
     }
 
+    if (bc.type === "elasticSupport") {
+      if (typeof bc.surfaceSet !== "string" || !surfaceSetNames.has(bc.surfaceSet)) {
+        errors.push(issue("missing-surface-set-reference", "Elastic supports must reference an existing surfaceSet.", `${path}.surfaceSet`));
+      }
+      const stiffnesses = [bc.normalStiffness, bc.tangentialStiffness];
+      if (!stiffnesses.every((value) => isFiniteNumber(value) && value >= 0) || !stiffnesses.some((value) => isFiniteNumber(value) && value > 0)) {
+        errors.push(issue("invalid-elastic-support-stiffness", "Elastic support stiffnesses must be finite and non-negative, with at least one positive.", path));
+      }
+      return;
+    }
+
     if (bc.type === "prescribedTemperature") {
       validateBoundarySelection(bc, nodeSetNames, surfaceSetNames, path, errors);
       if (!isFiniteNumber(bc.value)) {
@@ -572,7 +584,7 @@ function validateBoundaryConditions(
       return;
     }
 
-    errors.push(issue("invalid-boundary-condition-type", "Boundary condition type must be fixed, prescribedDisplacement, or prescribedTemperature.", `${path}.type`));
+    errors.push(issue("invalid-boundary-condition-type", "Boundary condition type must be fixed, prescribedDisplacement, prescribedTemperature, or elasticSupport.", `${path}.type`));
   });
   return names;
 }
@@ -764,6 +776,19 @@ function validateSteps(
       if (!Array.isArray(step.boundaryConditions) || step.boundaryConditions.length === 0) {
         errors.push(issue("missing-modal-support", "Modal analysis requires at least one support in the supports step.", `${path}.boundaryConditions`));
       }
+    }
+  });
+}
+
+/** Elastic supports add structural stiffness; a thermal step would silently ignore them. */
+function validateElasticSupportSteps(boundaryConditions: unknown, steps: unknown, errors: ValidationIssue[]): void {
+  if (!Array.isArray(boundaryConditions) || !Array.isArray(steps)) return;
+  const elastic = new Set(boundaryConditions.flatMap((condition) => isRecord(condition) && condition.type === "elasticSupport" && typeof condition.name === "string" ? [condition.name] : []));
+  if (!elastic.size) return;
+  steps.forEach((step, index) => {
+    if (!isRecord(step) || step.type !== "steadyStateThermal" || !Array.isArray(step.boundaryConditions)) return;
+    if (step.boundaryConditions.some((name) => typeof name === "string" && elastic.has(name))) {
+      errors.push(issue("elastic-support-thermal-step", "Elastic supports are structural and cannot be used in a steadyStateThermal step.", `$.steps[${index}].boundaryConditions`));
     }
   });
 }
@@ -1113,7 +1138,7 @@ function hasBoundarySurfaceSelection(model: OpenFEAModelJson, boundaryConditionN
   let sawSupportedCondition = false;
   for (const condition of model.boundaryConditions) {
     if (!active.has(condition.name)) continue;
-    if (condition.type === "fixed" && "surfaceSet" in condition && condition.surfaceSet) {
+    if ((condition.type === "fixed" || condition.type === "elasticSupport") && "surfaceSet" in condition && condition.surfaceSet) {
       if ((surfaceSetsByName.get(condition.surfaceSet)?.facets.length ?? 0) === 0) return false;
       sawSupportedCondition = true;
       continue;

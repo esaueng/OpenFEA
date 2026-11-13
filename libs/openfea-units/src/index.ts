@@ -71,6 +71,41 @@ export function pressureToSolverStress(value: number, units: unknown, solverUnit
   return value * (pascalsPerPressureUnit(units) / PASCALS_PER_SOLVER_STRESS_UNIT[solverUnits]);
 }
 
+/**
+ * Foundation modulus (elastic-support stiffness per unit area per unit
+ * displacement, plan 036 R1.5). Studies store it in N/m^3; Core models use
+ * N/m^3 for m-N-s-Pa and N/mm^3 for mm-N-s-MPa.
+ */
+export type FoundationModulusUnit = "N/m^3" | "N/mm^3" | "lbf/in^3";
+
+/** Newtons per international pound-force (exact by definition). */
+export const NEWTONS_PER_POUND_FORCE = 4.4482216152605;
+
+const NEWTONS_PER_CUBIC_METRE_PER_FOUNDATION_UNIT: Record<FoundationModulusUnit, number> = {
+  "N/m^3": 1,
+  "N/mm^3": 1e9,
+  "lbf/in^3": NEWTONS_PER_POUND_FORCE / 0.0254 ** 3
+};
+
+/** N/m^3 per solver foundation-modulus unit: N/m^3 for m-N-s-Pa, N/mm^3 for mm-N-s-MPa. */
+const NEWTONS_PER_CUBIC_METRE_PER_SOLVER_FOUNDATION_UNIT: Record<SolverUnitSystem, number> = {
+  "m-N-s-Pa": 1,
+  "mm-N-s-MPa": 1e9
+};
+
+export function foundationModulusToNewtonsPerCubicMetre(value: number, units: FoundationModulusUnit): number {
+  return value * NEWTONS_PER_CUBIC_METRE_PER_FOUNDATION_UNIT[units];
+}
+
+export function foundationModulusFromNewtonsPerCubicMetre(valueNPerM3: number, units: FoundationModulusUnit): number {
+  return valueNPerM3 / NEWTONS_PER_CUBIC_METRE_PER_FOUNDATION_UNIT[units];
+}
+
+/** Converts a study foundation modulus in N/m^3 to the solver unit of a Core model. */
+export function foundationModulusToSolverUnits(valueNPerM3: number, solverUnits: SolverUnitSystem): number {
+  return valueNPerM3 / NEWTONS_PER_CUBIC_METRE_PER_SOLVER_FOUNDATION_UNIT[solverUnits];
+}
+
 export function stlDimensionsFromBase64(contentBase64?: string): ModelDimensions | undefined {
   if (!contentBase64) return undefined;
   return stlDimensionsFromBytes(base64ToBytes(contentBase64));

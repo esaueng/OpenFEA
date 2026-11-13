@@ -554,6 +554,13 @@ describe("buildReportData", () => {
     const classic = report().supports.rows[0]?.[0];
     expect(classic).toBe("Fixed support (X, Y, Z)");
   });
+
+  test("lists elastic support stiffnesses in the report's units (plan 036 R1.5)", () => {
+    const project = { ...bracketDemoProject, studies: bracketDemoProject.studies.map((study) => ({ ...study })) };
+    const study = project.studies[0]!;
+    study.constraints = [{ ...study.constraints[0]!, type: "elastic_support", parameters: { normalStiffness: 5e7, tangentialStiffness: 1e7, units: "N/m^3" } }];
+    expect(report({ project, study }).supports.rows[0]?.[0]).toBe("Elastic support (normal 0.05 N/mm³, tangential 0.01 N/mm³)");
+  });
 });
 
 describe("suggestedReportFilename", () => {

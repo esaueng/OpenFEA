@@ -6,14 +6,14 @@ import { Gauge, Plus, ScanLine, Weight, X } from "lucide-react";
 
 import { massKgForPayloadMaterial, payloadMaterialForId, payloadMaterials, type PayloadMaterialCategory } from "@openfea/materials";
 
-import { fixedSupportComponents, SUPPORT_COMPONENTS, type Constraint, type DisplayFace, type DisplayModel, type Load, type LoadCase, type LoadCombination, type Study, type SupportComponent } from "@openfea/schema";
+import { elasticSupportStiffness, fixedSupportComponents, SUPPORT_COMPONENTS, type Constraint, type DisplayFace, type DisplayModel, type Load, type LoadCase, type LoadCombination, type Study, type SupportComponent } from "@openfea/schema";
 import { selectionRefsFor } from "@openfea/study-core";
 
 import { createViewerLoadMarkers, directionLabelForLoad, directionLabelForVector, directionVectorForLabel, equivalentForceForLoad, LOAD_DIRECTION_LABELS, loadMagnitudeError, loadMarkerOrdinalLabel, payloadObjectForLoad, unitsForLoadType, type LoadApplicationPoint, type LoadDirectionLabel, type LoadType, type PayloadLoadMetadata, type PayloadMassMode } from "../../loadPreview";
 import { type PayloadObjectSelection } from "../../workspaceViewTypes";
 
 import { supportDisplayLabel } from "../../supportLabels";
-import { displayFacesForEntry, fixedSupportParameters, isPartialFixedSupport, structuralSupportDescription, SUPPORT_COMPONENT_DEVELOPMENT_NOTE, symmetryCheckForFaces, SYMMETRY_MODAL_NOTE, SYMMETRY_SUPPORT_TOLERANCE_NOTE } from "../../supportDescriptions";
+import { DEFAULT_FOUNDATION_MODULUS_N_PER_M3, displayFacesForEntry, ELASTIC_SUPPORT_APPROXIMATION_NOTE, ELASTIC_SUPPORT_DEVELOPMENT_NOTE, elasticSupportParameters, fixedSupportParameters, foundationModulusDisplayUnit, foundationModulusForDisplay, foundationModulusFromDisplay, isPartialFixedSupport, structuralSupportDescription, SUPPORT_COMPONENT_DEVELOPMENT_NOTE, symmetryCheckForFaces, SYMMETRY_MODAL_NOTE, SYMMETRY_SUPPORT_TOLERANCE_NOTE } from "../../supportDescriptions";
 
 import { formatDensity, formatDisplayNumber, formatMass, formatVolume, lengthForUnits, loadValueForUnits, temperatureForUnits, type UnitSystem } from "../../unitDisplay";
 import { stepFaceLabelForUnits } from "../../stepFaceLabels";
@@ -50,11 +50,17 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
   const [displacementComponent, setDisplacementComponent] = useState<"x" | "y" | "z">("z");
   // Per-component fixed supports (plan 036 R1.4): all three until the user chooses.
   const [fixedComponents, setFixedComponents] = useState<SupportComponent[]>([...SUPPORT_COMPONENTS]);
+  // Elastic (foundation) support, plan 036 R1.5: stored in N/m^3, entered in
+  // N/mm^3 (SI) or lbf/in^3 (US).
+  const [normalStiffness, setNormalStiffness] = useState(DEFAULT_FOUNDATION_MODULUS_N_PER_M3);
+  const [tangentialStiffness, setTangentialStiffness] = useState(DEFAULT_FOUNDATION_MODULUS_N_PER_M3);
   const prescribedDisplacement = displacementKind === "prescribed_displacement" && !thermal && !modal;
   const symmetrySupport = displacementKind === "symmetry" && !thermal;
-  const fixedSupport = !thermal && !prescribedDisplacement && !symmetrySupport;
+  const elasticSupport = displacementKind === "elastic_support" && !thermal;
+  const fixedSupport = !thermal && !prescribedDisplacement && !symmetrySupport && !elasticSupport;
   const displacementValid = Number.isFinite(displacementValueMm);
-  const addLabel = thermal ? "Add prescribed temperature" : prescribedDisplacement ? "Add prescribed displacement" : symmetrySupport ? "Add symmetry support" : study.constraints.length ? "Add another fixed support" : "Add fixed support";
+  const stiffnessError = elasticSupport ? foundationStiffnessError(normalStiffness, tangentialStiffness) : null;
+  const addLabel = thermal ? "Add prescribed temperature" : prescribedDisplacement ? "Add prescribed displacement" : symmetrySupport ? "Add symmetry support" : elasticSupport ? "Add elastic support" : study.constraints.length ? "Add another fixed support" : "Add fixed support";
   // The panel button used to stack a second support on a face that already
   // had one; the viewer-click path already refused that (2026-09 review D2).
   const existingOnSelection = selectedFromViewport ? study.constraints.find((support) => support.selectionRef === selectedFromViewport.id) : undefined;
@@ -72,14 +78,16 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
     : undefined;
   const symmetryError = symmetryCheck && !symmetryCheck.ok ? symmetryCheck.message : null;
   const componentsError = fixedSupport && fixedComponents.length === 0;
-  const addDisabled = !selectedFromViewport || Boolean(duplicateSupportError) || (thermal && !Number.isFinite(temperature)) || (prescribedDisplacement && !displacementValid) || Boolean(symmetryError) || componentsError;
+  const addDisabled = !selectedFromViewport || Boolean(duplicateSupportError) || (thermal && !Number.isFinite(temperature)) || (prescribedDisplacement && !displacementValid) || Boolean(symmetryError) || componentsError || Boolean(stiffnessError);
   const addOptions = thermal
     ? { type: "prescribed_temperature" as const, value: temperature }
     : prescribedDisplacement
       ? { type: "prescribed_displacement" as const, value: displacementValueMm, component: displacementComponent }
       : symmetrySupport
         ? { type: "symmetry" as const }
-        : { type: "fixed" as const, components: fixedComponents };
+        : elasticSupport
+          ? { type: "elastic_support" as const, normalStiffness, tangentialStiffness }
+          : { type: "fixed" as const, components: fixedComponents };
   return (
     <Panel title={thermal ? "Temperature boundaries" : "Supports"} question={thermal ? "Where is the temperature fixed?" : "Where is it held still?"} step="supports" helper={thermal ? "Select a face and prescribe its steady boundary temperature." : "Choose where the part is held fixed. Select a face, or click inside a cylindrical hole to constrain its wall. You can add more than one support."} study={study}>
       <PlacementReadout selectedRef={selectedFromViewport} label={selectedFromViewport ? selectionDisplayName(study, displayModel, selectedFromViewport.id, unitSystem) : undefined} fallbackLabel={selectedFace ? stepFaceLabelForUnits(selectedFace.label, selectedFace.area, unitSystem) : undefined} helpId="supportPlacement" />
@@ -89,11 +97,20 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
           <select value={modal && displacementKind === "prescribed_displacement" ? "fixed" : displacementKind} onChange={(event) => setDisplacementKind(event.currentTarget.value as StructuralSupportKind)}>
             <option value="fixed">Fixed support</option>
             <option value="symmetry">Symmetry / roller</option>
+            <option value="elastic_support">Elastic support (foundation)</option>
             {!modal && <option value="prescribed_displacement">Prescribed displacement</option>}
           </select>
         </label>
       )}
       {fixedSupport && <FixedComponentsField components={fixedComponents} onChange={setFixedComponents} />}
+      {elasticSupport && (
+        <>
+          <FoundationStiffnessField label="Normal stiffness" valueNPerM3={normalStiffness} unitSystem={unitSystem} onChange={setNormalStiffness} />
+          <FoundationStiffnessField label="Tangential stiffness" valueNPerM3={tangentialStiffness} unitSystem={unitSystem} onChange={setTangentialStiffness} />
+          <p className="field-note">{ELASTIC_SUPPORT_APPROXIMATION_NOTE}</p>
+          {stiffnessError && <p className="field-error" role="alert">{stiffnessError}</p>}
+        </>
+      )}
       {symmetrySupport && (
         <p className="field-note">
           {symmetryCheck?.ok ? `Holds ${symmetryCheck.component.toUpperCase()}, the face normal. ` : ""}{SYMMETRY_SUPPORT_TOLERANCE_NOTE}{modal ? ` ${SYMMETRY_MODAL_NOTE}` : ""}
@@ -123,15 +140,33 @@ export function SupportsPanel({ project, displayModel, selectedFace, study, draf
       {namedSelectionManager && !modal ? <WorkingSelectionBar study={study} manager={namedSelectionManager} /> : null}
       <button className="outline-action wide" disabled={addDisabled} title={duplicateSupportError ?? symmetryError ?? undefined} onClick={() => selectedFromViewport && !addDisabled && onAddSupport(selectedFromViewport.id, addOptions, extraRefsForAdd.length ? { selectionRefs: extraRefsForAdd } : undefined)}><Plus size={18} />{addLabel}{appliedRefs.length > 1 ? ` (${appliedRefs.length} faces)` : ""}</button>
       <SupportEditorList study={study} displayModel={displayModel} unitSystem={unitSystem} retargetFace={selectedFace} onUpdateSupport={onUpdateSupport} onRemoveSupport={onRemoveSupport} />
-      <Callout>{thermal ? "At least one prescribed temperature is required to make the conduction system unique." : "A fixed support holds the selected face in the chosen directions (all three by default). A symmetry/roller support holds only the face-normal direction."}</Callout>
+      <Callout>{thermal ? "At least one prescribed temperature is required to make the conduction system unique." : "A fixed support holds the selected face in the chosen directions (all three by default). A symmetry/roller support holds only the face-normal direction. An elastic support rests the face on springs."}</Callout>
       {!thermal && (symmetrySupport || (fixedSupport && fixedComponents.length < SUPPORT_COMPONENTS.length) || study.constraints.some((support) => support.type === "symmetry" || isPartialFixedSupport(support))) && (
         <p className="field-note">{SUPPORT_COMPONENT_DEVELOPMENT_NOTE}</p>
+      )}
+      {!thermal && (elasticSupport || study.constraints.some((support) => support.type === "elastic_support")) && (
+        <p className="field-note">{ELASTIC_SUPPORT_DEVELOPMENT_NOTE}</p>
       )}
     </Panel>
   );
 }
 
-type StructuralSupportKind = "fixed" | "symmetry" | "prescribed_displacement";
+type StructuralSupportKind = "fixed" | "symmetry" | "elastic_support" | "prescribed_displacement";
+
+/** A foundation modulus entered in the project's unit (N/mm^3 or lbf/in^3) and stored in N/m^3. */
+export function FoundationStiffnessField({ label, valueNPerM3, unitSystem, onChange }: { label: string; valueNPerM3: number; unitSystem: UnitSystem; onChange: (valueNPerM3: number) => void }) {
+  const unit = foundationModulusDisplayUnit(unitSystem);
+  return (
+    <label className="field">{label}<span className="input-with-unit"><input type="number" min={0} aria-label={label} value={formatInputValue(foundationModulusForDisplay(valueNPerM3, unitSystem))} onChange={(event) => onChange(foundationModulusFromDisplay(Number(event.currentTarget.value), unitSystem))} /><span>{unit.label}</span></span></label>
+  );
+}
+
+function foundationStiffnessError(normal: number, tangential: number): string | null {
+  const values = [normal, tangential];
+  if (!values.every((value) => Number.isFinite(value) && value >= 0)) return "Stiffness must be zero or positive.";
+  if (!values.some((value) => value > 0)) return "Give the elastic support a positive normal or tangential stiffness.";
+  return null;
+}
 
 /**
  * The directions a fixed support holds (plan 036 R1.4). "All" keeps the
@@ -1201,7 +1236,7 @@ function finiteVector3(value: unknown): LoadApplicationPoint | null {
  * adapter reads regardless of the stored `units` text.
  */
 function supportValueLabel(support: Constraint, unitSystem: UnitSystem, faces: readonly DisplayFace[] = []): string {
-  const structural = structuralSupportDescription(support, faces);
+  const structural = structuralSupportDescription(support, faces, unitSystem);
   if (structural) return structural;
   const value = Number(support.parameters.value ?? 0);
   if (support.type === "prescribed_temperature") {
@@ -1212,9 +1247,10 @@ function supportValueLabel(support: Constraint, unitSystem: UnitSystem, faces: r
   return `Prescribed displacement (${formatDisplayNumber(displacement.value)}\u00a0${displacement.units} ${String(support.parameters.component ?? "z")})`;
 }
 
-/** A support that stops being fixed drops its fixed-only component list. */
+/** A support that changes type drops the fixed-only component list and the elastic-only stiffnesses. */
 function withoutFixedComponents(parameters: Record<string, unknown>): Record<string, unknown> {
-  const { components: _components, ...rest } = parameters;
+  const { components: _components, normalStiffness: _normal, tangentialStiffness: _tangential, ...rest } = parameters;
+  if (rest.units === "N/m^3") delete rest.units;
   return rest;
 }
 
@@ -1241,8 +1277,9 @@ function SupportEditorList({ study, displayModel, unitSystem, retargetFace, onUp
   let prescribedSupportCount = 0;
   let thermalSupportCount = 0;
   let symmetrySupportCount = 0;
+  let elasticSupportCount = 0;
   const supportItems = study.constraints.map((support) => {
-    const supportOrdinal = support.type === "fixed" ? ++fixedSupportCount : support.type === "prescribed_temperature" ? ++thermalSupportCount : support.type === "symmetry" ? ++symmetrySupportCount : ++prescribedSupportCount;
+    const supportOrdinal = support.type === "fixed" ? ++fixedSupportCount : support.type === "prescribed_temperature" ? ++thermalSupportCount : support.type === "symmetry" ? ++symmetrySupportCount : support.type === "elastic_support" ? ++elasticSupportCount : ++prescribedSupportCount;
     return { support, displayLabel: supportDisplayLabel(support, supportOrdinal) };
   });
 
@@ -1312,6 +1349,9 @@ export function SupportEditForm({ support, study, displayModel, unitSystem, reta
       : "z"
   );
   const [components, setComponents] = useState<SupportComponent[]>(support.type === "fixed" ? fixedSupportComponents(support) : [...SUPPORT_COMPONENTS]);
+  const initialStiffness = elasticSupportStiffness(support);
+  const [normalStiffness, setNormalStiffness] = useState(support.type === "elastic_support" ? initialStiffness.normal : DEFAULT_FOUNDATION_MODULUS_N_PER_M3);
+  const [tangentialStiffness, setTangentialStiffness] = useState(support.type === "elastic_support" ? initialStiffness.tangential : DEFAULT_FOUNDATION_MODULUS_N_PER_M3);
   const selectedRef = study.namedSelections.find((selection) => selection.id === support.selectionRef);
   // Re-targeting (2026-09 review D3): a face picked while editing can become
   // the new target; before, the pick added a second support instead.
@@ -1324,6 +1364,7 @@ export function SupportEditForm({ support, study, displayModel, unitSystem, reta
     if (type === "prescribed_displacement") return { ...support.parameters, value: displacementValueMm, units: "mm", component: displacementComponent };
     // Holding all three components stores no list, exactly like a pre-R1.4 support.
     if (type === "fixed") return fixedSupportParameters(support.parameters, components);
+    if (type === "elastic_support") return elasticSupportParameters(support.parameters, normalStiffness, tangentialStiffness);
     return withoutFixedComponents(support.parameters);
   }
   return (
@@ -1342,6 +1383,7 @@ export function SupportEditForm({ support, study, displayModel, unitSystem, reta
             : <>
               <option value="fixed">Fixed support</option>
               <option value="symmetry">Symmetry / roller</option>
+              <option value="elastic_support">Elastic support (foundation)</option>
               {(study.type !== "modal_analysis" || type === "prescribed_displacement") && <option value="prescribed_displacement">Prescribed displacement</option>}
             </>}
         </select>
@@ -1349,6 +1391,13 @@ export function SupportEditForm({ support, study, displayModel, unitSystem, reta
       {thermal && <TemperatureField valueCelsius={temperature} unitSystem={unitSystem} onChange={setTemperature} />}
       {!thermal && type === "fixed" && <FixedComponentsField components={components} onChange={setComponents} />}
       {!thermal && type === "symmetry" && <p className="field-note">{SYMMETRY_SUPPORT_TOLERANCE_NOTE}</p>}
+      {!thermal && type === "elastic_support" && (
+        <>
+          <FoundationStiffnessField label="Normal stiffness" valueNPerM3={normalStiffness} unitSystem={unitSystem} onChange={setNormalStiffness} />
+          <FoundationStiffnessField label="Tangential stiffness" valueNPerM3={tangentialStiffness} unitSystem={unitSystem} onChange={setTangentialStiffness} />
+          <p className="field-note">{ELASTIC_SUPPORT_APPROXIMATION_NOTE}</p>
+        </>
+      )}
       {!thermal && type === "prescribed_displacement" && (
         <>
           <DisplacementField valueMm={displacementValueMm} unitSystem={unitSystem} onChange={setDisplacementValueMm} />
@@ -1363,7 +1412,7 @@ export function SupportEditForm({ support, study, displayModel, unitSystem, reta
       )}
       <PlacementReadout selectedRef={selectedRef} label={selectedRef ? selectionDisplayName(study, displayModel, selectedRef.id, unitSystem) : undefined} />
       <div className="edit-actions">
-        <button className="primary" type="button" disabled={(thermal && !Number.isFinite(temperature)) || (!thermal && type === "prescribed_displacement" && !Number.isFinite(displacementValueMm)) || (!thermal && type === "fixed" && components.length === 0)} onClick={() => onSave({ ...support, type, parameters: savedParameters() }, targetFace)}>Save</button>
+        <button className="primary" type="button" disabled={(thermal && !Number.isFinite(temperature)) || (!thermal && type === "prescribed_displacement" && !Number.isFinite(displacementValueMm)) || (!thermal && type === "fixed" && components.length === 0) || (!thermal && type === "elastic_support" && Boolean(foundationStiffnessError(normalStiffness, tangentialStiffness)))} onClick={() => onSave({ ...support, type, parameters: savedParameters() }, targetFace)}>Save</button>
         <button className="secondary" type="button" onClick={onCancel}>Cancel</button>
       </div>
     </div>

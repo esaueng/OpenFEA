@@ -132,6 +132,9 @@ export type {
 } from "./solver";
 export { solveStaticLinearTetSparse } from "./static-sparse";
 export { assembleMeshConnectionStiffness } from "./connections";
+export { activeElasticSupports, assembleElasticSupportStiffness, elasticSupportForce } from "./elastic-support";
+export type { ElasticSupportAssembly } from "./elastic-support";
+export type { ElasticSupportDiagnostics } from "./types";
 export type { ConnectionAssemblyDiagnostics } from "./connections";
 export { solveSteadyStateThermal } from "./thermal";
 export type { SteadyStateThermalDiagnostics, SteadyStateThermalResult, SteadyStateThermalSolveResult } from "./thermal";

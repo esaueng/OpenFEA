@@ -117,6 +117,17 @@ describe("validateStaticStressStudy", () => {
     expect(validateStudy(bad).map((item) => item.id)).toContain("validation-support-components-fs-none");
   });
 
+  it("accepts an elastic foundation that holds every direction and refuses one that cannot (plan 036 R1.5)", () => {
+    const elastic = (normalStiffness: number, tangentialStiffness: number): Study["constraints"][number] =>
+      ({ id: "es", type: "elastic_support", selectionRef: "face", parameters: { normalStiffness, tangentialStiffness, units: "N/m^3" }, status: "complete" });
+    expect(validateStudy({ ...readyStudy, constraints: [elastic(5e7, 2e7)] })).toEqual([]);
+    const ids = (study: Study) => validateStudy(study).map((item) => item.id);
+    expect(ids({ ...readyStudy, constraints: [elastic(5e7, 0)] })).toContain("validation-elastic-support-rigid-body");
+    expect(ids({ ...readyStudy, constraints: [elastic(0, 0)] })).toContain("validation-support-stiffness-es");
+    // A normal-only foundation beside a fixed support is fine.
+    expect(ids({ ...readyStudy, constraints: [elastic(5e7, 0), { id: "fs", type: "fixed", selectionRef: "face", parameters: {}, status: "complete" }] })).toEqual([]);
+  });
+
   it("flags an enabled load case that carries no loads", () => {
     // 2026-09 review D10: an empty enabled case solved to numerical noise and
     // was reported as "Unlikely to yield" with a safety factor of 2.8e12.
