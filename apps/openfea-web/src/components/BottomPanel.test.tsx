@@ -5,10 +5,13 @@ import { describe, expect, test, vi } from "vitest";
 import {
   BottomPanel,
   KeyboardShortcutGuide,
+  liveStatusMessage,
+  solveOutcomeAnnouncement,
   statusForDisplay,
   studySummaryLine,
   WORKSPACE_SHORTCUT_GUIDE,
-  resolveLogClearIntent,
+  clearLogsQuestion,
+  isDeliberateClick,
   workspaceLogLevel,
   writeWorkspaceLogsToClipboard
 } from "./BottomPanel";
@@ -164,19 +167,27 @@ describe("BottomPanel", () => {
     expect(bottomPanelSource).not.toContain("scrollTop = ");
   });
 
-  test("requires two clicks before clearing run logs", () => {
-    expect(resolveLogClearIntent(0, false)).toBe("confirm");
-    expect(resolveLogClearIntent(1, false)).toBe("confirm");
-    expect(resolveLogClearIntent(2, false)).toBe("clear");
-    expect(resolveLogClearIntent(0, true)).toBe("clear");
-    expect(resolveLogClearIntent(1, true)).toBe("clear");
+  test("a double-click can neither open nor accept the clear-logs confirm", () => {
+    expect(isDeliberateClick(0)).toBe(true); // keyboard activation
+    expect(isDeliberateClick(1)).toBe(true);
+    expect(isDeliberateClick(2)).toBe(false);
+    expect(isDeliberateClick(3)).toBe(false);
+    expect(clearLogsQuestion(1)).toBe("Clear 1 log line?");
+    expect(clearLogsQuestion(12)).toBe("Clear 12 log lines?");
   });
 
-  test("defines a double-click clear logs control wired to workspace logs", () => {
+  test("clears run logs only through an explicit inline confirm", () => {
     expect(bottomPanelSource).toContain('className="log-clear-button"');
     expect(bottomPanelSource).toContain("Clear logs");
-    expect(bottomPanelSource).toContain("Double-click to clear");
-    expect(bottomPanelSource).toContain("onClearLogs");
+    // Both steps reject a double-click's follow-up click before acting.
+    expect(bottomPanelSource).toMatch(/function requestClearLogs[^}]*!isDeliberateClick\(event\.detail\)\) return;\s*setClearConfirmOpen\(true\);/);
+    expect(bottomPanelSource).toMatch(/function confirmClearLogs[\s\S]*?if \(!isDeliberateClick\(event\.detail\)\) return;\s*setClearConfirmOpen\(false\);\s*onClearLogs\(\);/);
+    // onClearLogs runs from the confirm only, and the old "click again" arm is gone.
+    expect(bottomPanelSource.match(/onClearLogs\(\)/g)).toHaveLength(1);
+    expect(bottomPanelSource).not.toContain("Double-click to clear");
+    expect(bottomPanelSource).toContain('aria-label="Confirm clearing run logs"');
+    expect(bottomPanelSource).toContain("Keep logs");
+    expect(bottomPanelSource).toContain("onClick={confirmClearLogs}");
     expect(workspaceSource).toContain("onClearLogs={clearLogs}");
   });
 
@@ -241,6 +252,30 @@ describe("BottomPanel", () => {
     expect(html.indexOf("1 support, 1 load")).toBeLessThan(html.indexOf('class="status-links"'));
     expect(bottomPanelSource).toContain('tab === "help"');
     expect(workspaceSource).toContain("studySummary={studySummaryLine(study)}");
+  });
+
+  test("shows the latest message in a polite live region, not only the derived state word", () => {
+    const html = renderToStaticMarkup(
+      <BottomPanel status="Support added." logs={[]} meshStatus="Ready" solverStatus="Idle" onClearLogs={() => undefined} />
+    );
+    expect(html).toContain('<span class="status-message" role="status" aria-live="polite" aria-atomic="true" title="Support added.">Support added.</span>');
+    // While a solve runs the region holds one line instead of reading every ETA tick.
+    const running = renderToStaticMarkup(
+      <BottomPanel status="Solving 42% · about 8 s remaining" logs={[]} meshStatus="Ready" solverStatus="Running" onClearLogs={() => undefined} />
+    );
+    expect(running).toContain(">Simulation running.</span>");
+  });
+
+  test("announces solve completion and failure when a run settles", () => {
+    expect(solveOutcomeAnnouncement("Running", "Complete")).toBe("Simulation complete. Results are ready.");
+    expect(solveOutcomeAnnouncement("Running", "Error")).toBe("Simulation failed.");
+    expect(solveOutcomeAnnouncement("Running", "Idle")).toBe("Simulation stopped.");
+    expect(solveOutcomeAnnouncement("Idle", "Complete")).toBeNull();
+    expect(solveOutcomeAnnouncement("Running", "Running")).toBeNull();
+    const outcome = { text: "Simulation failed.", status: "Singular matrix." };
+    expect(liveStatusMessage("Singular matrix.", "Error", outcome)).toBe("Simulation failed. Singular matrix.");
+    // A newer message replaces the outcome prefix.
+    expect(liveStatusMessage("Load updated.", "Error", outcome)).toBe("Load updated.");
   });
 
   test("omits the summary when there is no study", () => {

@@ -153,6 +153,9 @@ importers:
       '@openfea/study-core':
         specifier: workspace:*
         version: link:../openfea-study-core
+      '@openfea/units':
+        specifier: workspace:*
+        version: link:../openfea-units
 
   libs/openfea-materials:
     dependencies:
@@ -174,6 +177,9 @@ importers:
       '@openfea/solve-pipeline':
         specifier: workspace:*
         version: link:../openfea-solve-pipeline
+      '@openfea/units':
+        specifier: workspace:*
+        version: link:../openfea-units
     devDependencies:
       '@openfea/core-adapter':
         specifier: workspace:*
@@ -223,6 +229,9 @@ importers:
       '@openfea/schema':
         specifier: workspace:*
         version: link:../openfea-schema
+      '@openfea/units':
+        specifier: workspace:*
+        version: link:../openfea-units
 
   libs/openfea-units: {}
 

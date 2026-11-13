@@ -15,6 +15,7 @@ Four advisory runs are indexed here:
 - **2026-07-19**, codebase health and solver capability roadmap (plan 024). Reconciled a broad code review against current `main`, kept the confirmed numeric/architecture/maintenance findings, rejected stale claims about the active DOF cap, SSOR, and WebGPU, and sequenced raw export, cleanup, modernization, harmonic response, buckling, shells, and beams behind explicit numerical gates.
 - **2026-07-25**, end-to-end QA remediation (plan 026). An E2E testing report taken against `a15bf97` (twelve commits behind `main`) reported 13 findings; two were already closed by plan 025 and the other eleven were re-verified live on `66ec912`. Re-verification sharpened three causes the report attributed elsewhere: `validateStudy` is never called at runtime, the footer status is classified by regex over log prose, and `updateStudy`'s `currentStudy` is optional in the type but required at runtime.
 
+- **2026-11-12**, status re-verification against `main` at `12cf5fa`: plans 010, 012, 024, 030 and 036 rows updated for the R0–R5 work merged since 2026-10-21 (#188–#203).
 - **2026-10-21**, product roadmap revision (plan 036). Re-verified every plan's status against `main` at `9d36aa2` (the status table below was months stale) and replaced the plan 024 ordering with a release train led by modeling expressiveness. The Recon Summary, Prioritized Findings and Execution Order sections below are the July record and describe retired infrastructure; use plan 036 for current priorities.
 
 These plans are written for a fresh executor with no context from the surveys. Each is self-contained.
@@ -86,7 +87,7 @@ A CAE audit must state what was checked and found correct, not only defects. Ind
 Real findings that didn't make the plan cut this run — next candidates:
 
 - **RUNNER_VERSION bump toil** spans ~8 synchronized locations across this repo AND the sibling (`RUNNER_VERSION` file, `worker/index.ts` const, two wrangler container tags, two `package.json` image-tag scripts, worker tests, verify scripts; plus the sibling's server consts). The verify scripts catch drift but don't remove the toil. Single-sourcing has a cross-repo component, which is why it isn't a self-contained plan yet. (tech-debt, M)
-- **No lint/format tooling** anywhere in the monorepo (no ESLint/Biome/Prettier config, no `lint` script) — notable for a repo with heavy AI-agent contribution. (DX, M)
+- ~~**No lint/format tooling**~~ Lint landed in #195 (type-aware ESLint, small rule set, run in CI). There is still no formatter. (DX)
 - **Component decomposition**: `CadViewer.tsx` ~5,861 lines, `RightPanel.tsx` ~1,845 lines (7 inline sub-panels with a natural file-per-panel split), `WorkspaceApp.tsx` ~1,588. Integration behavior in the JSX is untested; decompose AFTER product-level E2E coverage exists (see Direction). (tech-debt, L)
 - **STEP writer topology validation**: `libs/opencae-step` tests check entity presence, not face-edge-vertex loop connectivity/orientation — invalid-but-parseable STEP output is the risk class. (tests, M)
 - **React 19 + @react-three/fiber 9 coupled migration** (with drei/@types) — not urgent; verify current ecosystem status online before scheduling. (dependencies, L, fix-risk High)
@@ -137,8 +138,8 @@ Dependency notes:
 
 | Plan | Status | Owner Notes |
 | - | - | - |
-| 001 Tighten result provenance taxonomy | OBSOLETE (2026-10-21) | Premise inverted: in-browser Core is now the production solver and the cloud backends are retired. The broad schema fallback (`libs/openfea-schema/src/index.ts:868`) remains; revisit only with backend deletion (036 R0.9). |
-| 002 Make project import collision-safe | OBSOLETE for production (2026-10-21) | Browser import goes through `localProjectFactory.ts`; the id-preserving upsert survives only in the reference API slated for deletion (036 R0.9). |
+| 001 Tighten result provenance taxonomy | OBSOLETE (2026-10-21) | Premise inverted: in-browser Core is now the production solver and the cloud backends are retired. The reference backend was deleted in #193 (`88b5975`). The `opencae_core_fea` fallback in `classifyResultProvenance` (`libs/openfea-schema/src/index.ts:965`) is the branch that classifies browser-local Core solves; no action remains. |
+| 002 Make project import collision-safe | OBSOLETE (2026-11-12) | Browser import goes through `localProjectFactory.ts`; the reference API with the id-preserving upsert was deleted in #193 (`88b5975`). |
 | 003 Make Core builds reproducible | DONE (2026-10-21) | Sibling bootstrap removed; `build:core` filters workspace packages; CI installs frozen. |
 | 004 Harden Cloud Worker run orchestration | OBSOLETE (2026-10-21) | Cloud run routes answer 410 since the July retirement. |
 | 005 Replace source-text guard tests | TODO (re-verified 2026-10-21) | `performanceRewrite.test.ts` still asserts source strings. |
@@ -146,9 +147,9 @@ Dependency notes:
 | 007 Bound result-field extent computation | DONE (2026-10-21) | `finiteExtrema` in `packages/core/src/numeric.ts`; remaining spreads are over small arrays. |
 | 008 CI: build web + enforce bundle budget | DONE (2026-10-21) | `fleet-ci.yml` runs `build:cloudflare` and `check:bundle`. |
 | 009 Guard stale run-completion continuations | DONE (2026-10-21) | `processingRunIdRef` re-check in `WorkspaceApp.tsx`. |
-| 010 Schema-valid cantilever accuracy fixture | TODO (re-verified 2026-10-21) | `as Study` cast still in `localCantileverAccuracy.test.ts`; scheduled as 036 R0.6. |
+| 010 Schema-valid cantilever accuracy fixture | DONE (2026-10-21) | The fixture is parsed through `StudySchema` instead of an `as Study` cast: `966fa0e` (#192, 036 R0.6). |
 | 011 Run solver accuracy gates in CI | DONE (2026-10-21) | Core package tests (incl. `core-validation.test.ts`) and the cantilever gate run in `fleet-ci.yml`. |
-| 012 Broaden analytical solver benchmarks | PARTIAL (2026-10-21) | Unit/load-scale invariance, axial bar, smoothing ≤ peak, load balance landed. Off-axis load and the analytical ~604 Hz gate remain → 036 R0.6. |
+| 012 Broaden analytical solver benchmarks | DONE (2026-10-21) | Unit/load-scale invariance, axial bar, smoothing ≤ peak and load balance landed earlier; the off-axis load and first-bending frequency gates landed in `966fa0e` (#192, 036 R0.6). |
 | 013 Gmsh plate-with-hole Kt benchmark | DONE (2026-10-21) | `plateWithHoleKt.test.ts` and the validation gallery; gmsh-wasm pinned exactly. |
 | 014 Unit round-trip gate + strict units | DONE (2026-10-21) | Core validation rejects unknown `solverUnits`; mm/m equivalence tests exist. |
 | 015 Local-first browser solver parity | DONE (2026-10-21) | Browser solve is production; cloud solve retired (`docs/cloud-retirement.md`). |
@@ -160,19 +161,19 @@ Dependency notes:
 | 021 OpenCAE Quick-Wins Rollout | COMPLETE | All five staged releases landed: result probes, unified palettes, principal stresses, projection/PNG export, and recent project handles. |
 | 022 OpenCAE Medium-Feature Roadmap | COMPLETE | All five flagship-first increments released: modal analysis; open sections and custom materials; structural cases/combinations/envelopes; static convergence studies; and advanced loads with equivalent bolt preload. |
 | 023 Production E2E QA Fixes | COMPLETE | Five implementation commits fix all six findings. Focused tests, typecheck, build, desktop browser QA, 390 px mobile QA, static solve, and three-rung bracket convergence pass; production deployment smoke remains. |
-| 024 Codebase Health and Solver Capability Roadmap | PARTIAL (2026-10-21) | Landed: 1A relative CG, 1B unified DOF cap, 1C CI build/budget, 1D policy modules, R2 selected-state export, R3A browser fallbacks removed, R5A dependency cohorts, `RightPanel` split. Open: R3B backend deletion, R4 benchmark ladder, R5B `CadViewer`/`WorkspaceApp` decomposition, R6–R8. Ordering superseded by 036. |
+| 024 Codebase Health and Solver Capability Roadmap | PARTIAL (2026-11-12) | Landed: 1A relative CG, 1B unified DOF cap, 1C CI build/budget, 1D policy modules, R2 selected-state export, R3A browser fallbacks removed, R3B backend deletion (`88b5975`, #193), R5A dependency cohorts, `RightPanel` split. Partial: R4 benchmark ladder, Chromium only (`4f9541b`, #197; no WebKit, CI smoke rung not wired). Open: R5B `CadViewer`/`WorkspaceApp` decomposition, R6–R8. Ordering superseded by 036. |
 | 025 Cleanup and Refinement Pass | DONE (2026-10-21) | All five stages verified in code. |
 | 026 End-to-End QA Remediation | COMPLETE | Eleven live-verified defects from the E2E testing report: imperial display rounding to zero, an unwired domain validator behind the Run gate, undo/redo persistence, invalid dynamic drafts, four accessibility repairs, the start-screen flash, upload copy, and lazy/precache budgets. |
 | 027 UI/UX Overhaul | COMPLETE | Increments A (Plex on screen), B (panel information architecture), D (copy sweep) and E (analysis-type switch warning) merged 2026-09-05 as PRs #102–#105; C (viewer chrome) withdrawn after measurement. |
 | 028 Interaction Review Remediation | MOSTLY DONE (2026-10-21) | Stages 0, 1b–1c, 2a–2d and 3a landed (1a not confirmed). Open: undo across geometry replacement, offscreen report capture (D15), report preview (S7), study summary drawer (S1), analysis-type selector placement (F6). Per-body materials and named-selection manager moved to 036 R1. |
 | 035 Guided Design Overhaul | DONE (2026-10-21) | Increments 0–6 merged (#166–#174); 14px panel tier accepted and built. Leftovers: bottom-left horizontal legend, narrow-viewport "Step N of 7" dropdown, face chip with "Add faces" link, Esau README amendment (outside this repo). |
 | 029 Decision: prescribed displacement | DONE | Option A implemented end to end. |
-| 030 Decision: multi-face BCs + per-body materials | PARTIAL | Multi-face BCs done; per-body materials → 036 R1.3. |
+| 030 Decision: multi-face BCs + per-body materials | DONE (2026-10-21) | Multi-face BCs done; per-body materials landed as 036 R1.3 (`27722d0`, `4edeae6`, #203). |
 | 031 Decision: STL/OBJ scope | DONE (option B) | STL/OBJ declared preview-only. |
 | 032 Decision: harmonic + buckling | REOPENED by 036 D2 (accepted 2026-10-21) | Buckling (R4.2) before harmonic (R6.1). |
 | 033 Decision: thermal breadth | REOPENED by 036 D1/D3 (accepted 2026-10-21) | Convection (R4.1) and one-way thermal stress (R4.3) in scope; transient thermal behind them. |
 | 034 Decision: export archive | DEFERRED (option B stands) | Selected-state export remains the scope. |
-| 036 Product Roadmap, 2026-Q4 revision | IN PROGRESS (R0 started 2026-10-21) | Verified baseline at `9d36aa2`; release train R0 (hygiene) → R1 modeling → R2 mesh → R3 results → R4–R7 physics, scale and elements. Decisions D1–D5 accepted 2026-10-21. |
+| 036 Product Roadmap, 2026-Q4 revision | IN PROGRESS (re-verified 2026-11-12 at `12cf5fa`) | R0 done except 0.10 (`packages/viewer`); R1.3 (#203), R2.1 (#198) and R3.1 (#196) done; R5.1 partial (#197, Chromium only). Two unscheduled solve-ladder findings recorded in the plan. Decisions D1–D5 accepted 2026-10-21. |
 
 Run 2 was non-interactive: plans 006–010 are the top findings by leverage (impact ÷ effort, confidence-weighted), selected by default per the advisor skill's non-interactive rule rather than by maintainer choice. Re-cut as desired.
 

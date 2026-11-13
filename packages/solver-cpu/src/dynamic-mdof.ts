@@ -8,7 +8,18 @@ import {
   maxAbs,
   recoverElementResults
 } from "./solver";
-import { addSparseEntry, conjugateGradient, createSparseMatrixBuilder, csrMatVec, reduceCsrRhs, toCsrMatrix, type CsrMatrix } from "./sparse";
+import {
+  addSparseEntry,
+  conjugateGradient,
+  conjugateGradientConvergenceDiagnostics,
+  createSparseMatrixBuilder,
+  csrMatVec,
+  reduceCsrRhs,
+  toCsrMatrix,
+  type ConjugateGradientConvergenceSample,
+  type CsrMatrix
+} from "./sparse";
+import { SPARSE_ALGEBRA_POLICY } from "./sparse-policy";
 import { expandFreeVector, hasAdvancedLoadPrimitives, prepareStructuralSystem, type PreparedStructuralSystem } from "./structural-system";
 import { solveModalSubspace } from "./modal";
 import {
@@ -167,6 +178,7 @@ function solveDynamicPreparedSystem(
   const frames: DynamicTet4CpuFrame[] = [];
   const convergence: DynamicTet4CpuDiagnostics["convergence"] = [];
   const reactionBalance: DynamicTet4CpuDiagnostics["reactionBalance"] = [];
+  const cgConvergence: ConjugateGradientConvergenceSample[] = [];
   const u = new Float64Array(free.length);
   const v = new Float64Array(free.length);
   let a = initialAcceleration(system, settings, rayleighAlpha, rayleighBeta);
@@ -207,6 +219,7 @@ function solveDynamicPreparedSystem(
     }
     const next = newmarkStep(system, effectiveCache.matrix, u, v, a, loadScaleAt(nextTime, settings), dt, rayleighAlpha, rayleighBeta, options);
     if (!next.ok) return { ok: false, error: next.error };
+    cgConvergence.push(next.convergence);
     u.set(next.u);
     v.set(next.v);
     a = next.a;
@@ -241,7 +254,7 @@ function solveDynamicPreparedSystem(
     maxDisplacement: peakDisplacement,
     maxVonMisesStress: Math.max(...frames.map((frame) => maxAbs((frame.vonMisesPeak ?? frame.vonMises).values)), 0),
     solverMode: "sparse",
-    converged: true,
+    ...conjugateGradientConvergenceDiagnostics(cgConvergence, "Dynamic Newmark CG"),
     ...(system.loadAssembly ? { loadAssembly: system.loadAssembly } : {}),
     ...(system.connections ? { connections: system.connections } : {}),
     frameCount: frames.length,
@@ -450,6 +463,7 @@ function newmarkStep(
   iterations: number;
   residualNorm: number;
   relativeResidual: number;
+  convergence: ConjugateGradientConvergenceSample;
 } | { ok: false; error: CpuSolverError } {
   const beta = 0.25;
   const gamma = 0.5;
@@ -473,7 +487,7 @@ function newmarkStep(
     rhs[i] = loadScale * system.load[i] + historyMass[i] + dampingHistory[i];
   }
   const solve = conjugateGradient(effective, rhs, {
-    tolerance: options.tolerance ?? 1e-10,
+    tolerance: options.tolerance ?? SPARSE_ALGEBRA_POLICY.defaultRelativeResidualTolerance,
     maxIterations: options.maxIterations,
     preconditioner: options.preconditioner === "none" || options.preconditioner === "jacobi" || options.preconditioner === "ssor"
       ? options.preconditioner
@@ -499,7 +513,14 @@ function newmarkStep(
     a: nextA,
     iterations: solve.iterations,
     residualNorm: solve.residualNorm,
-    relativeResidual: solve.relativeResidual
+    relativeResidual: solve.relativeResidual,
+    convergence: {
+      trueRelativeResidual: solve.trueRelativeResidual,
+      recursiveRelativeResidual: solve.recursiveRelativeResidual,
+      converged: solve.converged,
+      tolerance: solve.tolerance,
+      restartCycles: solve.restartCycles
+    }
   };
 }
 

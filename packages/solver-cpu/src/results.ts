@@ -453,7 +453,7 @@ export function modalCoreResultFromSolve(
     scaledResidual: mode.scaledResidual,
     visualizationSource: "normalized_modal_eigenvector"
   }));
-  const warning = [diagnostics.approximationWarning, diagnostics.partialConvergenceWarning]
+  const warning = [diagnostics.approximationWarning, diagnostics.partialConvergenceWarning, diagnostics.precisionLimitWarning]
     .filter((message): message is string => Boolean(message))
     .join(" ");
   return {

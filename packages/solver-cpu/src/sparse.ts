@@ -33,9 +33,21 @@ export type ConjugateGradientResult =
   | {
       ok: true;
       solution: Float64Array;
+      /** Total iterations, including any true-residual restart cycles. */
       iterations: number;
+      /** True residual norm ‖b − Ax‖, recomputed from the returned solution. */
       residualNorm: number;
+      /** True relative residual ‖b − Ax‖/‖b‖ of the returned solution (same as trueRelativeResidual). */
       relativeResidual: number;
+      /** True relative residual ‖b − Ax‖/‖b‖ recomputed after CG terminated. */
+      trueRelativeResidual: number;
+      /** CG's recursively updated relative residual when it last stopped. It can drift below the true residual. */
+      recursiveRelativeResidual: number;
+      /** True only when the recomputed true residual meets the requested tolerance. */
+      converged: boolean;
+      tolerance: number;
+      /** Restart cycles run because the recursive residual met tolerance but the true residual did not. */
+      restartCycles: number;
     }
   | {
       ok: false;
@@ -289,19 +301,66 @@ export function solveConjugateGradient(
     residualReference > 0 ? residualNorm / residualReference : 0;
   const initialRelativeResidual = relativeResidualFor(initialResidualNorm);
   if (initialRelativeResidual <= tolerance) {
+    // r was formed explicitly as b − A x0, so the recursive and true residuals coincide.
     emitProgress(0, initialRelativeResidual);
     return {
       ok: true,
       solution: x,
       iterations: 0,
       residualNorm: initialResidualNorm,
-      relativeResidual: initialRelativeResidual
+      relativeResidual: initialRelativeResidual,
+      trueRelativeResidual: initialRelativeResidual,
+      recursiveRelativeResidual: initialRelativeResidual,
+      converged: true,
+      tolerance,
+      restartCycles: 0
     };
   }
 
   // Scratch belongs to this solve, including reentrant solves from hooks. The
   // initial product is no longer needed after forming r and can be reused.
   const ap = ax ?? new Float64Array(matrix.rowCount);
+  // True-residual verification: the recursive update r -= alpha*A*p drifts
+  // from b − A x in long ill-conditioned runs, so convergence is gated on the
+  // recomputed residual, with bounded restarts from the current x.
+  let restartCycles = 0;
+  let cycleStart = 0;
+  let cycleLimit = maxIterations;
+  let firstCycleIterations = 0;
+  let best: { solution: Float64Array; residualNorm: number; recursiveRelativeResidual: number } | undefined;
+  /** Overwrites r with the true residual b − A x and returns its norm. */
+  const recomputeTrueResidual = (): number => {
+    csrMatVecInto(matrix, x, ap);
+    for (let i = 0; i < r.length; i += 1) r[i] = rhs[i] - ap[i];
+    return norm(r);
+  };
+  const verifiedResult = (
+    iterations: number,
+    solution: Float64Array,
+    trueResidualNorm: number,
+    recursiveRelativeResidual: number
+  ): ConjugateGradientResult => {
+    const trueRelativeResidual = relativeResidualFor(trueResidualNorm);
+    emitProgress(iterations, trueRelativeResidual);
+    return {
+      ok: true,
+      solution,
+      iterations,
+      residualNorm: trueResidualNorm,
+      relativeResidual: trueRelativeResidual,
+      trueRelativeResidual,
+      recursiveRelativeResidual,
+      converged: trueRelativeResidual <= tolerance,
+      tolerance,
+      restartCycles
+    };
+  };
+  /** Returns whichever of the current x and the best earlier snapshot has the smaller true residual. */
+  const partialResult = (iterations: number, trueResidualNorm: number, recursiveRelativeResidual: number): ConjugateGradientResult =>
+    best && best.residualNorm < trueResidualNorm
+      ? verifiedResult(iterations, best.solution, best.residualNorm, best.recursiveRelativeResidual)
+      : verifiedResult(iterations, x, trueResidualNorm, recursiveRelativeResidual);
+
   for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
     if (shouldCancel?.()) {
       const residualNorm = norm(r);
@@ -344,8 +403,34 @@ export function solveConjugateGradient(
     const residualNorm = norm(r);
     const relativeResidual = relativeResidualFor(residualNorm);
     if (relativeResidual <= tolerance) {
-      emitProgress(iteration, relativeResidual);
-      return { ok: true, solution: x, iterations: iteration, residualNorm, relativeResidual };
+      const trueResidualNorm = recomputeTrueResidual();
+      const trueRelativeResidual = relativeResidualFor(trueResidualNorm);
+      if (trueRelativeResidual <= tolerance) return verifiedResult(iteration, x, trueResidualNorm, relativeResidual);
+      if (restartCycles === 0) firstCycleIterations = iteration;
+      const remaining = maxIterations - iteration;
+      const stagnated = best !== undefined
+        && trueResidualNorm > best.residualNorm * SPARSE_ALGEBRA_POLICY.trueResidualRestartMinimumReduction;
+      if (restartCycles >= SPARSE_ALGEBRA_POLICY.trueResidualRestartCycles || remaining <= 0 || stagnated) {
+        return partialResult(iteration, trueResidualNorm, relativeResidual);
+      }
+      if (!best || trueResidualNorm < best.residualNorm) {
+        best = { solution: Float64Array.from(x), residualNorm: trueResidualNorm, recursiveRelativeResidual: relativeResidual };
+      }
+      restartCycles += 1;
+      cycleStart = iteration;
+      cycleLimit = Math.min(
+        remaining,
+        Math.max(1, Math.ceil(SPARSE_ALGEBRA_POLICY.trueResidualRestartIterationFraction * firstCycleIterations))
+      );
+      emitProgress(iteration, trueRelativeResidual);
+      // r now holds the true residual: restart the Krylov space from it.
+      applyPreconditioner(matrix, r, z, diagonal, diagonalTolerance, preconditioner, ssorOmega, ssorForward);
+      p.set(z);
+      rzOld = dot(r, z);
+      continue;
+    }
+    if (restartCycles > 0 && iteration - cycleStart >= cycleLimit) {
+      return partialResult(iteration, recomputeTrueResidual(), relativeResidual);
     }
     if (iteration % 25 === 0) {
       emitProgress(iteration, relativeResidual);
@@ -372,6 +457,73 @@ export function solveConjugateGradient(
     residualNorm,
     relativeResidual
   };
+}
+
+/** Convergence fields shared by solver diagnostics that run one or more sparse CG solves. */
+export type ConjugateGradientConvergenceDiagnostics = {
+  /** True only when every CG solve's recomputed true residual met tolerance. */
+  converged: boolean;
+  /** Worst true relative residual ‖b − Ax‖/‖b‖ of the reduced CG system(s). */
+  trueRelativeResidual: number;
+  /** Worst CG recursively updated relative residual at termination. */
+  recursiveRelativeResidual: number;
+  /** Total true-residual restart cycles. */
+  trueResidualRestarts: number;
+  /** Present when the true residual stayed above tolerance; the solution is usable but less accurate than requested. */
+  partialConvergenceWarning?: string;
+};
+
+export type ConvergedConjugateGradientResult = Extract<ConjugateGradientResult, { ok: true }>;
+
+/** The convergence fields of a successful CG solve, without its solution vector. */
+export type ConjugateGradientConvergenceSample = Pick<
+  ConvergedConjugateGradientResult,
+  "trueRelativeResidual" | "recursiveRelativeResidual" | "converged" | "tolerance" | "restartCycles"
+>;
+
+/**
+ * Summarize one or more successful CG solves for diagnostics. A solve whose
+ * true residual stays above tolerance is still returned (it used to be
+ * reported as converged), but it is labelled as partially converged.
+ */
+export function conjugateGradientConvergenceDiagnostics(
+  solves: readonly ConjugateGradientConvergenceSample[],
+  context = "Sparse CG"
+): ConjugateGradientConvergenceDiagnostics {
+  let trueRelativeResidual = 0;
+  let recursiveRelativeResidual = 0;
+  let trueResidualRestarts = 0;
+  let unconverged = 0;
+  let worst: ConjugateGradientConvergenceSample | undefined;
+  for (const solve of solves) {
+    trueResidualRestarts += solve.restartCycles;
+    recursiveRelativeResidual = Math.max(recursiveRelativeResidual, solve.recursiveRelativeResidual);
+    trueRelativeResidual = Math.max(trueRelativeResidual, solve.trueRelativeResidual);
+    if (!solve.converged) {
+      unconverged += 1;
+      if (!worst || solve.trueRelativeResidual > worst.trueRelativeResidual) worst = solve;
+    }
+  }
+  const diagnostics: ConjugateGradientConvergenceDiagnostics = {
+    converged: unconverged === 0,
+    trueRelativeResidual,
+    recursiveRelativeResidual,
+    trueResidualRestarts
+  };
+  if (worst) {
+    const trueResidual = solves.length > 1
+      ? `${unconverged} of ${solves.length} linear solves stopped with a recomputed true relative residual ‖b − Ax‖/‖b‖ of up to ${formatResidual(worst.trueRelativeResidual)}`
+      : `the recomputed true relative residual ‖b − Ax‖/‖b‖ stayed at ${formatResidual(worst.trueRelativeResidual)}`;
+    diagnostics.partialConvergenceWarning =
+      `${context} partially converged: its recursively updated residual met the requested tolerance ${formatResidual(worst.tolerance)}, ` +
+      `but ${trueResidual} after ${trueResidualRestarts} true-residual restart cycle${trueResidualRestarts === 1 ? "" : "s"}. ` +
+      "Results are usable but less accurate than requested.";
+  }
+  return diagnostics;
+}
+
+function formatResidual(value: number): string {
+  return Number.isFinite(value) ? value.toExponential(2) : String(value);
 }
 
 export function reduceCsrSystem(

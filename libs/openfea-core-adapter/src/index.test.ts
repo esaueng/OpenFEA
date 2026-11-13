@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { solverSurfaceMeshFromModel } from "@openfea/core";
+import { solverSurfaceMeshFromModel, type OpenFEAModelJson, type SolverSurfaceMesh, type SurfaceFacetJson, type SurfaceSetJson } from "@openfea/core";
 import { solveCoreStatic } from "@openfea/solver-cpu";
-import type { DisplayModel, RunVariantResult, Study } from "@openfea/schema";
+import { createStructuredCantileverModel } from "../../../packages/solver-cpu/tests/helpers";
+import { ResultSummarySchema, type DisplayModel, type RunVariantResult, type Study } from "@openfea/schema";
 import {
   autoSolverBackend,
   bracketMeshSizeMmForPreset,
@@ -16,7 +17,8 @@ import {
   staticEnvelopeVariant,
   studyForCoreGeometryDispatch,
   topologySpanIsUsable,
-  trySolveOpenFeaCoreStudy
+  trySolveOpenFeaCoreStudy,
+  type CoreMeshStatistics
 } from "./index";
 
 function studyFixture(overrides: Partial<Study> = {}): Study {
@@ -413,7 +415,9 @@ describe("local core solve mesh statistics", () => {
     });
     expect(solved.ok).toBe(true);
     if (!solved.ok) return;
-    const stats = solved.result.artifacts?.meshStatistics;
+    // The solve outcome keeps artifacts as an open record; the local adapter
+    // writes meshStatistics as CoreMeshStatistics.
+    const stats = solved.result.artifacts?.meshStatistics as CoreMeshStatistics | undefined;
     expect(stats).toBeDefined();
     expect(stats!.nodes).toBeGreaterThan(0);
     expect(stats!.elements).toBeGreaterThan(0);
@@ -481,8 +485,11 @@ describe("load-case run variants", () => {
       "case:side",
       "combination:down-minus-side"
     ]);
-    expect(envelope?.governingVariantIndices?.stress.length).toBe(solved.result.surfaceMesh?.nodes.length);
-    expect(envelope?.governingVariantIndices?.displacement.length).toBe(solved.result.surfaceMesh?.nodes.length);
+    // The outcome types surfaceMesh as unknown; the local Core solve returns the solver surface mesh.
+    const surfaceNodeCount = (solved.result.surfaceMesh as SolverSurfaceMesh | undefined)?.nodes.length;
+    expect(surfaceNodeCount).toBeGreaterThan(0);
+    expect(envelope?.governingVariantIndices?.stress.length).toBe(surfaceNodeCount);
+    expect(envelope?.governingVariantIndices?.displacement.length).toBe(surfaceNodeCount);
   });
 
   test("streams dynamic cases separately and retains only the active transient payload", () => {
@@ -547,11 +554,12 @@ describe("load-case run variants", () => {
 });
 
 describe("per-model solver backend resolution", () => {
-  function autoStudy(overrides: Partial<Study> = {}): Study {
+  // Injects the static solver settings shape, so overrides are static-study fields only.
+  function autoStudy(overrides: Partial<Extract<Study, { type: "static_stress" }>> = {}): Study {
     return studyFixture({ solverSettings: {}, ...overrides });
   }
 
-  function actualMeshSettings(): Study["meshSettings"] {
+  function actualMeshSettings(model: OpenFEAModelJson = actualCoreModelFixture()): Study["meshSettings"] {
     return {
       preset: "medium",
       status: "complete",
@@ -563,11 +571,43 @@ describe("per-model solver backend resolution", () => {
         source: "actual_volume_mesh",
         artifacts: {
           meshConnectivity: { connectedComponents: 1 },
-          actualCoreModel: { model: actualCoreModelFixture() }
+          actualCoreModel: { model }
         }
       }
     } as Study["meshSettings"];
   }
+
+  test("preserves a slender static solve's convergence warning in saved variant summaries", () => {
+    const displayModel = cantileverDisplayModel();
+    const model = createStructuredCantileverModel({ length: 40, width: 1, height: 1, force: 100, xDivisions: 40, yDivisions: 1, zDivisions: 1 });
+    for (const [surfaceIndex, sourceSelectionRef, sourceFaceId] of [
+      [0, "selection-fixed-face", "face-base-left"],
+      [1, "selection-load-face", "face-load-top"]
+    ] as const) {
+      for (const id of model.surfaceSets![surfaceIndex]!.facets) {
+        const facet = model.surfaceFacets!.find((entry) => entry.id === id)!;
+        Object.assign(facet, { sourceSelectionRef, sourceFaceId });
+      }
+    }
+    const study = autoStudy({
+      meshSettings: actualMeshSettings(model),
+      loads: [{ id: "load-1", type: "force", selectionRef: "selection-load-face", parameters: { value: 100, units: "N", direction: [0, -1, 0] }, status: "complete" }],
+      loadCases: [{ id: "case-default", name: "Default", enabled: true, loadIds: ["load-1"] }],
+      loadCombinations: [{ id: "combination", name: "Combination", enabled: true, factors: [{ caseId: "case-default", factor: 2 }] }]
+    });
+
+    const outcome = trySolveOpenFeaCoreStudy({ study, displayModel, runId: "slender" });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.result.variants?.map((variant) => variant.kind)).toEqual(["case", "combination", "envelope"]);
+    for (const variant of outcome.result.variants ?? []) {
+      expect(ResultSummarySchema.parse(variant.summary).diagnostics).toContainEqual(expect.objectContaining({
+        id: "partial-convergence",
+        source: "solver",
+        message: expect.stringContaining("recomputed true relative residual")
+      }));
+    }
+  });
 
   test("treats unset, auto, legacy, retired-cloud, and unknown backend values as no explicit choice", () => {
     for (const backend of [undefined, "auto", "cloudflare_fea", "opencae_core", "local_detailed", "opencae_core_cloud", "mystery_backend"]) {
@@ -644,10 +684,7 @@ describe("per-model solver backend resolution", () => {
     const physicalName = `!!Body${"_".repeat(50_000)}Selection??`;
     const storedModel = actualCoreModelFixture();
     storedModel.elementSets = [{ name: physicalName, elements: [0] }];
-    const meshSettings = actualMeshSettings();
-    const actualModel = meshSettings.summary?.artifacts?.actualCoreModel;
-    if (!actualModel) throw new Error("Expected the actual Core model fixture.");
-    actualModel.model = storedModel;
+    const meshSettings = actualMeshSettings(storedModel);
     const study = autoStudy({
       namedSelections: [{
         id: "selection-body-1",
@@ -673,10 +710,9 @@ describe("per-model solver backend resolution", () => {
   });
 
   test("writes run-time materials in the stored model's mm-N-s-MPa units", () => {
-    const storedModel = { ...actualCoreModelFixture(), coordinateSystem: { solverUnits: "mm-N-s-MPa" as const, renderCoordinateSpace: "solver" } };
+    const storedModel: ActualCoreModelFixture = { ...actualCoreModelFixture(), coordinateSystem: { solverUnits: "mm-N-s-MPa", renderCoordinateSpace: "solver" } };
     storedModel.nodes = { coordinates: storedModel.nodes.coordinates.map((value) => value * 1000) };
-    const meshSettings = actualMeshSettings();
-    meshSettings.summary!.artifacts!.actualCoreModel = { model: storedModel };
+    const meshSettings = actualMeshSettings(storedModel);
 
     const material = buildOpenFeaCoreModelForStudy(autoStudy({ meshSettings }), cantileverDisplayModel()).model.materials[0]!;
 
@@ -684,6 +720,75 @@ describe("per-model solver backend resolution", () => {
     expect(material.youngModulus).toBeCloseTo(68_900, 6);
     expect(material.yieldStrength).toBeCloseTo(276, 9);
     expect(material.density).toBeCloseTo(2.7e-9, 18);
+  });
+
+  test("emits pressure and traction in the stored model's solver stress unit (Pa for m, MPa for mm)", () => {
+    const pressureStudy = (meshSettings: Study["meshSettings"], value: number, units: string) => autoStudy({
+      meshSettings,
+      loads: [
+        { id: "pressure", type: "pressure", selectionRef: "selection-load-face", parameters: { value, units }, status: "complete" },
+        { id: "traction", type: "surface_traction", selectionRef: "selection-load-face", parameters: { value, units, direction: [0, -1, 0] }, status: "complete" }
+      ]
+    });
+    const mmMeshSettings = actualMeshSettings(mmActualCoreModelFixture());
+
+    for (const { value, units, pascals } of [
+      { value: 250, units: "Pa", pascals: 250 },
+      { value: 125, units: "kPa", pascals: 125_000 },
+      { value: 2.5, units: "MPa", pascals: 2_500_000 },
+      { value: 10, units: "psi", pascals: 68_947.57293168 }
+    ]) {
+      const mModel = buildOpenFeaCoreModelForStudy(pressureStudy(actualMeshSettings(), value, units), cantileverDisplayModel()).model;
+      const mmModel = buildOpenFeaCoreModelForStudy(pressureStudy(mmMeshSettings, value, units), cantileverDisplayModel()).model;
+      const pressureOf = (model: typeof mModel) => {
+        const load = model.loads.find((candidate) => candidate.type === "pressure");
+        if (load?.type !== "pressure") throw new Error(`Expected a pressure load for ${units}.`);
+        return load.pressure;
+      };
+      const tractionOf = (model: typeof mModel) => {
+        const load = model.loads.find((candidate) => candidate.type === "surfaceTraction");
+        if (load?.type !== "surfaceTraction") throw new Error(`Expected a surface traction load for ${units}.`);
+        return Math.hypot(...load.traction);
+      };
+
+      expect(mModel.coordinateSystem?.solverUnits).toBe("m-N-s-Pa");
+      expect(mmModel.coordinateSystem?.solverUnits).toBe("mm-N-s-MPa");
+      expect(pressureOf(mModel)).toBeCloseTo(pascals, 6);
+      expect(tractionOf(mModel)).toBeCloseTo(pascals, 6);
+      // MPa = Pa / 1e6: the same physical load, not a 1e6x overload.
+      expect(pressureOf(mmModel)).toBeCloseTo(pascals / 1_000_000, 9);
+      expect(tractionOf(mmModel)).toBeCloseTo(pascals / 1_000_000, 9);
+    }
+  });
+
+  test("solves the same pressure-loaded tet to the same physical displacement in mm and m solver units", () => {
+    const pressureStudy = (meshSettings: Study["meshSettings"]) => autoStudy({
+      meshSettings,
+      loads: [{ id: "pressure", type: "pressure", selectionRef: "selection-load-face", parameters: { value: 20, units: "MPa" }, status: "complete" }]
+    });
+    const mmMeshSettings = actualMeshSettings(mmActualCoreModelFixture());
+    // Solver-cpu reports displacement in mm and stress in MPa for both unit
+    // systems, so the same physical load must give the same field peaks.
+    const peaks = (model: ReturnType<typeof buildOpenFeaCoreModelForStudy>["model"]) => {
+      const solved = solveCoreStatic(model, { method: "sparse", solverMode: "sparse" });
+      if (!solved.ok) throw new Error(`Expected the pressure-loaded tet to solve: ${JSON.stringify(solved)}`);
+      const surfaceMesh = solved.result.surfaceMesh ?? solverSurfaceMeshFromModel(model);
+      const peakOf = (type: "displacement" | "stress") => {
+        const field = solved.result.fields.find((candidate) => candidate.type === type && candidate.surfaceMeshRef === surfaceMesh.id);
+        if (!field) throw new Error(`Expected a surface ${type} field.`);
+        return Math.max(...field.values.map(Math.abs));
+      };
+      return { displacementMm: peakOf("displacement"), stressMpa: peakOf("stress") };
+    };
+
+    const metres = peaks(buildOpenFeaCoreModelForStudy(pressureStudy(actualMeshSettings()), cantileverDisplayModel()).model);
+    const millimetres = peaks(buildOpenFeaCoreModelForStudy(pressureStudy(mmMeshSettings), cantileverDisplayModel()).model);
+
+    expect(metres.displacementMm).toBeGreaterThan(0);
+    expect(metres.stressMpa).toBeGreaterThan(0);
+    // Before the fix the mm model received 20e6 "MPa" and both ratios were 1e6.
+    expect(millimetres.displacementMm / metres.displacementMm).toBeCloseTo(1, 6);
+    expect(millimetres.stressMpa / metres.stressMpa).toBeCloseTo(1, 6);
   });
 
   test("rejects unverifiable index-only mappings from pre-alias mesh artifacts", () => {
@@ -877,7 +982,29 @@ describe("static result envelopes", () => {
   });
 });
 
-function actualCoreModelFixture() {
+/** The actual Core model fixture rescaled to mm-N-s-MPa (lengths x1000, areas x1e6). */
+function mmActualCoreModelFixture(): ActualCoreModelFixture {
+  const model = actualCoreModelFixture();
+  const scalePoint = (point: [number, number, number]): [number, number, number] => [point[0] * 1000, point[1] * 1000, point[2] * 1000];
+  return {
+    ...model,
+    nodes: { coordinates: model.nodes.coordinates.map((value) => value * 1000) },
+    surfaceFacets: model.surfaceFacets.map((facet) => ({ ...facet, area: facet.area * 1_000_000, center: scalePoint(facet.center) })),
+    coordinateSystem: { solverUnits: "mm-N-s-MPa", renderCoordinateSpace: "solver" }
+  };
+}
+
+/**
+ * A stored actual-volume-mesh model. Typed as the full Core model JSON so tests
+ * can swap in other load, facet, and surface-set variants, while the facets keep
+ * the geometry this fixture always provides.
+ */
+type ActualCoreModelFixture = Omit<OpenFEAModelJson, "surfaceFacets" | "surfaceSets"> & {
+  surfaceFacets: Array<SurfaceFacetJson & { area: number; center: [number, number, number] }>;
+  surfaceSets: SurfaceSetJson[];
+};
+
+function actualCoreModelFixture(): ActualCoreModelFixture {
   return {
     schema: "opencae.model" as const,
     schemaVersion: "0.2.0" as const,

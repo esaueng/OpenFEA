@@ -204,6 +204,29 @@ describe("validateStaticStressStudy", () => {
     ])).toBe("x");
   });
 
+  it("ranks pressures with the solver's unit reading (missing label is Pa, labels are case-insensitive)", () => {
+    // A 10 N force bending about x competes with a pressure on a 1 cm² face bending about y.
+    // The pressure only wins when it is read as 1e6 Pa (100 N), never as 1000 kPa from a missing label.
+    const studyWithPressure = (parameters: Record<string, unknown>): Study => ({
+      ...readyStudy,
+      constraints: [{ id: "fixed", type: "fixed", selectionRef: "support", parameters: {}, status: "complete" }],
+      namedSelections: [],
+      loads: [
+        { id: "force", type: "force", selectionRef: "force-face", parameters: { value: 10, direction: [0, 0, -1] }, status: "complete" },
+        { id: "pressure", type: "pressure", selectionRef: "pressure-face", parameters: { ...parameters, direction: [0, 0, -1] }, status: "complete" }
+      ]
+    });
+    const faces = [
+      { selectionId: "support", center: [0, 0, 0] as [number, number, number] },
+      { selectionId: "force-face", center: [1, 0, 0] as [number, number, number] },
+      { selectionId: "pressure-face", center: [0, 1, 0] as [number, number, number], areaM2: 1e-4 }
+    ];
+
+    expect(inferCriticalPrintAxis(studyWithPressure({ value: 1000 }), faces)).toBe("x");
+    expect(inferCriticalPrintAxis(studyWithPressure({ value: 1, units: "mpa" }), faces)).toBe("y");
+    expect(inferCriticalPrintAxis(studyWithPressure({ value: 1000, units: "kPa" }), faces)).toBe("y");
+  });
+
   it("removes the force-parallel span before choosing the bracket bending axis", () => {
     const bracketStudy: Study = {
       ...readyStudy,
@@ -358,7 +381,7 @@ describe("validateStaticStressStudy", () => {
   });
 
   it("round-trips model and global build axes for sample and uploaded frames", () => {
-    const sample = { id: "sample-bracket", bodyCount: 1, faces: [], orientation: { x: 0, y: 0, z: 0 } } as DisplayModel;
+    const sample: DisplayModel = { id: "sample-bracket", name: "Sample bracket", bodyCount: 1, faces: [], orientation: { x: 0, y: 0, z: 0 } };
     expect(modelAxisToGlobalBuildAxis("x", sample)).toBe("x");
     expect(modelAxisToGlobalBuildAxis("y", sample)).toBe("z");
     expect(modelAxisToGlobalBuildAxis("z", sample)).toBe("y");
@@ -417,7 +440,8 @@ describe("validateStaticStressStudy", () => {
         timeStep: 0,
         outputInterval: 0,
         dampingRatio: -0.1,
-        integrationMethod: "newmark_average_acceleration"
+        integrationMethod: "newmark_average_acceleration",
+        loadProfile: "ramp"
       }
     };
 
@@ -445,7 +469,8 @@ describe("validateStaticStressStudy", () => {
         timeStep: 0.01,
         outputInterval: 0.01,
         dampingRatio: 0.02,
-        integrationMethod: "newmark_average_acceleration"
+        integrationMethod: "newmark_average_acceleration",
+        loadProfile: "ramp"
       }
     };
 
@@ -463,7 +488,8 @@ describe("validateStaticStressStudy", () => {
         timeStep: 0.005,
         outputInterval: 0.005,
         dampingRatio: 0.02,
-        integrationMethod: "newmark_average_acceleration"
+        integrationMethod: "newmark_average_acceleration",
+        loadProfile: "ramp"
       }
     };
 
@@ -485,6 +511,7 @@ describe("validateStaticStressStudy", () => {
         outputInterval: 0.005,
         dampingRatio: 0.02,
         integrationMethod: "newmark_average_acceleration",
+        loadProfile: "ramp",
         allowFreeMotion: true
       }
     };

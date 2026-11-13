@@ -1,5 +1,14 @@
 import { describe, expect, test } from "vitest";
-import { meshVolumeM3FromTriangles, solverMassToKilograms, stlDimensionsFromBytes, stlVolumeM3FromBytes } from ".";
+import {
+  meshVolumeM3FromTriangles,
+  PASCALS_PER_PSI,
+  pressureToPascals,
+  pressureToSolverStress,
+  solverMassToKilograms,
+  STANDARD_GRAVITY,
+  stlDimensionsFromBytes,
+  stlVolumeM3FromBytes
+} from ".";
 
 function binaryStl(vertices: [number, number, number][]): Uint8Array {
   const triangleCount = vertices.length / 3;
@@ -146,5 +155,35 @@ describe("solver mass units", () => {
   test("converts mm-N-s-MPa tonnes and m-N-s-Pa kilograms to kilograms", () => {
     expect(Math.abs(solverMassToKilograms(10.8, "kg") - 10.8)).toBeLessThan(1e-12);
     expect(Math.abs(solverMassToKilograms(0.0108, "t") - 10.8)).toBeLessThan(1e-12);
+  });
+});
+
+describe("pressure and stress units", () => {
+  test("converts study pressure labels to pascals", () => {
+    expect(pressureToPascals(250, "Pa")).toBe(250);
+    expect(pressureToPascals(125, "kPa")).toBe(125_000);
+    expect(pressureToPascals(2.5, "MPa")).toBe(2_500_000);
+    expect(pressureToPascals(10, "psi")).toBeCloseTo(10 * PASCALS_PER_PSI, 9);
+    expect(PASCALS_PER_PSI).toBe(6894.757293168);
+  });
+
+  test("emits Pa for m-N-s-Pa and MPa (Pa / 1e6) for mm-N-s-MPa solver models", () => {
+    for (const [value, units] of [[250, "Pa"], [125, "kPa"], [2.5, "MPa"], [10, "psi"]] as const) {
+      const pascals = pressureToPascals(value, units);
+      expect(pressureToSolverStress(value, units, "m-N-s-Pa")).toBe(pascals);
+      expect(pressureToSolverStress(value, units, "mm-N-s-MPa")).toBeCloseTo(pascals / 1_000_000, 12);
+    }
+    expect(pressureToSolverStress(2.5, "MPa", "mm-N-s-MPa")).toBe(2.5);
+  });
+
+  test("keeps the historical Pa reading for missing and unrecognised unit labels", () => {
+    expect(pressureToPascals(7, undefined)).toBe(7);
+    expect(pressureToPascals(7, "bar")).toBe(7);
+    expect(pressureToPascals(7, "constructor")).toBe(7);
+    expect(pressureToSolverStress(7, undefined, "mm-N-s-MPa")).toBeCloseTo(7e-6, 15);
+  });
+
+  test("exports standard gravity in m/s^2", () => {
+    expect(STANDARD_GRAVITY).toBe(9.80665);
   });
 });

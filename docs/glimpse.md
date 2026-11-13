@@ -44,6 +44,38 @@ inventory, and diagnostic signals are not distinct bugs. No unique anonymous
 user count or cross-app identity exists. Delivery is best effort and can drop
 counts; reports' page-local counts need not equal delivered service counts.
 
+### Diagnostic codes
+
+Each code is sent as `{event, bucket: "none"}` through the same opt-in path as
+every other expanded statistic (v2 grant, DNT/GPC suppression, withdrawal, page
+report caps, at most four in-flight sends, the relay's app-wide rate limit). The
+app decides locally whether a failure matches; messages, stacks, URLs, file and
+worker names, GPU/adapter/driver names, memory sizes and durations never leave
+the page.
+
+| Code | Trigger in OpenFEA |
+| --- | --- |
+| `error_runtime` | Uncaught error or unhandled rejection on the page |
+| `error_import`, `error_export`, `error_mesh`, `error_solver`, `error_storage`, `error_cloud_save`, `error_cloud_load` | Explicit failure sites in `WorkspaceApp.tsx` and `cloudBackup.ts` |
+| `error_unresponsive` | Main thread blocked for 5 s or more: one count per Long Task entry of at least 5 s (`PerformanceObserver`, `analytics.ts`). The observer runs only while optional analytics is enabled. Browsers without the Long Tasks API (currently non-Chromium) are not observed, so these counts cover Chromium-based browsers only |
+| `error_gpu_lost` | The viewer's WebGL context is lost, excluding three.js `forceContextLoss()` teardown and detached canvases (`watchWebGlContextLoss`, `CadViewer.tsx`); or the WebGPU solver's `device.lost` resolves for a reason other than its own `destroy()` (`packages/solver-webgpu`, failure code `webgpu-device-lost`). The WebGPU route is not used automatically yet (`WEBGPU_TET4_AUTOMATIC_ENABLED`), so this source is dormant until it is |
+| `error_out_of_memory` | Allocation failure at the meshing/solver sites: the WebGPU solver's `out-of-memory` error scope around its buffer allocation (`webgpu-out-of-memory`), or a mesh or solve failure reply whose error class and message show a typed-array/ArrayBuffer, wasm-heap or `bad_alloc` failure. `isAllocationFailure` (`diagnosticSink.ts`) classifies on the main thread; the text is never sent |
+| `error_worker` | An `error` event from the solve, mesh, performance, STEP-display or validation worker (unexpected failure or termination); deliberate cancellation and timeouts are not counted |
+
+Worker clients and the viewer report these three codes through
+`diagnosticSink.ts`, which `analytics.ts` connects to its consent-gated sender
+on the main thread. Inside Web Workers no sender is registered, so reports there
+are no-ops and analytics is not bundled into worker code.
+
+`error_unresponsive`, `error_gpu_lost`, `error_out_of_memory` and `error_worker`
+follow the Glimpse privacy review approved on 13 November 2026 and fall within
+the existing v2 description ("fixed codes at explicit failure sites"), so the
+consent version and notice are unchanged. One failure can produce several codes
+(for example `error_worker` and `error_solver`). An older Glimpse that does not
+accept a code yet rejects it at its RPC boundary; the relay drops that collector
+failure and still answers 204, and the client never retries, so the app is
+unaffected.
+
 OpenFEA has no registered cloud-account system or server-side project inventory.
 Do not manufacture cloud accounts or storage totals from encrypted backup tokens.
 Local project-file saves supply coarse file-size/body-count observations; encrypted

@@ -99,3 +99,16 @@ export function metricPercentError(metric: ValidationMetric): number | null {
   if (metric.reference === undefined || Math.abs(metric.reference) <= Number.EPSILON) return null;
   return (Math.abs(metric.value - metric.reference) / Math.abs(metric.reference)) * 100;
 }
+
+/**
+ * The acceptance rule a metric is judged by, shown beside its error. "Passed" next
+ * to a 15.7% peak-stress error read as a claim of accuracy; the ±35% tolerance it
+ * actually passed against was nowhere on screen. Null when the metric has no
+ * reference tolerance (measured-only values).
+ */
+export function metricAcceptanceLabel(metric: ValidationMetric): { text: string; within: boolean } | null {
+  const errorPercent = metricPercentError(metric);
+  if (errorPercent === null || metric.tolerancePercent === undefined) return null;
+  const within = errorPercent <= metric.tolerancePercent;
+  return { text: `Tolerance ±${metric.tolerancePercent}% · ${within ? "within" : "outside"}`, within };
+}

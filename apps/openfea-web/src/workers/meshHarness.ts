@@ -215,7 +215,6 @@ export type RunProofResult = {
   ok: boolean;
   error?: string;
   runId?: string;
-  streamUrl?: string;
   runSolverBackend?: string;
   events?: Array<{ type: string; progress?: number; message: string }>;
   sawMeshingEvents?: boolean;
@@ -283,7 +282,6 @@ async function runMeshThenSolveRunProof(): Promise<RunProofResult> {
       ok: completed,
       ...(completed ? {} : { error: `terminal=${terminal.type}: ${terminal.message}` }),
       runId: response.run.id,
-      streamUrl: response.streamUrl,
       runSolverBackend: (response.run as { solverBackend?: string }).solverBackend,
       events,
       sawMeshingEvents: events.some((event) => /meshing/i.test(event.message)),

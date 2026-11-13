@@ -1,7 +1,10 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    // Lib tests import node: built-ins. @types/node is not a direct dependency;
+    // vitest/node pulls it in through vite, the same way the web app gets it.
+    "types": ["vitest/node"]
   },
   "include": [
     "openfea-core-adapter/src",
@@ -12,6 +15,8 @@
     "openfea-solve-pipeline/src",
     "openfea-step/src",
     "openfea-study-core/src",
-    "openfea-units/src"
+    "openfea-units/src",
+    // Shared declaration for the untyped occt-import-js package used by STEP tests.
+    "../apps/openfea-web/src/occt-import-js.d.ts"
   ]
 }

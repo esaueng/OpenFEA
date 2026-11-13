@@ -30,3 +30,31 @@ describe("mesh worker cancellation", () => {
     expect(terminate).toHaveBeenCalledOnce();
   });
 });
+
+describe("mesh worker failure messages", () => {
+  afterEach(() => {
+    cancelMeshWork();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  test("do not expose local filesystem paths from a module-load failure", async () => {
+    const listeners = new Map<string, (event: unknown) => void>();
+    class FailingMeshWorker {
+      addEventListener(type: string, listener: (event: unknown) => void) { listeners.set(type, listener); }
+      postMessage() {}
+      terminate() {}
+    }
+    vi.stubGlobal("Worker", FailingMeshWorker);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const pending = meshGeoScriptInWorker({ geoScript: "SetFactory(\"OpenCASCADE\");", elementOrder: 1, units: "mm" });
+    const raw = "Failed to fetch dynamically imported module: http://localhost:5173/@fs/home/alice/src/OpenFEA/node_modules/.pnpm/@loumalouomega+gmsh-wasm@0.4.0/node_modules/@loumalouomega/gmsh-wasm/dist/gmsh-core.mjs?v=a562feab";
+    listeners.get("error")?.({ message: raw });
+
+    const error = await pending.then(() => new Error("expected the mesh request to reject"), (reason: unknown) => reason as Error);
+    expect(error.message).toBe("Failed to fetch dynamically imported module: gmsh-core.mjs");
+    expect(error.message).not.toContain("/home/");
+    expect(warn).toHaveBeenCalledWith("[OpenFEA mesh worker]", raw);
+  });
+});

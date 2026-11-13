@@ -1,4 +1,5 @@
 import type { ValidationBenchmarkId, ValidationBenchmarkResult } from "../validation/benchmarkRegistry";
+import { reportFailureDiagnostic } from "../diagnosticSink";
 
 type ValidationWorkerResponse =
   | { ok: true; result: ValidationBenchmarkResult }
@@ -31,6 +32,7 @@ export function runValidationBenchmarkInWorker(id: ValidationBenchmarkId): Promi
       else reject(new Error(event.data.error));
     };
     worker.onerror = (event) => {
+      reportFailureDiagnostic("error_worker");
       if (activeWorker === worker) {
         activeWorker = null;
         activeReject = null;

@@ -97,7 +97,9 @@ A mode converges only when its unit-independent scaled residual
 
 `||K phi - lambda M phi|| / max(||K phi||, |lambda| ||M phi||)`
 
-is at most `1e-6`. The solver returns only converged modes and reports requested versus converged counts. Inner CG non-convergence or singular constrained systems must produce an explicit insufficient-supports error naming the Supports step. A raw CG error is not an acceptable user diagnostic.
+is at most `1e-6`. The solver returns only converged modes and reports requested versus converged counts.
+
+That tolerance can lie below what double precision can resolve. A vector stored in doubles cannot have a computed residual much below its rounding floor `gamma_n ||(|K||phi| + |lambda| M|phi|)|| / max(||K phi||, |lambda| ||M phi||)`, where `gamma_n = n u / (1 - n u)`, `u = eps / 2`, and `n` is the longest stiffness row plus two. For the lowest bending modes of slender, finely meshed parts this floor grows roughly with `(L/H)^2 (L/h)^2`. Inner shift-invert CG solves therefore stop at each vector's representation floor (`eps` times the same ratio) rather than at a fixed `1e-9`. Driving the recursive CG residual past that floor only widened the gap to the true residual, which is why the slender 30k-DOF solve-ladder pair stalled at 2.5e-6 / 2.0e-6. A mode is also accepted when its residual is within its own floor and the last subspace pass shrank it by less than half. The measured residual is still exported unchanged. The mode is listed in `precisionLimitedModes` with its floor, and `precisionLimitWarning` names it in the result warning. On well-conditioned parts the floor is far below `1e-6`, so the criterion is unchanged there. Inner CG non-convergence or singular constrained systems must produce an explicit insufficient-supports error naming the Supports step. A raw CG error is not an acceptable user diagnostic.
 
 ## Benchmark Matrix
 

@@ -1,6 +1,7 @@
 /* Step panel extracted from RightPanel.tsx: file move only, no behavior change.
    Shared contracts live in ./RightPanelProps; panels never import each other. */
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 
 import { AlertTriangle, Check, Play, X } from "lucide-react";
 
@@ -9,33 +10,43 @@ import type { DisplayModel, DynamicSolverSettings, Study } from "@openfea/schema
 import { STUDY_TYPE_LABELS, studyTypeSwitchConsequence } from "../../studyTypeSwitch";
 
 import { type SettingHelpId } from "../../settingHelp";
+import { readinessItemStep, readinessItemText } from "../../runReadiness";
+import { runAdvisoriesForStudy } from "../../runAdvisories";
+import { formatAspectRatio, formatSolveTimeRange, solveTimeEstimateForStudy } from "../../lib/runTimeEstimate";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 import { defaultSolverMethodForStudy } from "../../unitDisplay";
 
 import type { RightPanelProps } from "./RightPanelProps";
-import { Panel } from "./PanelChrome";
+import { Panel, themedPortalRoot } from "./PanelChrome";
 import { DEFAULT_DYNAMIC_LOAD_PROFILE_HELPER, DEFAULT_DYNAMIC_OUTPUT_INTERVAL_SECONDS, DYNAMIC_LOAD_PROFILE_OPTIONS, MIN_DYNAMIC_OUTPUT_INTERVAL_SECONDS } from "./RightPanelProps";
 import { HelpLabel, Info, SectionTitle, dynamicFrameEstimate, formatSeconds, isDynamicLoadProfile, normalizedDynamicOutputInterval } from "./PanelChrome";
-export function RunPanel({ study, displayModel, runProgress, runError, runTiming, solveElapsedMs, onRunSimulation, onCancelSimulation, canCancelSimulation, onUpdateSolverSettings, onChangeStudyType, canRunSimulation, missingRunItems, runReadiness }: RightPanelProps) {
+export function RunPanel({ study, displayModel, runProgress, runError, runTiming, solveElapsedMs, onRunSimulation, onCancelSimulation, canCancelSimulation, onUpdateSolverSettings, onChangeStudyType, canRunSimulation, missingRunItems, runReadiness, onStepSelect }: RightPanelProps) {
   const progressPercent = Math.max(0, Math.min(100, Math.round(runProgress)));
   const isRunning = canCancelSimulation ?? (progressPercent > 0 && progressPercent < 100);
   const remainingLabel = formatSimulationEta(runTiming?.estimatedRemainingMs, isRunning);
   const elapsedLabel = formatSimulationElapsed(runTiming?.elapsedMs);
   const [invalidSettingFields, setInvalidSettingFields] = useState<readonly string[]>([]);
-  /* Forward warning (plan 027): structural ↔ thermal clears supports and loads. The
-     first click on such a type shows what will be lost; only the second click switches. */
+  /* Forward warning (plan 027): structural ↔ thermal clears supports and loads. It
+     used to switch on a second click of the same button, so a double-click wiped the
+     setup. Such a switch now opens an explicit confirmation dialog instead. */
   const [pendingStudyType, setPendingStudyType] = useState<Study["type"] | null>(null);
-  const pendingSwitchId = useId();
+  const analysisTypeGroupRef = useRef<HTMLDivElement | null>(null);
+  const runBlockedReasonId = useId();
   useEffect(() => { setPendingStudyType(null); }, [study.type]);
   const pendingConsequence = pendingStudyType ? studyTypeSwitchConsequence(study, pendingStudyType) : null;
   function requestStudyType(type: Study["type"]) {
     if (study.type === type) return;
-    if (studyTypeSwitchConsequence(study, type) && pendingStudyType !== type) {
+    if (studyTypeSwitchConsequence(study, type)) {
       setPendingStudyType(type);
       return;
     }
-    setPendingStudyType(null);
     onChangeStudyType?.(type);
+  }
+  function confirmStudyType() {
+    const type = pendingStudyType;
+    setPendingStudyType(null);
+    if (type) onChangeStudyType?.(type);
   }
   const trackSettingValidity = useCallback((field: string, invalid: boolean) => {
     setInvalidSettingFields((current) => {
@@ -61,21 +72,47 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
   const outputIntervalValue = dynamic?.outputInterval ?? DEFAULT_DYNAMIC_OUTPUT_INTERVAL_SECONDS;
   const loadProfile = isDynamicLoadProfile(dynamic?.loadProfile) ? dynamic.loadProfile : "ramp";
   const loadProfileHelper = DYNAMIC_LOAD_PROFILE_OPTIONS.find((option) => option.value === loadProfile)?.helper ?? DEFAULT_DYNAMIC_LOAD_PROFILE_HELPER;
+  // Pre-run solve-time range and non-blocking warnings (plan 036 Release A).
+  // Both are heuristics fitted to the browser solve ladder; see lib/runTimeEstimate.ts.
+  const solveEstimate = solveTimeEstimateForStudy(study, displayModel);
+  const runAdvisories = runAdvisoriesForStudy(study, displayModel, solveEstimate);
   return (
-    <Panel title="Run" question="Ready to solve?" step="run" helper={modal ? "Solve for natural frequencies and normalized mode shapes." : thermal ? "Solve for steady temperature and heat-flux fields." : "Run the simulation to estimate stress and displacement."} study={study}>
+    <Panel title="Run" question="Ready to solve?" step="run" helper={modal ? "Solve for natural frequencies and normalized mode shapes." : thermal ? "Solve for steady temperature and heat-flux fields." : "Run the simulation to solve for stress and displacement."} study={study}>
       <SectionTitle helpId="runReadiness">Readiness</SectionTitle>
       <div className="checklist">
-        {runReadiness.map(({ label, done, blockers }) => (
-          <div key={label} className={done ? "check done" : "check"}>
-            <span className="check-mark" aria-hidden="true">{done ? <Check size={14} strokeWidth={2.4} /> : null}</span>
-            <span className="check-copy">
-              {label}
-              {/* Blockers used to live only in a title tooltip (2026-09 review F7). */}
-              {!done && blockers.length > 0 && <small className="check-blockers">{blockers.join(" ")}</small>}
-            </span>
-          </div>
-        ))}
+        {runReadiness.map((item) => {
+          const { label, done, blockers, pending } = item;
+          const text = readinessItemText(item);
+          // Run opens before the setup is complete, so every unmet row says where it is fixed.
+          const target = done ? null : readinessItemStep(label);
+          return (
+            <div key={label} className={done ? "check done" : pending ? "check pending" : "check"}>
+              <span className="check-mark" aria-hidden="true">{done ? <Check size={14} strokeWidth={2.4} /> : null}</span>
+              <span className="check-copy">
+                {text}
+                {/* Blockers used to live only in a title tooltip (2026-09 review F7). */}
+                {!done && blockers.length > 0 && <small className="check-blockers">{blockers.join(" ")}</small>}
+                {!done && pending && <small className="check-pending">{pending}</small>}
+                {target && (
+                  <button className="text-button check-go-to" type="button" aria-label={`Go to ${target.stepLabel}: ${text}`} disabled={isRunning} onClick={() => onStepSelect(target.step)}>
+                    Go to {target.stepLabel}
+                  </button>
+                )}
+              </span>
+            </div>
+          );
+        })}
       </div>
+      {runAdvisories.map((advisory) => advisory.tone === "warning" ? (
+        <p key={advisory.id} className="panel-warning run-advisory" data-advisory={advisory.id}>
+          <AlertTriangle size={16} aria-hidden="true" />
+          <strong>{advisory.title}.</strong> {advisory.text}
+        </p>
+      ) : (
+        <p key={advisory.id} className="callout run-advisory" data-advisory={advisory.id}>
+          <strong>{advisory.title}.</strong> {advisory.text}
+        </p>
+      ))}
       {/* B5: the backend picker is gone — every simulation runs locally in the
           browser, so a choice would be routing theater. The Solver info block
           below states the backend; solverSettings.backend stays in the schema
@@ -84,7 +121,7 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
       <SectionTitle helpId="simulationSettings">Simulation settings</SectionTitle>
       <div className="field">
         <span>Analysis type</span>
-        <div className="segmented analysis-type run-analysis-type" role="group" aria-label="Analysis type">
+        <div className="segmented analysis-type run-analysis-type" role="group" aria-label="Analysis type" ref={analysisTypeGroupRef}>
           {(["static_stress", "dynamic_structural", "modal_analysis", "steady_state_thermal"] as const).map((type) => {
             const consequence = studyTypeSwitchConsequence(study, type);
             return (
@@ -93,20 +130,22 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
                 className={study.type === type ? "active" : ""}
                 type="button"
                 aria-pressed={study.type === type}
-                aria-describedby={pendingStudyType === type ? pendingSwitchId : undefined}
+                aria-haspopup={consequence ? "dialog" : undefined}
                 disabled={isRunning}
-                title={consequence ? `${consequence.message} Click twice to confirm.` : undefined}
+                title={consequence ? `${consequence.message} You will be asked to confirm.` : undefined}
                 onClick={() => requestStudyType(type)}
               >{STUDY_TYPE_LABELS[type]}</button>
             );
           })}
         </div>
-        {pendingStudyType && pendingConsequence && (
-          <p className="panel-warning study-type-warning" role="alert" id={pendingSwitchId}>
-            <AlertTriangle size={16} />
-            {pendingConsequence.message} Click {STUDY_TYPE_LABELS[pendingStudyType]} again to switch, or{" "}
-            <button className="text-button" type="button" onClick={() => setPendingStudyType(null)}>keep the current setup</button>.
-          </p>
+        {pendingStudyType && pendingConsequence && typeof document !== "undefined" && createPortal(
+          <StudyTypeSwitchDialog
+            targetLabel={STUDY_TYPE_LABELS[pendingStudyType]}
+            message={pendingConsequence.message}
+            onConfirm={confirmStudyType}
+            onCancel={() => setPendingStudyType(null)}
+          />,
+          themedPortalRoot(analysisTypeGroupRef.current)
         )}
       </div>
       {dynamic && (
@@ -155,13 +194,14 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
         disabled={isRunning ? !onCancelSimulation : (!canRunSimulation || hasInvalidSettingDraft)}
         title={isRunning ? "Stop simulation" : hasInvalidSettingDraft ? "Correct the highlighted simulation settings" : (missingRunItems.length ? `Complete before running: ${missingRunItems.join(", ")}` : "Run simulation")}
         aria-label={isRunning ? "Stop simulation" : "Run simulation"}
+        aria-describedby={!isRunning && missingRunItems.length > 0 ? runBlockedReasonId : undefined}
       >
         {isRunning ? <X size={16} /> : <Play size={16} />}
         {isRunning ? "Stop simulation" : "Run simulation"}
       </button>
       {/* Same phrasing as the top-bar tooltip and status message; no lowercasing, which
           turned "STEP" into "step". */}
-      {missingRunItems.length > 0 && <p className="panel-copy">Complete before running: {missingRunItems.join(", ")}.</p>}
+      {missingRunItems.length > 0 && <p className="panel-copy" id={runBlockedReasonId}>Complete before running: {missingRunItems.join(", ")}.</p>}
       {runError && !isRunning && <p className="panel-warning" role="alert">{runError}</p>}
       {isRunning && (
         <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercent} aria-label="Simulation progress">
@@ -178,13 +218,61 @@ export function RunPanel({ study, displayModel, runProgress, runError, runTiming
       <SectionTitle helpId="solver">Solver</SectionTitle>
       <div className="summary-box">
         <Info label="Backend" value={solverBackendLabelForRunPanel(study, displayModel)} />
-        <Info label="Version" value="0.1.0" />
         <Info label="Solver method" value={defaultSolverMethodForStudy(study)} />
         <Info label="Runner" value={solverRunnerLabelForStudy(study, displayModel)} />
         {typeof solveElapsedMs === "number" && !isRunning && <Info label="Solved in" value={formatSimulationElapsed(solveElapsedMs)} />}
+        {!isRunning && <Info label="Estimated solve time" value={solveEstimate ? formatSolveTimeRange(solveEstimate) : "After meshing"} />}
       </div>
+      {!isRunning && solveEstimate && (
+        <p className="panel-copy run-time-estimate-note">
+          Approximate range from in-browser benchmark solves, scaled for {solveEstimate.solveDofs.toLocaleString()} DOF, {solveEstimate.elementOrder}
+          {solveEstimate.aspectRatio !== null ? ` and a ${formatAspectRatio(solveEstimate.aspectRatio)} bounding box` : ""}. Actual time depends on your browser and device; meshing is not included.
+          {solveEstimate.extrapolated ? ` Wider range: ${solveEstimate.extrapolationReasons.join(" ")}` : ""}
+        </p>
+      )}
     </Panel>
   );
+}
+
+/**
+ * Confirm-before-destroy for a structural ↔ thermal switch, in the same shape as the
+ * geometry-replacement dialog. Focus lands on the safe action (close), and the confirm
+ * button ignores the second click of a double-click, so the click pattern that used
+ * to wipe supports and loads cannot reach it.
+ */
+export function StudyTypeSwitchDialog({ targetLabel, message, onConfirm, onCancel }: { targetLabel: string; message: string; onConfirm: () => void; onCancel: () => void }) {
+  const dialogRef = useFocusTrap<HTMLElement>(true, onCancel);
+  const titleId = useId();
+  const copyId = useId();
+  return (
+    <div className="workflow-modal-backdrop" role="presentation">
+      <section ref={dialogRef} className="workflow-modal geometry-replace-dialog study-type-switch-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={copyId}>
+        <header className="workflow-modal-header">
+          <h2 id={titleId}>Switch to {targetLabel}?</h2>
+          <button className="icon-button" type="button" onClick={onCancel} aria-label="Keep the current analysis type">
+            <X size={18} />
+          </button>
+        </header>
+        <div className="geometry-replace-body">
+          <p className="panel-warning" id={copyId}>
+            <AlertTriangle size={16} aria-hidden="true" />
+            {message} Supports and loads do not carry over between structural and thermal analyses.
+          </p>
+        </div>
+        <footer className="workflow-modal-footer">
+          <button className="secondary" type="button" onClick={onCancel}>Keep current setup</button>
+          <button className="primary danger" type="button" onClick={(event) => confirmUnlessRepeatClick(event, onConfirm)}>Switch and clear setup</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+/** Runs `action` for a deliberate single click only; `detail` > 1 is a double-click's follow-up. */
+export function confirmUnlessRepeatClick(event: Pick<MouseEvent, "detail">, action: () => void): boolean {
+  if (event.detail > 1) return false;
+  action();
+  return true;
 }
 
 function DynamicNumberField({
@@ -302,7 +390,7 @@ function solverBackendLabelForRunPanel(study: Study, displayModel: DisplayModel)
 function solverRunnerLabelForStudy(study: Study, displayModel: DisplayModel): string {
   void study;
   void displayModel;
-  return "local core worker";
+  return "Background worker in this browser";
 }
 
 export function formatSimulationEta(remainingMs: number | undefined, isRunning = true): string {

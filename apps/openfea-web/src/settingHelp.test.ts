@@ -18,9 +18,19 @@ describe("setting help content", () => {
   test("does not promise model rotation the orientation buttons never perform", () => {
     // handleRotateModel only aims the camera (WorkspaceApp.tsx), and
     // rotateDisplayModel has no production call site, so displayModel.orientation
-    // is always zero and Reset is always disabled.
+    // stays zero and the panel only offers Reset for a project saved rotated.
     expect(SETTING_HELP.orientation.body).not.toMatch(/rotates the (imported )?model/i);
     expect(SETTING_HELP.orientation.body).toMatch(/camera/i);
+    expect(SETTING_HELP.orientation.body).not.toMatch(/greyed out/i);
+  });
+
+  test("does not tell the reader the picked load point changes the solve", () => {
+    // Force, pressure and payload gravity become surface loads over the whole
+    // selected face (libs/openfea-mesh-intake coreModelFromMesh); the picked
+    // point only places the viewer marker, as the Loads panel callout says.
+    expect(SETTING_HELP.loadPlacement.body).not.toMatch(/exact point/i);
+    expect(SETTING_HELP.loadPlacement.body).not.toMatch(/applied from that object center/i);
+    expect(SETTING_HELP.loadPlacement.body).toMatch(/does not change the solve/i);
   });
 
   test("tells the reader what the load case Enabled toggle actually does", () => {

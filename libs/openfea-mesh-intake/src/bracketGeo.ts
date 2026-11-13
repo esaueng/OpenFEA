@@ -213,3 +213,36 @@ function positive(value: unknown, fallback: number): number {
 function fmt(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 }
+
+// OpenFEA addition (not part of the upstream mirror above): the analytic volume
+// of the solid bracketGeoScript describes, so the UI can report the mass of the
+// geometry that is actually meshed and solved. It resolves dimensions and bores
+// with the same defaults and fit rules as bracketGeoScript. Exact for the
+// shipped descriptors, whose rib and bores do not overlap one another; the
+// meshed volume differs only by the faceting of the round bores.
+export function bracketSolidVolumeMm3(descriptor: BracketGeometryDescriptor = {}): number {
+  const baseLength = positive(descriptor.base?.length ?? descriptor.baseLength, 120);
+  const baseDepth = positive(descriptor.base?.width ?? descriptor.upright?.thickness ?? descriptor.upright?.depth ?? descriptor.baseDepth ?? descriptor.uprightDepth, 34);
+  const baseHeight = positive(descriptor.base?.height ?? descriptor.baseHeight, 10);
+  const uprightHeight = positive(descriptor.upright?.height ?? descriptor.uprightHeight, 88);
+  const uprightWidth = positive(descriptor.upright?.width ?? descriptor.uprightWidth, 18);
+  const uprightDepth = positive(descriptor.upright?.thickness ?? descriptor.upright?.depth ?? descriptor.uprightDepth, baseDepth);
+  const gussetLength = positive(descriptor.gusset?.length ?? descriptor.rib?.length ?? descriptor.gussetLength, 72);
+  const gussetHeight = positive(descriptor.gusset?.height ?? descriptor.rib?.height ?? descriptor.gussetHeight, 58);
+  const gussetThickness = Math.min(
+    positive(descriptor.gusset?.thickness ?? descriptor.rib?.thickness ?? descriptor.gussetThickness, baseDepth),
+    baseDepth
+  );
+  const holes = bracketHoles(descriptor, { baseLength, baseDepth, baseHeight, uprightWidth, uprightDepth, uprightHeight });
+
+  const base = baseLength * baseDepth * baseHeight;
+  const upright = uprightWidth * uprightDepth * (uprightHeight - baseHeight);
+  const ribLegX = Math.min(baseLength, uprightWidth + gussetLength) - uprightWidth;
+  const ribLegZ = Math.min(uprightHeight, baseHeight + gussetHeight) - baseHeight;
+  const rib = (ribLegX * ribLegZ / 2) * gussetThickness;
+  const bores = holes.reduce(
+    (sum, hole) => sum + Math.PI * hole.radius ** 2 * (hole.center[2] <= baseHeight ? baseHeight : uprightDepth),
+    0
+  );
+  return base + upright + rib - bores;
+}

@@ -22,6 +22,8 @@ import {
   type MeshWorkerResponse,
   type MeshWorkerResults
 } from "./meshProtocol";
+import { redactLocalPaths } from "./redactLocalPaths";
+import { isAllocationFailure, reportFailureDiagnostic } from "../diagnosticSink";
 import { workerClientError } from "./workerClientError";
 
 export type MeshProgressListener = (progress: { phase: MeshWorkerPhase; elapsedMs: number; attempt?: MeshAttemptContext }) => void;
@@ -138,11 +140,13 @@ function handleMeshWorkerMessage(event: MessageEvent<MeshWorkerResponse>) {
   pendingRequests.delete(response.id);
   globalThis.clearTimeout(pending.timeoutId);
   if (isMeshWorkerFailure(response)) {
-    const error = new Error(response.error.message);
+    const error = new Error(userFacingMeshWorkerMessage(response.error.message));
     // Preserve the error identity across the worker boundary so callers can
     // distinguish quality-gate rejections (MeshQualityError) from transient
     // meshing failures.
     if (response.error.name) error.name = response.error.name;
+    // Classified locally from the reply; only the fixed code is reported.
+    if (isAllocationFailure(response.error)) reportFailureDiagnostic("error_out_of_memory");
     pending.reject(error);
     releaseMeshWorkerIfIdle();
     return;
@@ -164,7 +168,9 @@ function releaseMeshWorkerIfIdle(): void {
 }
 
 function handleMeshWorkerError(event: ErrorEvent) {
-  const error = new Error(event.message || "Mesh worker failed.");
+  // Fixed code only: the event's message, filename and line never leave the page.
+  reportFailureDiagnostic("error_worker");
+  const error = new Error(event.message ? userFacingMeshWorkerMessage(event.message) : "Mesh worker failed.");
   for (const pending of pendingRequests.values()) {
     globalThis.clearTimeout(pending.timeoutId);
     pending.reject(error);
@@ -172,4 +178,15 @@ function handleMeshWorkerError(event: ErrorEvent) {
   pendingRequests.clear();
   workerInstance?.terminate();
   workerInstance = null;
+}
+
+/**
+ * Worker failures surface verbatim in the mesh step ("Needs attention"); a
+ * module-load failure would otherwise show the dev server's /@fs/<home dir>/...
+ * URL. Dev builds keep the full text in the console for contributors; the UI shows file names only.
+ */
+function userFacingMeshWorkerMessage(message: string): string {
+  const redacted = redactLocalPaths(message);
+  if (import.meta.env.DEV && redacted !== message) console.warn("[OpenFEA mesh worker]", message);
+  return redacted;
 }

@@ -47,7 +47,16 @@ export default tseslint.config(
       "react-hooks/rules-of-hooks": "error",
       // Warn only: the existing findings are mostly effects deliberately keyed
       // to a trigger, and adding deps there would change when they run.
-      "react-hooks/exhaustive-deps": "warn"
+      "react-hooks/exhaustive-deps": "warn",
+      // drei's Text (troika) fetches fallback fonts from cdn.jsdelivr.net for
+      // any glyph its font lacks; scene labels must stay on-device.
+      "no-restricted-imports": ["error", {
+        paths: [{
+          name: "@react-three/drei",
+          importNames: ["Text", "Text3D"],
+          message: "Use SceneLabelText (components/SceneLabelText.tsx): it bundles the font and keeps troika off its CDN font resolver."
+        }]
+      }]
     }
   }
 );

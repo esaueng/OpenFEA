@@ -235,6 +235,36 @@ describe("Cloudflare local-first worker", () => {
     expect(new Uint8Array(await restored.arrayBuffer())).toEqual(new Uint8Array(32).fill(1));
   });
 
+  test("deletes a backup only for the matching capability token", async () => {
+    const env = createEnv();
+    const backupId = "33333333-3333-4333-8333-333333333333";
+    const token = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN1234567890-_";
+    const otherToken = "zyxwvutsrqponmlkjihgfedcbaABCDEFGHIJ1234567890-_";
+    const url = `https://fea.esau.app/api/project-backups/${backupId}`;
+    const put = await dispatchWorker(new Request(url, {
+      method: "PUT",
+      headers: { "content-length": "32", "x-opencae-backup-token": token },
+      body: new Uint8Array(32).fill(3)
+    }), env);
+    expect(put.status).toBe(201);
+
+    const unauthenticated = await dispatchWorker(new Request(url, { method: "DELETE" }), env);
+    expect(unauthenticated.status).toBe(401);
+    const wrongToken = await dispatchWorker(new Request(url, { method: "DELETE", headers: { "x-opencae-backup-token": otherToken } }), env);
+    expect(wrongToken.status).toBe(403);
+    const stillThere = await dispatchWorker(new Request(url, { headers: { "x-opencae-backup-token": token } }), env);
+    expect(stillThere.status).toBe(200);
+    await stillThere.arrayBuffer();
+
+    const deleted = await dispatchWorker(new Request(url, { method: "DELETE", headers: { "x-opencae-backup-token": token } }), env);
+    expect(deleted.status).toBe(204);
+    expect(deleted.headers.get("x-content-type-options")).toBe("nosniff");
+    const gone = await dispatchWorker(new Request(url, { headers: { "x-opencae-backup-token": token } }), env);
+    expect(gone.status).toBe(404);
+    const repeated = await dispatchWorker(new Request(url, { method: "DELETE", headers: { "x-opencae-backup-token": token } }), env);
+    expect(repeated.status).toBe(404);
+  });
+
   test("rejects a body larger than the cap even when content-length is small", async () => {
     const env = createEnv();
     const backupId = "22222222-2222-4222-8222-222222222222";

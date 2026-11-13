@@ -275,7 +275,7 @@ function securityHeaders(): Record<string, string> {
       "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
-      "connect-src 'self' https://cdn.jsdelivr.net",
+      "connect-src 'self'",
       "worker-src 'self' blob:",
       "object-src 'none'",
       "base-uri 'self'",

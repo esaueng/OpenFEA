@@ -109,6 +109,7 @@ export type CoreVolumeMeshArtifact = {
       warnings?: string[];
     };
     diagnostics: string[];
-    units: "m";
+    /** Length unit of nodes.coordinates: "m" for m-N-s-Pa, "mm" for mm-N-s-MPa. */
+    units: "m" | "mm";
   };
 };

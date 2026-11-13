@@ -1,0 +1,506 @@
+{
+  "generatedBy": "scripts/verify-solve-ladder.mjs",
+  "date": "2026-11-13",
+  "machine": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "logicalCpus": 4,
+    "totalMemoryBytes": 16867405824,
+    "platform": "linux-x64",
+    "kernel": "6.18.44-fc-v445",
+    "node": "v22.23.4"
+  },
+  "engine": "chromium",
+  "runs": [
+    {
+      "engine": "chromium",
+      "browserVersion": "Chrome/153.0.8010.12",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+      "crossOriginIsolated": true,
+      "hardwareConcurrency": 4,
+      "result": {
+        "ok": true,
+        "caseId": "block-tet4-30k-modal",
+        "fixture": {
+          "id": "block-tet4-30k",
+          "shape": "block",
+          "order": "Tet4",
+          "rung": "30k",
+          "grid": {
+            "nx": 33,
+            "ny": 16,
+            "nz": 16,
+            "nodes": 9826,
+            "dofs": 29478
+          },
+          "freeDofs": 28611,
+          "fingerprint": "a904199d",
+          "totalDofs": 29478,
+          "elements": 50688
+        },
+        "analysis": "modal",
+        "appliedLimitMaxDofs": 150000,
+        "settings": {
+          "maxIterations": 50000,
+          "tolerance": 1e-10,
+          "preconditioner": "jacobi (modal default)"
+        },
+        "timings": {
+          "generateMs": 217.36000000010245,
+          "assembleMs": 461.05999999993946,
+          "totalSolveMs": 44744.72000000009
+        },
+        "solver": {
+          "subspaceIterations": 12,
+          "convergedModeCount": 3,
+          "frequenciesHz": [
+            1779.8017496414818,
+            1787.6954344089115,
+            3655.750128894234
+          ]
+        },
+        "coreResultValid": true,
+        "heap": {
+          "method": "unavailable"
+        }
+      },
+      "wallMs": 44982.50500000012,
+      "uaMemory": {
+        "method": "performance.measureUserAgentSpecificMemory (main thread, includes workers; sampled ~1 s, resolves at GC)",
+        "samples": 2,
+        "peakBytes": 3932971
+      },
+      "processMemory": {
+        "method": "largest child process VmHWM (Linux kernel peak RSS)",
+        "peakBytes": 181714944,
+        "role": "renderer"
+      },
+      "workerHeap": {
+        "method": "CDP Runtime.getHeapUsage on the worker target (usedSize + backingStorageSize, polled 250 ms)",
+        "peakBytes": 285130911,
+        "peakHeapUsedBytes": 33152572,
+        "peakArrayBufferBytes": 251978339,
+        "samples": 247
+      },
+      "evaluation": {
+        "passed": true,
+        "checks": [
+          "ok f1 vs Node rel 1.62e-14 (tol 0.000001)",
+          "ok f2 vs Node rel 1.97e-14 (tol 0.000001)",
+          "ok f3 vs Node rel 1.49e-15 (tol 0.000001)"
+        ]
+      }
+    },
+    {
+      "engine": "chromium",
+      "browserVersion": "Chrome/153.0.8010.12",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+      "crossOriginIsolated": true,
+      "hardwareConcurrency": 4,
+      "result": {
+        "ok": true,
+        "caseId": "block-tet10-30k-modal",
+        "fixture": {
+          "id": "block-tet10-30k",
+          "shape": "block",
+          "order": "Tet10",
+          "rung": "30k",
+          "grid": {
+            "nx": 16,
+            "ny": 8,
+            "nz": 8,
+            "nodes": 9537,
+            "dofs": 28611
+          },
+          "freeDofs": 27744,
+          "fingerprint": "c3769bdf",
+          "totalDofs": 28611,
+          "elements": 6144
+        },
+        "analysis": "modal",
+        "appliedLimitMaxDofs": 150000,
+        "settings": {
+          "maxIterations": 50000,
+          "tolerance": 1e-10,
+          "preconditioner": "jacobi (modal default)"
+        },
+        "timings": {
+          "generateMs": 63.58500000019558,
+          "assembleMs": 500,
+          "totalSolveMs": 86697.17999999993
+        },
+        "solver": {
+          "subspaceIterations": 10,
+          "convergedModeCount": 3,
+          "frequenciesHz": [
+            1768.021863329596,
+            1768.3356247775912,
+            3609.439453085461
+          ]
+        },
+        "coreResultValid": true,
+        "heap": {
+          "method": "unavailable"
+        }
+      },
+      "wallMs": 86781.7899999998,
+      "uaMemory": {
+        "method": "performance.measureUserAgentSpecificMemory (main thread, includes workers; sampled ~1 s, resolves at GC)",
+        "samples": 3,
+        "peakBytes": 4069305
+      },
+      "processMemory": {
+        "method": "largest child process VmHWM (Linux kernel peak RSS)",
+        "peakBytes": 423292928,
+        "role": "renderer"
+      },
+      "workerHeap": {
+        "method": "CDP Runtime.getHeapUsage on the worker target (usedSize + backingStorageSize, polled 250 ms)",
+        "peakBytes": 217418539,
+        "peakHeapUsedBytes": 3923696,
+        "peakArrayBufferBytes": 213494843,
+        "samples": 410
+      },
+      "evaluation": {
+        "passed": true,
+        "checks": [
+          "ok f1 vs Node rel 2.66e-14 (tol 0.000001)",
+          "ok f2 vs Node rel 7.48e-14 (tol 0.000001)",
+          "ok f3 vs Node rel 1.03e-14 (tol 0.000001)"
+        ]
+      }
+    },
+    {
+      "engine": "chromium",
+      "browserVersion": "Chrome/153.0.8010.12",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+      "crossOriginIsolated": true,
+      "hardwareConcurrency": 4,
+      "result": {
+        "ok": true,
+        "caseId": "slender-tet4-30k-static",
+        "fixture": {
+          "id": "slender-tet4-30k",
+          "shape": "slender",
+          "order": "Tet4",
+          "rung": "30k",
+          "grid": {
+            "nx": 276,
+            "ny": 5,
+            "nz": 5,
+            "nodes": 9972,
+            "dofs": 29916
+          },
+          "freeDofs": 29808,
+          "fingerprint": "2360ce8d",
+          "totalDofs": 29916,
+          "elements": 41400
+        },
+        "analysis": "static",
+        "appliedLimitMaxDofs": 150000,
+        "settings": {
+          "maxIterations": 50000,
+          "tolerance": 1e-10,
+          "preconditioner": "ssor"
+        },
+        "timings": {
+          "generateMs": 156.23500000010245,
+          "normalizeMs": 104.5800000000745,
+          "assembleMs": 631.535000000149,
+          "solveMs": 32302.409999999916,
+          "recoverMs": 942.2900000000373,
+          "totalSolveMs": 33980.81500000018
+        },
+        "solver": {
+          "cgIterations": 4515,
+          "finalRelativeResidual": 1.1406158555010666e-7,
+          "matrixNonZeros": 928932,
+          "estimatedMatrixBytes": 11266852
+        },
+        "parity": {
+          "tipMeanUz": -10.764300813512031,
+          "maxDisplacement": 10.780274007983127,
+          "reactionZ": 99.99999971686576,
+          "appliedZ": -100,
+          "reactionBalanceRelError": 2.831342413855964e-9
+        },
+        "coreResultValid": true,
+        "heap": {
+          "method": "unavailable"
+        }
+      },
+      "wallMs": 34162.27500000014,
+      "uaMemory": {
+        "method": "performance.measureUserAgentSpecificMemory (main thread, includes workers; sampled ~1 s, resolves at GC)",
+        "samples": 2,
+        "peakBytes": 3951439
+      },
+      "processMemory": {
+        "method": "largest child process VmHWM (Linux kernel peak RSS)",
+        "peakBytes": 633868288,
+        "role": "renderer"
+      },
+      "workerHeap": {
+        "method": "CDP Runtime.getHeapUsage on the worker target (usedSize + backingStorageSize, polled 250 ms)",
+        "peakBytes": 200621003,
+        "peakHeapUsedBytes": 7952224,
+        "peakArrayBufferBytes": 192668779,
+        "samples": 200
+      },
+      "evaluation": {
+        "passed": true,
+        "checks": [
+          "ok reaction balance 2.83e-9 (tol 0.000001)",
+          "ok tip uz vs Node rel 1.07e-11 (tol 0.000001)",
+          "ok max |u| vs Node rel 1.03e-11 (tol 0.000001)",
+          "ok reaction vs Node rel 6.74e-10 (tol 0.000001)"
+        ]
+      }
+    },
+    {
+      "engine": "chromium",
+      "browserVersion": "Chrome/153.0.8010.12",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+      "crossOriginIsolated": true,
+      "hardwareConcurrency": 4,
+      "result": {
+        "ok": true,
+        "caseId": "slender-tet4-30k-modal",
+        "fixture": {
+          "id": "slender-tet4-30k",
+          "shape": "slender",
+          "order": "Tet4",
+          "rung": "30k",
+          "grid": {
+            "nx": 276,
+            "ny": 5,
+            "nz": 5,
+            "nodes": 9972,
+            "dofs": 29916
+          },
+          "freeDofs": 29808,
+          "fingerprint": "2360ce8d",
+          "totalDofs": 29916,
+          "elements": 41400
+        },
+        "analysis": "modal",
+        "appliedLimitMaxDofs": 150000,
+        "settings": {
+          "maxIterations": 50000,
+          "tolerance": 1e-10,
+          "preconditioner": "jacobi (modal default)"
+        },
+        "timings": {
+          "generateMs": 323.6099999998696,
+          "assembleMs": 366.8800000001211,
+          "totalSolveMs": 304495.18999999994
+        },
+        "solver": {
+          "subspaceIterations": 7,
+          "convergedModeCount": 3,
+          "frequenciesHz": [
+            17.15531729284081,
+            18.02840162255461,
+            107.30048297837301
+          ]
+        },
+        "coreResultValid": true,
+        "heap": {
+          "method": "unavailable"
+        }
+      },
+      "wallMs": 304846.4550000001,
+      "uaMemory": {
+        "method": "performance.measureUserAgentSpecificMemory (main thread, includes workers; sampled ~1 s, resolves at GC)",
+        "samples": 6,
+        "peakBytes": 4055291
+      },
+      "processMemory": {
+        "method": "largest child process VmHWM (Linux kernel peak RSS)",
+        "peakBytes": 433582080,
+        "role": "renderer"
+      },
+      "workerHeap": {
+        "method": "CDP Runtime.getHeapUsage on the worker target (usedSize + backingStorageSize, polled 250 ms)",
+        "peakBytes": 235987027,
+        "peakHeapUsedBytes": 47451592,
+        "peakArrayBufferBytes": 188535435,
+        "samples": 1286
+      },
+      "evaluation": {
+        "passed": true,
+        "checks": [
+          "ok f1 vs Node rel 2.37e-10 (tol 0.000001)",
+          "ok f2 vs Node rel 2.54e-10 (tol 0.000001)",
+          "ok f3 vs Node rel 8.52e-13 (tol 0.000001)"
+        ]
+      }
+    },
+    {
+      "engine": "chromium",
+      "browserVersion": "Chrome/153.0.8010.12",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+      "crossOriginIsolated": true,
+      "hardwareConcurrency": 4,
+      "result": {
+        "ok": true,
+        "caseId": "slender-tet10-30k-static",
+        "fixture": {
+          "id": "slender-tet10-30k",
+          "shape": "slender",
+          "order": "Tet10",
+          "rung": "30k",
+          "grid": {
+            "nx": 101,
+            "ny": 3,
+            "nz": 3,
+            "nodes": 9947,
+            "dofs": 29841
+          },
+          "freeDofs": 29694,
+          "fingerprint": "22054418",
+          "totalDofs": 29841,
+          "elements": 5454
+        },
+        "analysis": "static",
+        "appliedLimitMaxDofs": 150000,
+        "settings": {
+          "maxIterations": 50000,
+          "tolerance": 1e-10,
+          "preconditioner": "ssor"
+        },
+        "timings": {
+          "generateMs": 81.97500000009313,
+          "normalizeMs": 61.66000000014901,
+          "assembleMs": 1234.1000000000931,
+          "solveMs": 125623.96999999997,
+          "recoverMs": 902.7550000001211,
+          "totalSolveMs": 127822.48500000034
+        },
+        "solver": {
+          "cgIterations": 7782,
+          "finalRelativeResidual": 2.7943537130929975e-7,
+          "matrixNonZeros": 2105473,
+          "estimatedMatrixBytes": 25385044
+        },
+        "parity": {
+          "tipMeanUz": -12.478205609645736,
+          "maxDisplacement": 12.479621008309566,
+          "reactionZ": 100.0000003123432,
+          "appliedZ": -100,
+          "reactionBalanceRelError": 3.1234320374551315e-9
+        },
+        "coreResultValid": true,
+        "heap": {
+          "method": "unavailable"
+        }
+      },
+      "wallMs": 127938.30000000005,
+      "uaMemory": {
+        "method": "performance.measureUserAgentSpecificMemory (main thread, includes workers; sampled ~1 s, resolves at GC)",
+        "samples": 3,
+        "peakBytes": 2686015
+      },
+      "processMemory": {
+        "method": "largest child process VmHWM (Linux kernel peak RSS)",
+        "peakBytes": 296910848,
+        "role": "renderer"
+      },
+      "workerHeap": {
+        "method": "CDP Runtime.getHeapUsage on the worker target (usedSize + backingStorageSize, polled 250 ms)",
+        "peakBytes": 192467739,
+        "peakHeapUsedBytes": 2817204,
+        "peakArrayBufferBytes": 189650535,
+        "samples": 566
+      },
+      "evaluation": {
+        "passed": true,
+        "checks": [
+          "ok reaction balance 3.12e-9 (tol 0.000001)",
+          "ok tip uz vs Node rel 4.63e-10 (tol 0.000001)",
+          "ok max |u| vs Node rel 4.59e-10 (tol 0.000001)",
+          "ok reaction vs Node rel 8.36e-9 (tol 0.000001)",
+          "ok tip uz vs Timoshenko rel 2.05e-3 (tol 0.01)"
+        ]
+      }
+    },
+    {
+      "engine": "chromium",
+      "browserVersion": "Chrome/153.0.8010.12",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+      "crossOriginIsolated": true,
+      "hardwareConcurrency": 4,
+      "result": {
+        "ok": true,
+        "caseId": "slender-tet10-30k-modal",
+        "fixture": {
+          "id": "slender-tet10-30k",
+          "shape": "slender",
+          "order": "Tet10",
+          "rung": "30k",
+          "grid": {
+            "nx": 101,
+            "ny": 3,
+            "nz": 3,
+            "nodes": 9947,
+            "dofs": 29841
+          },
+          "freeDofs": 29694,
+          "fingerprint": "22054418",
+          "totalDofs": 29841,
+          "elements": 5454
+        },
+        "analysis": "modal",
+        "appliedLimitMaxDofs": 150000,
+        "settings": {
+          "maxIterations": 50000,
+          "tolerance": 1e-10,
+          "preconditioner": "jacobi (modal default)"
+        },
+        "timings": {
+          "generateMs": 77.86499999999069,
+          "assembleMs": 426.07499999995343,
+          "totalSolveMs": 1175949.635
+        },
+        "solver": {
+          "subspaceIterations": 7,
+          "convergedModeCount": 3,
+          "frequenciesHz": [
+            16.32419903408295,
+            16.324793825143104,
+            102.10735018302313
+          ]
+        },
+        "coreResultValid": true,
+        "heap": {
+          "method": "unavailable"
+        }
+      },
+      "wallMs": 1176061.3900000001,
+      "uaMemory": {
+        "method": "performance.measureUserAgentSpecificMemory (main thread, includes workers; sampled ~1 s, resolves at GC)",
+        "samples": 21,
+        "peakBytes": 4118498
+      },
+      "processMemory": {
+        "method": "largest child process VmHWM (Linux kernel peak RSS)",
+        "peakBytes": 353021952,
+        "role": "renderer"
+      },
+      "workerHeap": {
+        "method": "CDP Runtime.getHeapUsage on the worker target (usedSize + backingStorageSize, polled 250 ms)",
+        "peakBytes": 201011371,
+        "peakHeapUsedBytes": 7314596,
+        "peakArrayBufferBytes": 193696775,
+        "samples": 4749
+      },
+      "evaluation": {
+        "passed": true,
+        "checks": [
+          "ok f1 vs Node rel 1.19e-9 (tol 0.000001)",
+          "ok f2 vs Node rel 9.80e-10 (tol 0.000001)",
+          "ok f3 vs Node rel 1.69e-11 (tol 0.000001)"
+        ]
+      }
+    }
+  ]
+}

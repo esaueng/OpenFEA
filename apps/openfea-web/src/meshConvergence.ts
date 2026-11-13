@@ -48,7 +48,25 @@ export type MeshConvergenceRunInput = {
   recordId?: string;
   now?: () => string;
   onProgress?: (preset: ConvergencePreset, phase: "mesh" | "solve" | "complete" | "failed" | "skipped") => void;
+  /**
+   * Cancels the ladder. An abort is not recorded as a failed rung: the run
+   * rejects with an AbortError and no record is produced. Callers stop the
+   * in-flight mesh or solve worker themselves when the signal fires.
+   */
+  signal?: AbortSignal;
 };
+
+/** True for the rejection `runStaticMeshConvergence` raises when its signal aborts. */
+export function isConvergenceCancelled(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function throwIfConvergenceCancelled(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return;
+  const error = new Error("Mesh-convergence study cancelled.");
+  error.name = "AbortError";
+  throw error;
+}
 
 export async function runStaticMeshConvergence(input: MeshConvergenceRunInput): Promise<MeshConvergenceRecord> {
   const now = input.now ?? (() => new Date().toISOString());
@@ -60,6 +78,7 @@ export async function runStaticMeshConvergence(input: MeshConvergenceRunInput): 
   let resolvedRecordProbe = input.probe;
 
   for (const preset of CONVERGENCE_PRESETS) {
+    throwIfConvergenceCancelled(input.signal);
     input.onProgress?.(preset, "mesh");
     let prepared: PreparedConvergenceMesh;
     try {
@@ -68,6 +87,7 @@ export async function runStaticMeshConvergence(input: MeshConvergenceRunInput): 
         meshSettings: { preset, status: "not_started" }
       });
     } catch (error) {
+      throwIfConvergenceCancelled(input.signal);
       rungs.push({ requestedPreset: preset, status: "failed", skipReason: errorMessage(error, "Mesh generation failed.") });
       input.onProgress?.(preset, "failed");
       continue;
@@ -89,6 +109,7 @@ export async function runStaticMeshConvergence(input: MeshConvergenceRunInput): 
       continue;
     }
 
+    throwIfConvergenceCancelled(input.signal);
     input.onProgress?.(preset, "solve");
     try {
       const result = await input.solve(prepared.study, preset);
@@ -107,11 +128,13 @@ export async function runStaticMeshConvergence(input: MeshConvergenceRunInput): 
       rungs.push({ ...base, status: "complete", ...resolved.metrics });
       input.onProgress?.(preset, "complete");
     } catch (error) {
+      throwIfConvergenceCancelled(input.signal);
       rungs.push({ ...base, status: "failed", skipReason: errorMessage(error, "Solve or probe mapping failed.") });
       input.onProgress?.(preset, "failed");
     }
   }
 
+  throwIfConvergenceCancelled(input.signal);
   const classification = classifyConvergenceRungs(rungs);
   return {
     id: input.recordId ?? convergenceRecordId(),

@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { bracketDemoProject, bracketDisplayModel } from "@openfea/samples";
 import type { ResultField, ResultSummary } from "@openfea/schema";
 import { buildResultViewerHtml, resultViewerPayloadFromHtml, suggestedResultHtmlFilename } from "./resultViewerHtml";
-import { STRESS_RAMP, stressRampFloatStops } from "./resultColorScale";
+import { resultRampFloatStops, safetyFactorColor, STRESS_RAMP, stressRampFloatStops } from "./resultColorScale";
 
 const summary: ResultSummary = {
   maxStress: 142,
@@ -123,5 +123,37 @@ describe("self-contained result viewer", () => {
     expect(html).toContain(JSON.stringify(stops));
     // The interpolation actually ran: no literal expression survives into the output.
     expect(html).not.toContain("stressRampFloatStops()");
+    expect(html).not.toContain("resultRampFloatStops(");
+  });
+
+  test("colours safety factor on the workspace's fixed absolute scale, not the stress ramp", () => {
+    // Every field used to be drawn with the stress ramp relative to its own range, so a
+    // high (safe) factor of safety rendered red in the exported viewer.
+    const html = buildResultViewerHtml({
+      project: bracketDemoProject,
+      study: bracketDemoProject.studies[0]!,
+      displayModel: bracketDisplayModel,
+      summary,
+      fields,
+      surfaceMesh: { id: "surface", nodes: [[0, 0, 0], [1, 0, 0], [0, 1, 0]], triangles: [[0, 1, 2]], coordinateSpace: "model-mm" },
+      exportedAt: "2026-07-14T12:00:00.000Z"
+    });
+    const script = html.match(/const SF_BANDS=[\s\S]*?function sf\(v\)\{[\s\S]*?\}(?=function rampStops)/)?.[0];
+    expect(script).toBeTruthy();
+    const sf = new Function(`${script}; return sf;`)() as (value: number) => number[];
+    const channels = (hex: string) => [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+    // Same colour as the workspace (to within the 3-decimal float rounding) for a
+    // yielding, a cautionary and a very safe factor.
+    for (const value of [0.5, 1.5, 158]) {
+      const exported = sf(value).map((channel) => channel * 255);
+      channels(safetyFactorColor(value)).forEach((channel, index) => {
+        expect(Math.abs(exported[index]! - channel), `SF ${value} channel ${index}`).toBeLessThanOrEqual(1);
+      });
+    }
+    expect(html).toContain("const c=isSf?sf(f.values[i]):ramp(");
+    // Other fields keep their own ramp, and the legend bar follows the field.
+    expect(html).toContain("Number.EPSILON),f.type)");
+    expect(html).toContain(JSON.stringify(resultRampFloatStops("displacement")));
+    expect(html).toContain("getElementById('legendBar').style.background=isSf?SF_GRADIENT");
   });
 });

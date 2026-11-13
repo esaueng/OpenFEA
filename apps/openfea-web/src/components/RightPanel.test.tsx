@@ -5,14 +5,16 @@ import { describe, expect, test, vi } from "vitest";
 import { bracketDisplayModel } from "@openfea/samples";
 import type { DisplayModel, Project, ResultField, ResultSummary, Study } from "@openfea/schema";
 import { dynamicSettingConstraintMessage, editableNumberCommitValue, playbackPeakMarkerPercent, resultModeExplanation, RightPanel, rangeProgressPercent } from "./RightPanel";
+import { StudyTypeSwitchDialog, confirmUnlessRepeatClick } from "./panels/RunPanel";
 import type { StepId } from "./StepNav";
-import { resultExportMenuItems } from "./panels/ResultsPanels";
+import { exportMenuFocusIndex, resultExportMenuItems } from "./panels/ResultsPanels";
 import { WorkspaceNoticeBanner } from "./panels/PanelChrome";
 import type { WorkspaceNotice } from "../workspaceNotice";
 import { readinessForStudy } from "../runReadiness";
 import { StudySchema } from "@openfea/schema";
 import { SUPPORTED_GEOMETRY_FORMAT_LABEL } from "../geometryFormats";
 import type { StepGeometryMetadata } from "../lib/api";
+import { createLocalSampleProject } from "../localProjectFactory";
 
 const workspaceAppSource = readFileSync(resolve(__dirname, "../WorkspaceApp.tsx"), "utf8").replace(/\r\n/g, "\n");
 const rightPanelSource = [
@@ -201,8 +203,13 @@ test("keeps sample model and analysis choices as drafts until confirmation", () 
   expect(rightPanelSource).toContain("const [pendingAnalysisType, setPendingAnalysisType]");
   expect(rightPanelSource).toContain("onLoadSample(pendingSampleModel, pendingAnalysisType)");
   expect(rightPanelSource).toContain("onClick={() => handleAnalysisSelect(option.id)}");
-  expect(rightPanelSource).toContain("setConfirmSampleLoad(true);");
   expect(rightPanelSource).not.toContain("onLoadSample(sample, sampleAnalysisType)");
+  // A second click on the same button is not a confirmation: a double-click
+  // would pass it. Loading routes through the geometry-replacement dialog,
+  // which names the setup it clears and opens focused on keeping the model.
+  expect(rightPanelSource).not.toContain("Click again to load sample");
+  expect(rightPanelSource).not.toContain("setConfirmSampleLoad");
+  expect(workspaceAppSource).toContain("requestGeometryReplacement(`Loading the ${sampleOptionFor(nextSample).title} sample`");
 });
 
 test("shows tensor-backed stress measures and hides them for legacy fields", () => {
@@ -238,6 +245,16 @@ function uploadedStepProject(status: StepGeometryMetadata["status"], message?: s
     }]
   };
 }
+
+test("shows a partial convergence warning alongside structural results", () => {
+  const message = "Static sparse CG partially converged.";
+  const html = renderPanel("results", { resultSummary: {
+    ...resultSummary,
+    diagnostics: [{ id: "partial-convergence", severity: "warning", source: "solver", message, suggestedActions: [] }]
+  } });
+  expect(html).toContain(message);
+  expect(html).toContain('class="panel-warning" role="status"');
+});
 
 describe("RightPanel advanced loads", () => {
   const advancedStudy: Study = {
@@ -324,6 +341,12 @@ describe("RightPanel view tools", () => {
     expect(html).not.toContain("Section plane axis");
     // Orientation stays in the panel.
     expect(html).toContain('aria-label="Axis view"');
+    // The axis buttons only move the camera, so an unrotated model gets no
+    // permanently disabled Reset; a project saved rotated still can reset.
+    expect(html).not.toContain("Reset model orientation");
+    const rotatedHtml = renderPanel("model", { displayModel: { ...displayModel, orientation: { x: 0, y: 0, z: 90 } } });
+    expect(rotatedHtml).toContain('title="Reset model orientation"');
+    expect(rotatedHtml).not.toContain('title="Reset model orientation" disabled=""');
     // The measured dimensions still read in the panel when they are switched on.
     expect(renderPanel("model", { showDimensions: true })).toContain("Overall dimensions");
   });
@@ -386,17 +409,17 @@ describe("RightPanel payload mass controls", () => {
     // Default draft direction is -Z: the axis choice is selected and the axis select shows it.
     const axis = renderPanel("loads");
     expect(axis).toContain('role="radiogroup" aria-label="Direction"');
-    expect(axis).toMatch(/role="radio" aria-checked="true" class="active" title="Acts along a global axis">Along axis</);
+    expect(axis).toMatch(/role="radio" aria-checked="true" tabindex="0" class="active" title="Acts along a global axis">Along axis</);
     expect(axis).toContain('<select aria-label="Axis direction"><option value="-Y">Global -Y</option>');
     expect(axis).toContain('<option value="-Z" selected="">Global -Z</option>');
     expect(axis).not.toContain('<option value="Opposite normal"');
 
     // "Opposite normal" (into the face) and "Normal" (out of it) map to the face choices.
     const into = renderPanel("loads", { draftLoadDirection: "Opposite normal" });
-    expect(into).toMatch(/role="radio" aria-checked="true" class="active" title="Pushes into the selected face[^"]*">Into face</);
+    expect(into).toMatch(/role="radio" aria-checked="true" tabindex="0" class="active" title="Pushes into the selected face[^"]*">Into face</);
     expect(into).not.toContain('aria-label="Axis direction"');
     const out = renderPanel("loads", { draftLoadDirection: "Normal" });
-    expect(out).toMatch(/role="radio" aria-checked="true" class="active" title="Pulls away from the selected face[^"]*">Out of face</);
+    expect(out).toMatch(/role="radio" aria-checked="true" tabindex="0" class="active" title="Pulls away from the selected face[^"]*">Out of face</);
   });
 
   test("folds load type, its explanation and extra faces into More options", () => {
@@ -783,8 +806,8 @@ describe("RightPanel payload mass controls", () => {
     expect(resultModeExplanation("stress")).toBe("Red areas have higher stress. Blue areas have lower stress.");
     expect(resultModeExplanation("displacement")).toBe("Red areas have higher displacement magnitude. Blue areas have lower displacement magnitude.");
     expect(resultModeExplanation("velocity")).toBe("Red areas have higher velocity magnitude. Blue areas have lower velocity magnitude.");
-    // SAFETY_RAMP puts red at low factors of safety; the sentence must agree with the ramp.
-    expect(resultModeExplanation("safety_factor")).toBe("Red areas are closest to yield (low safety factor). Green areas have the most margin.");
+    // The sentence must agree with the fixed safety-factor bands (red < 1 <= caution < 2 <= blue).
+    expect(resultModeExplanation("safety_factor")).toBe("Red areas yield (safety factor below 1). Orange and yellow areas have a thin margin (1 to 2). Blue areas are safe (2 or more).");
   });
 
   test("does not show the selected face as a persistent right-panel banner", () => {
@@ -929,7 +952,7 @@ describe("RightPanel payload mass controls", () => {
     const load: Study["loads"][number] = { id: "load-1", type: "force", selectionRef: "selection-top", parameters: { value: 500, units: "N", direction: [0, -1, 0] }, status: "complete" };
     const html = renderPanel("run", { study: { ...study, constraints: [support("support-1"), support("support-2")], loads: [load] } });
     // Crossing into thermal clears the structural setup; the button says so before the click.
-    expect(html).toMatch(/title="Switching to Thermal clears 2 supports and 1 load\. Click twice to confirm\."[^>]*>Thermal</);
+    expect(html).toMatch(/title="Switching to Thermal clears 2 supports and 1 load\. You will be asked to confirm\."[^>]*>Thermal</);
     // Staying structural loses nothing, so those buttons carry no warning.
     expect(html).not.toMatch(/title="Switching to Dynamic/);
     expect(html).not.toMatch(/title="Switching to Modal/);
@@ -1073,7 +1096,8 @@ describe("RightPanel payload mass controls", () => {
     expect(runHtml).not.toContain("solver-backend");
     expect(runHtml).toContain("Local (in-browser)");
     expect(runHtml.match(/Local \(in-browser\)/g)).toHaveLength(1);
-    expect(runHtml).toContain("local core worker");
+    expect(runHtml).toContain("Background worker in this browser");
+    expect(runHtml).not.toContain("local core worker");
     expect(runHtml).not.toContain("OpenCAE Core Cloud");
     expect(runHtml).not.toContain("legacy backend");
   });
@@ -1102,7 +1126,8 @@ describe("RightPanel payload mass controls", () => {
 
     expect(runHtml).toContain("Local (in-browser)");
     expect(runHtml.match(/Local \(in-browser\)/g)).toHaveLength(1);
-    expect(runHtml).toContain("local core worker");
+    expect(runHtml).toContain("Background worker in this browser");
+    expect(runHtml).not.toContain("local core worker");
     expect(runHtml).not.toContain("solver-backend");
   });
 
@@ -2202,48 +2227,56 @@ describe("RightPanel payload mass controls", () => {
         }]
       }
     });
-    const sampleHtml = renderPanel("model", {
-      project: {
-        ...project,
-        geometryFiles: [{
-          id: "geom-sample",
-          projectId: project.id,
-          filename: "bracket-demo.step",
-          localPath: "examples/bracket-demo/bracket-demo.step",
-          artifactKey: "project-1/geometry/bracket-display.json",
-          status: "ready",
-          metadata: { source: "sample", sampleModel: "bracket" }
-        }]
-      }
-    });
-
     expect(blankHtml).not.toContain("<span>Volume</span>");
     expect(blankHtml).not.toContain("<span>Mass</span>");
     expect(uploadedHtml).not.toContain("<span>Volume</span>");
     expect(uploadedHtml).not.toContain("<span>Mass</span>");
-    expect(sampleHtml).toContain("<span>Volume</span>");
-    expect(sampleHtml).toContain("<span>Mass</span>");
   });
 
-  test("reports beam structural mass separately from the payload mass", () => {
-    const beamHtml = renderPanel("model", {
-      sampleModel: "plate",
-      project: {
-        ...project,
-        geometryFiles: [{
-          id: "geom-beam",
-          projectId: project.id,
-          filename: "end-loaded-beam.step",
-          localPath: "examples/beam/end-loaded-beam.step",
-          artifactKey: "project-1/geometry/beam-display.json",
-          status: "ready",
-          metadata: { source: "sample", sampleModel: "plate" }
-        }]
-      }
+  async function renderSampleModelPanel(sample: "bracket" | "plate" | "cantilever", materialId?: string) {
+    const opened = await createLocalSampleProject(sample, "static_stress", "2026-01-01T00:00:00.000Z");
+    const sampleStudy = opened.project.studies[0]!;
+    return renderPanel("model", {
+      project: opened.project,
+      displayModel: opened.displayModel,
+      sampleModel: sample,
+      study: materialId
+        ? { ...sampleStudy, materialAssignments: sampleStudy.materialAssignments.map((assignment) => ({ ...assignment, materialId, parameters: {} })) }
+        : sampleStudy
     });
+  }
 
-    expect(beamHtml).toContain("28,590 mm");
-    expect(beamHtml).toContain("77 g");
+  test("derives sample volume from the solver block and mass from the assigned material", async () => {
+    // Cantilever: 180 x 24 x 24 mm structured block = 103,680 mm^3.
+    const aluminumHtml = await renderSampleModelPanel("cantilever", "mat-aluminum-6061");
+    const steelHtml = await renderSampleModelPanel("cantilever", "mat-steel");
+    expect(aluminumHtml).toContain("<span>Solved geometry</span><strong>Structured block</strong>");
+    expect(aluminumHtml).not.toContain("simplified procedural bracket");
+    expect(aluminumHtml).toContain("103,680 mm");
+    expect(aluminumHtml).toContain("279.9 g");
+    expect(steelHtml).toContain("103,680 mm");
+    expect(steelHtml).toContain("813.9 g");
+  });
+
+  test("reports the bracket's volume and mass from the procedural solid that is solved", async () => {
+    // The Bracket Demo solves a procedural bracket, not a STEP file: 93,203.7 mm^3,
+    // so 251.6 g of 6061 aluminum (the old hard-coded figure was 111 g). Modal
+    // total mass on the meshed solid reads 0.254 kg because faceted bores remove
+    // about 0.9% less material than true cylinders.
+    const bracketHtml = await renderSampleModelPanel("bracket", "mat-aluminum-6061");
+    expect(bracketHtml).toContain("<span>Solved geometry</span><strong>Procedural sample (simplified)</strong>");
+    expect(bracketHtml).toContain("93,203.7 mm");
+    expect(bracketHtml).toContain("251.6 g");
+    expect(bracketHtml).not.toContain("111 g");
+    expect(bracketHtml).toContain("simplified procedural bracket");
+  });
+
+  test("reports beam structural mass separately from the payload mass", async () => {
+    const beamHtml = await renderSampleModelPanel("plate", "mat-aluminum-6061");
+
+    // 160 x 11.79 x 15.16 mm structural beam at 2700 kg/m^3; the 0.498 kg payload is a load.
+    expect(beamHtml).toContain("28,592.6 mm");
+    expect(beamHtml).toContain("77.2 g");
     expect(beamHtml).toContain("Payload mass · 0.498 kg");
   });
 
@@ -2489,7 +2522,11 @@ describe("workspace notice and readiness text (2026-09 review D7, F7)", () => {
 
 describe("select-then-act and re-targeting (2026-09 review F1, D3, F3)", () => {
   test("edit forms offer to move an entry to the face picked in the viewer", () => {
-    expect(rightPanelSource).toContain("Move to {pickedElsewhere.label} (picked in the viewer)");
+    // Both edit forms name the picked face in project units (stored labels carry a mm²
+    // suffix); SupportsLoadsPanels.test renders them on imperial and metric projects.
+    expect(rightPanelSource.match(/<span>Move to \{pickedFaceLabel\} \(picked in the viewer\)<\/span>/g)).toHaveLength(2);
+    expect(rightPanelSource.match(/const pickedFaceLabel = pickedElsewhere \? stepFaceLabelForUnits\(pickedElsewhere\.label, pickedElsewhere\.area, unitSystem\) : "";/g)).toHaveLength(2);
+    expect(rightPanelSource).not.toContain("Move to {pickedElsewhere.label}");
     expect(rightPanelSource).toContain("onSave(previewLoad, targetFace)");
     expect(rightPanelSource).toContain("support.parameters }, targetFace)");
   });
@@ -2520,5 +2557,245 @@ describe("mesh step shows the size it asks for and the mesh it made (2026-09 rev
     expect(renderPanel("mesh", { study: meshed, viewMode: "mesh", onViewModeChange: vi.fn() })).toContain("Hide mesh");
     const estimated: Study = { ...study, meshSettings: { preset: "medium", status: "complete", summary: { nodes: 10, elements: 4, warnings: [] } } };
     expect(renderPanel("mesh", { study: estimated })).not.toContain("Show mesh in viewer");
+  });
+});
+
+describe("run readiness, tier labels and result capture locks", () => {
+  const computedProvenance = { kind: "opencae_core_fea", solver: "opencae-core-sparse-tet", runnerVersion: "browser-0.2.0", meshSource: "actual_volume_mesh", resultSource: "computed", units: "mm-N-s-MPa" } as const;
+  const estimateProvenance = { kind: "local_estimate", solver: "opencae-local-heuristic", solverVersion: "0.1.0", meshSource: "actual_volume_mesh", resultSource: "computed", units: "mm-N-s-MPa" } as const;
+  const previewProvenance = { kind: "local_estimate", solver: "opencae-core-preview-sdof", solverVersion: "0.1.0", meshSource: "structured_block_proxy", resultSource: "computed_preview", units: "mm-N-s-MPa" } as const;
+
+  test("links every unmet readiness row to the step that fixes it", () => {
+    const onStepSelect = vi.fn();
+    const html = renderPanel("run", { onStepSelect, missingRunItems: ["Material assigned", "Support added", "Load added", "Mesh generated"] });
+    expect(html).toContain(">Go to Material</button>");
+    expect(html).toContain(">Go to Supports</button>");
+    expect(html).toContain(">Go to Loads</button>");
+    expect(html).toContain(">Go to Mesh</button>");
+    // The disabled Run button points at the visible reason, not only a title tooltip.
+    const describedBy = html.match(/<button class="primary wide"[^>]*aria-describedby="([^"]+)"/)?.[1];
+    expect(describedBy).toBeTruthy();
+    expect(html).toContain(`<p class="panel-copy" id="${describedBy}">Complete before running: Material assigned, Support added, Load added, Mesh generated.</p>`);
+  });
+
+  test("offers no Go to link once a readiness row is done", () => {
+    const readyStudy = {
+      ...study,
+      materialAssignments: [{ id: "assign-1", materialId: "mat-aluminum-6061", selectionRef: "selection-top", status: "complete" }],
+      constraints: [{ id: "constraint-1", type: "fixed", selectionRef: "selection-top", parameters: {}, status: "complete" }],
+      loads: [{ id: "load-1", type: "force", selectionRef: "selection-top", parameters: { value: 500, units: "N", direction: [0, -1, 0] }, status: "complete" }],
+      meshSettings: { preset: "medium", status: "complete", summary: { nodes: 10, elements: 4, warnings: [], source: "core_solver" } }
+    } as Study;
+    const html = renderPanel("run", { study: readyStudy, runReadiness: readinessForStudy(readyStudy) });
+    expect(html).not.toContain("check-go-to");
+    expect(html).not.toContain("aria-describedby");
+  });
+
+  test("drops the hard-coded version and the Estimate-tier wording from the Run panel", () => {
+    const html = renderPanel("run");
+    expect(html).not.toContain("<span>Version</span>");
+    expect(html).not.toContain("0.1.0");
+    expect(html).not.toContain("estimate stress");
+    expect(html).toContain("Run the simulation to solve for stress and displacement.");
+  });
+
+  test("shows a visible tier chip beside the verdict, mapped from the provenance tier", () => {
+    const computed = renderPanel("results", { resultSummary: { ...resultSummary, provenance: computedProvenance } });
+    expect(computed).toContain('<span class="result-tier-chip computed">Computed FEA</span>');
+    expect(computed.indexOf("result-tier-chip")).toBeLessThan(computed.indexOf("failure-assessment"));
+
+    const estimate = renderPanel("results", { resultSummary: { ...resultSummary, provenance: estimateProvenance } });
+    expect(estimate).toContain('<span class="result-tier-chip approximation">Estimate — not FEA</span>');
+    expect(estimate).not.toContain("Computed FEA");
+
+    const preview = renderPanel("results", { resultSummary: { ...resultSummary, provenance: previewProvenance } });
+    expect(preview).toContain('<span class="result-tier-chip approximation">Preview (coarse proxy)</span>');
+    expect(preview).not.toContain("Computed FEA");
+
+    const unlabeled = renderPanel("results");
+    expect(unlabeled).toContain('<span class="result-tier-chip unknown">Unverified source</span>');
+  });
+
+  test("labels thermal and modal results with their tier too", () => {
+    const thermal = renderPanel("results", {
+      study: { ...study, type: "steady_state_thermal" },
+      resultMode: "temperature",
+      resultSummary: {
+        analysisType: "steady_state_thermal", minTemperature: 20, maxTemperature: 25, temperatureUnits: "°C", maxHeatFlux: 1, heatFluxUnits: "W/m²",
+        appliedHeat: 1, generatedHeat: 0, reactionHeat: -1, heatRateUnits: "W", energyBalanceRelativeError: 0, provenance: computedProvenance
+      } as ResultSummary
+    });
+    expect(thermal).toContain(">Computed FEA</span>");
+    const modal = renderPanel("results", {
+      study: { ...study, type: "modal_analysis", solverSettings: { modeCount: 1 } } as Study,
+      resultMode: "mode_shape",
+      resultSummary: { analysisType: "modal_analysis", requestedModeCount: 1, convergedModeCount: 1, modes: [{ modeIndex: 1, frequencyHz: 80, eigenvalue: 1, scaledResidual: 1e-8, fieldId: "mode-1" }] } as ResultSummary
+    });
+    expect(modal).toContain('<span class="result-tier-chip unknown">Unverified source</span>');
+  });
+
+  test("locks every result-mode and stress-measure button while report figures are captured", () => {
+    const field = (type: ResultField["type"]): ResultField => ({ id: `field-${type}`, runId: "run-1", type, location: "node", values: [0, 1], min: 0, max: 1, units: type === "stress" ? "MPa" : type === "velocity" ? "mm/s" : type === "acceleration" ? "mm/s²" : "mm" });
+    const html = renderPanel("results", {
+      resultControlsBusy: true,
+      resultMode: "stress",
+      resultFields: [field("stress"), field("displacement"), field("velocity"), field("acceleration")]
+    });
+    const modeGroup = html.match(/<div class="segmented result-mode"[\s\S]*?<\/div>/)?.[0] ?? "";
+    const buttons = modeGroup.match(/<button[^>]*>/g) ?? [];
+    expect(buttons.length).toBe(5);
+    for (const button of buttons) expect(button).toContain('disabled=""');
+
+    const thermal = renderPanel("results", {
+      resultControlsBusy: true,
+      study: { ...study, type: "steady_state_thermal" },
+      resultMode: "temperature",
+      resultSummary: {
+        analysisType: "steady_state_thermal", minTemperature: 20, maxTemperature: 25, temperatureUnits: "°C", maxHeatFlux: 1, heatFluxUnits: "W/m²",
+        appliedHeat: 1, generatedHeat: 0, reactionHeat: -1, heatRateUnits: "W", energyBalanceRelativeError: 0
+      } as ResultSummary
+    });
+    const thermalGroup = thermal.match(/<div class="segmented" role="group" aria-label="Thermal result field"[\s\S]*?<\/div>/)?.[0] ?? "";
+    expect(thermalGroup.match(/disabled=""/g)).toHaveLength(2);
+  });
+
+  test("offers Download report for modal results and announces thermal report errors", () => {
+    const modal = renderPanel("results", {
+      study: { ...study, type: "modal_analysis", solverSettings: { modeCount: 1 } } as Study,
+      resultMode: "mode_shape",
+      onGenerateReport: vi.fn(),
+      reportError: "Report images are still being saved.",
+      resultSummary: { analysisType: "modal_analysis", requestedModeCount: 1, convergedModeCount: 1, modes: [{ modeIndex: 1, frequencyHz: 80, eigenvalue: 1, scaledResidual: 1e-8, fieldId: "mode-1" }] } as ResultSummary
+    });
+    expect(modal).toContain("Download report");
+    expect(modal).toMatch(/<p class="panel-warning" role="alert">[\s\S]*?Report images are still being saved\.<\/p>/);
+
+    const thermal = renderPanel("results", {
+      study: { ...study, type: "steady_state_thermal" },
+      resultMode: "temperature",
+      onGenerateReport: vi.fn(),
+      reportError: "Could not generate the simulation report.",
+      pngExportError: "PNG failed.",
+      htmlExportError: "HTML failed.",
+      resultSummary: {
+        analysisType: "steady_state_thermal", minTemperature: 20, maxTemperature: 25, temperatureUnits: "°C", maxHeatFlux: 1, heatFluxUnits: "W/m²",
+        appliedHeat: 1, generatedHeat: 0, reactionHeat: -1, heatRateUnits: "W", energyBalanceRelativeError: 0
+      } as ResultSummary
+    });
+    expect(thermal).toMatch(/role="alert">[\s\S]*?Could not generate the simulation report\.<\/p>/);
+    expect(thermal).toMatch(/role="alert">[\s\S]*?PNG failed\.<\/p>/);
+    expect(thermal).toMatch(/role="alert">[\s\S]*?HTML failed\.<\/p>/);
+  });
+
+  test("moves focus through the Export menu with Up, Down, Home and End", () => {
+    expect(exportMenuFocusIndex("ArrowDown", 0, 3)).toBe(1);
+    expect(exportMenuFocusIndex("ArrowDown", 2, 3)).toBe(0);
+    expect(exportMenuFocusIndex("ArrowUp", 0, 3)).toBe(2);
+    expect(exportMenuFocusIndex("ArrowUp", -1, 3)).toBe(2);
+    expect(exportMenuFocusIndex("ArrowDown", -1, 3)).toBe(0);
+    expect(exportMenuFocusIndex("Home", 2, 3)).toBe(0);
+    expect(exportMenuFocusIndex("End", 0, 3)).toBe(2);
+    expect(exportMenuFocusIndex("Tab", 0, 3)).toBeNull();
+    expect(exportMenuFocusIndex("ArrowDown", 0, 0)).toBeNull();
+    expect(rightPanelSource).toContain("onKeyDown={handleMenuKeyDown}");
+  });
+
+  test("labels FDM effective properties as a homogenized approximation in view", () => {
+    const html = renderPanel("material", {
+      study: {
+        ...study,
+        materialAssignments: [{
+          id: "assign",
+          materialId: "mat-abs",
+          selectionRef: "selection-body",
+          parameters: { manufacturingProcessId: "fdm", infillDensity: 35, wallCount: 3, layerOrientation: "z" },
+          status: "complete"
+        }]
+      }
+    });
+    const properties = html.indexOf("Effective yield");
+    const note = html.indexOf("Homogenized (approximation)");
+    expect(properties).toBeGreaterThan(-1);
+    expect(note).toBeGreaterThan(properties);
+    expect(html).toContain("averaged into one uniform solid");
+  });
+});
+
+describe("live review follow-ups: mesh tick, outdated verdict, thermal wording, type switch", () => {
+  const configured = {
+    ...study,
+    materialAssignments: [{ id: "assign-1", materialId: "mat-aluminum-6061", selectionRef: "selection-top", status: "complete" }],
+    constraints: [{ id: "constraint-1", type: "fixed", selectionRef: "selection-top", parameters: {}, status: "complete" }],
+    loads: [{ id: "load-1", type: "force", selectionRef: "selection-top", parameters: { value: 500, units: "N", direction: [0, -1, 0] }, status: "complete" }]
+  } as Study;
+
+  test("leaves Mesh generated unticked when no mesher produced the mesh, with a pending note and a link", () => {
+    const seeded = { ...configured, meshSettings: { preset: "medium", status: "complete", summary: { nodes: 42381, elements: 26944, warnings: [] } } } as Study;
+    const html = renderPanel("run", { study: seeded, runReadiness: readinessForStudy(seeded) });
+    expect(html).toContain('<div class="check pending"><span class="check-mark" aria-hidden="true"></span><span class="check-copy">Mesh generated');
+    expect(html).toContain("No mesh yet: one is built when you run");
+    expect(html).toContain(">Go to Mesh</button>");
+
+    const meshed = { ...configured, meshSettings: { preset: "medium", status: "complete", summary: { nodes: 10, elements: 4, warnings: [], source: "core_solver" } } } as Study;
+    const meshedHtml = renderPanel("run", { study: meshed, runReadiness: readinessForStudy(meshed) });
+    expect(meshedHtml).not.toContain("check pending");
+    expect(meshedHtml.match(/class="check done"/g)).toHaveLength(4);
+  });
+
+  test("uses thermal wording in the Run checklist for thermal studies", () => {
+    const thermal = StudySchema.parse({ ...study, type: "steady_state_thermal" });
+    const html = renderPanel("run", { study: thermal, runReadiness: readinessForStudy(thermal) });
+    expect(html).toContain("Fixed temperature added");
+    expect(html).toContain("Heat load added");
+    expect(html).not.toMatch(/class="check-copy">Support added/);
+    expect(html).not.toMatch(/class="check-copy">Load added/);
+  });
+
+  test("marks the verdict card and headline outdated in place when the study changed after the run", () => {
+    const passing: ResultSummary = { ...resultSummary, maxStress: 20, safetyFactor: 12, maxDisplacement: 0.01, reactionForce: 500 };
+    const current = renderPanel("results", { resultSummary: passing });
+    expect(current).toContain('<div class="result-answer">');
+    expect(current).not.toContain("result-outdated-label");
+
+    const outdated = renderPanel("results", { resultSummary: passing, resultsOutdated: true });
+    const answer = outdated.match(/<div class="result-answer outdated">[\s\S]*?<div class="result-headline">/)?.[0] ?? "";
+    expect(answer).toContain("<strong>Outdated</strong>");
+    expect(answer).toContain("failure-assessment");
+    expect(outdated.indexOf("result-answer outdated")).toBeLessThan(outdated.indexOf("result-headline"));
+
+    const thermal = renderPanel("results", {
+      study: { ...study, type: "steady_state_thermal" },
+      resultMode: "temperature",
+      resultsOutdated: true,
+      resultSummary: {
+        analysisType: "steady_state_thermal", minTemperature: 20, maxTemperature: 25, temperatureUnits: "°C", maxHeatFlux: 1, heatFluxUnits: "W/m²",
+        appliedHeat: 1, generatedHeat: 0, reactionHeat: -1, heatRateUnits: "W", energyBalanceRelativeError: 0
+      } as ResultSummary
+    });
+    expect(thermal).toMatch(/<div class="result-answer outdated">[\s\S]*?<strong>Outdated<\/strong>[\s\S]*?class="result-headline"/);
+  });
+
+  test("asks for an explicit confirmation before a switch that clears the setup, never on a second click", () => {
+    const html = renderPanel("run", { study: configured });
+    // The inline "click again to switch" pattern is gone; the button opens a dialog.
+    expect(html).not.toContain("Click twice");
+    expect(html).not.toContain("again to switch");
+    expect(html).toMatch(/aria-haspopup="dialog"[^>]*>Thermal</);
+    expect(rightPanelSource).toContain("<StudyTypeSwitchDialog");
+
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    const dialog = renderToStaticMarkup(<StudyTypeSwitchDialog targetLabel="Thermal" message="Switching to Thermal clears 1 support and 1 load." onConfirm={onConfirm} onCancel={onCancel} />);
+    expect(dialog).toContain('role="dialog" aria-modal="true"');
+    expect(dialog).toContain("Switch to Thermal?");
+    // The safe action comes first in the tab order (the focus trap focuses it on open).
+    expect(dialog.indexOf("Keep the current analysis type")).toBeLessThan(dialog.indexOf("Switch and clear setup"));
+
+    // The second click of a double-click (detail 2) can never confirm.
+    expect(confirmUnlessRepeatClick({ detail: 2 }, onConfirm)).toBe(false);
+    expect(onConfirm).not.toHaveBeenCalled();
+    expect(confirmUnlessRepeatClick({ detail: 1 }, onConfirm)).toBe(true);
+    expect(confirmUnlessRepeatClick({ detail: 0 }, onConfirm)).toBe(true); // keyboard activation
+    expect(onConfirm).toHaveBeenCalledTimes(2);
   });
 });

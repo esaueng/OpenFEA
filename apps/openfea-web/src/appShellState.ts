@@ -20,9 +20,34 @@ export function shouldAutoAdvanceAfterMaterialAssignment() {
   return false;
 }
 
-export function canNavigateToStep(step: string, { meshStatus }: { meshStatus: string }) {
-  if (step !== "run") return true;
-  return meshStatus === "complete";
+/**
+ * Every workflow step can be opened at any time. Run used to stay locked until a
+ * mesh existed, which hid the one place that explains what still blocks the run
+ * (the Readiness checklist). The Run step now opens early with the Run button
+ * disabled, and each unmet checklist row links to the step that resolves it.
+ * The signature is kept so every caller (stepper, Back/Next, N/B shortcuts) keeps
+ * asking one place, should a step ever need gating again.
+ */
+export function canNavigateToStep(_step: string, _context: { meshStatus: string }) {
+  return true;
+}
+
+/**
+ * Undo and redo change the project the last results were computed from, exactly
+ * like an edit does, so they mark those results outdated rather than destroying
+ * them. They used to call the full run invalidation and dropped every result
+ * field on Ctrl+Z.
+ *
+ * Returns the outdated reason to record, and whether the "results are now
+ * outdated" notice should be pushed (only on the first change after a run), or
+ * null when there are no results to mark.
+ */
+export function resultsOutdatedAfterHistoryStep(
+  action: "undo" | "redo",
+  { hasResults, resultsOutdatedBy }: { hasResults: boolean; resultsOutdatedBy: string | null }
+): { outdatedBy: string; announce: boolean } | null {
+  if (!hasResults) return null;
+  return { outdatedBy: action === "undo" ? "Undo applied." : "Redo applied.", announce: !resultsOutdatedBy };
 }
 
 const WORKFLOW_STEP_ORDER = ["model", "material", "supports", "loads", "mesh", "run", "results"] as const;

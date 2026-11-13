@@ -9,6 +9,7 @@ export {
   BRACKET_MESH_SIZE_SCALE,
   bracketGeoScript,
   bracketGeometrySourceMetadata,
+  bracketSolidVolumeMm3,
   type BracketGeometryDescriptor
 } from "./bracketGeo";
 export {

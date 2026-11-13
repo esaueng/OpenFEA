@@ -168,9 +168,14 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
     }
   };
 
-  const [client, intake] = await Promise.all([
+  // Narrow subpaths, not the package barrel: the barrel also exports the gmsh
+  // mesher, whose dynamic import of the Emscripten glue would otherwise emit a
+  // main-thread copy of that glue (~72 kB gzip) that only the workers run.
+  const [client, bracketGeo, elementOrders, coreModelFromMesh] = await Promise.all([
     import("../workers/meshWorkerClient"),
-    import("@openfea/mesh-intake")
+    import("@openfea/mesh-intake/bracketGeo"),
+    import("@openfea/mesh-intake/elevateArtifact"),
+    import("@openfea/mesh-intake/coreModelFromMesh")
   ]);
   workerClient = client;
   // Cancellation can happen while the worker/client chunks are still loading.
@@ -202,15 +207,15 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
     actualMeshSizeMm = requestedMeshSizeMm;
     meshedPacked = await client.meshGeoScriptInWorker(
       {
-        geoScript: intake.bracketGeoScript(geometry.descriptor ?? {}),
+        geoScript: bracketGeo.bracketGeoScript(geometry.descriptor ?? {}),
         elementOrder,
         units: geometry.units ?? "mm",
-        sourceSelectionRefs: intake.bracketGeometrySourceMetadata()
+        sourceSelectionRefs: bracketGeo.bracketGeometrySourceMetadata()
       },
       onWorkerProgress
     );
   } else if (geometry.kind === "uploaded_cad" && geometry.format === "step" && geometry.contentBase64) {
-    elementOrder = intake.requestedElementOrder(study.solverSettings as Record<string, unknown> | undefined);
+    elementOrder = elementOrders.requestedElementOrder(study.solverSettings as Record<string, unknown> | undefined);
     // A-M3: send the STEP display tessellation + faceIds so the worker can
     // stamp every boundary facet's sourceFaceId (facet -> B-rep face
     // attribution). Meshing proceeds without it if the registry fails.
@@ -334,7 +339,7 @@ async function meshWorkerRunExclusive(options: WasmMeshOptions, cancellationGene
     ...(face.area ? { areaM2: face.area * 1e-6 } : {})
   })), displayModel);
   const mappingDiagnostics: import("@openfea/mesh-intake").SelectionMappingDiagnostic[] = [];
-  const model = intake.buildCoreModelFromCloudMesh({
+  const model = coreModelFromMesh.buildCoreModelFromCloudMesh({
     study: {
       id: dispatchStudy.id,
       type: analysisType,

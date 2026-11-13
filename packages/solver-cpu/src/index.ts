@@ -64,6 +64,7 @@ export {
   addSparseEntry,
   axpy,
   conjugateGradient,
+  conjugateGradientConvergenceDiagnostics,
   CooAccumulator,
   createSparseMatrixBuilder,
   csrDiagonal,
@@ -82,6 +83,7 @@ export {
   retainSparseAssemblyValue,
   sparseCurvatureTolerance,
   sparseDiagonalTolerance,
+  sparseRoundingGamma,
   usableSparseDiagonal,
   validSparseSsorOmega
 } from "./sparse-policy";
@@ -93,7 +95,15 @@ export {
   timeIsBeforeTarget,
   timeValuesMatch
 } from "./time-policy";
-export type { ConjugateGradientOptions, ConjugateGradientResult, CsrMatrix, SparseMatrixBuilder } from "./sparse";
+export type {
+  ConjugateGradientConvergenceDiagnostics,
+  ConjugateGradientConvergenceSample,
+  ConjugateGradientOptions,
+  ConjugateGradientResult,
+  ConvergedConjugateGradientResult,
+  CsrMatrix,
+  SparseMatrixBuilder
+} from "./sparse";
 export { solvePreviewSdofTet4Cpu } from "./dynamic";
 export { solveDynamicLinearTetLoadCases, solveDynamicLinearTetMDOF, solveDynamicMdofTet4Cpu } from "./dynamic-mdof";
 export type { DynamicLoadCaseBatchSolveResult, DynamicLoadCaseInput, DynamicLoadCaseSolve } from "./dynamic-mdof";

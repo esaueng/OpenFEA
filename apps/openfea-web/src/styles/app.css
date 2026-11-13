@@ -40,10 +40,19 @@ img {
   align-items: safe center;
   justify-content: center;
   overflow: auto;
+  /* From the theme tokens, like .simulation-type-screen: the fixed dark gradient kept the
+     start screen dark with the light theme chosen. */
   background:
     radial-gradient(ellipse 80% 50% at 50% 0%, rgba(77, 163, 255, 0.06), transparent 70%),
-    linear-gradient(#0b0f14, #080c10);
+    linear-gradient(var(--color-bg), color-mix(in srgb, var(--color-bg) 92%, #000));
+  color: var(--color-text);
   padding: var(--sp-5);
+}
+
+/* Carries a theme class to a screen rendered outside .app-shell (the start screen)
+   without adding a box: custom properties still inherit through display: contents. */
+.theme-scope {
+  display: contents;
 }
 
 .simulation-type-screen {
@@ -172,7 +181,7 @@ img {
   margin: 0;
   padding: 0 var(--sp-3);
   list-style: none;
-  background: rgba(17, 24, 33, 0.72);
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
   border: var(--border-thin);
   border-radius: var(--radius-md);
 }
@@ -334,7 +343,17 @@ img {
 
 .start-action.secondary {
   color: var(--color-text);
-  background: rgba(17, 24, 33, 0.72);
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+}
+
+/* The light accent is dark, so the dark-theme lift (#69b3ff) and the near-black caption
+   ink would both drop the light on-accent text below AA. Darken and use the accent ink. */
+.theme-light .start-action.primary:hover {
+  background: color-mix(in srgb, var(--color-accent) 86%, #000);
+}
+
+.theme-light .start-action.primary small {
+  color: var(--color-on-accent);
 }
 
 .start-action:hover {
@@ -768,8 +787,7 @@ img {
 }
 
 .simulation-choice-card,
-.material-list button,
-.condition-menu button {
+.material-list button {
   width: 100%;
   display: flex;
   align-items: center;
@@ -807,9 +825,7 @@ img {
 .simulation-choice-card:hover:not(.active),
 .simulation-choice-card:focus-visible:not(.active),
 .material-list button:hover:not(.active),
-.material-list button:focus-visible:not(.active),
-.condition-menu button:hover:not(:disabled),
-.condition-menu button:focus-visible:not(:disabled) {
+.material-list button:focus-visible:not(.active) {
   background: var(--color-surface-hover);
 }
 
@@ -817,17 +833,6 @@ img {
 .material-list button.active {
   background: color-mix(in srgb, var(--color-accent) 16%, transparent);
   color: var(--color-accent);
-}
-
-.condition-menu button.disabled {
-  color: var(--color-text-muted);
-  cursor: not-allowed;
-}
-
-.condition-menu small {
-  margin-left: auto;
-  color: var(--color-text-subtle);
-  font-size: var(--fs-xs);
 }
 
 .analysis-description,
@@ -982,28 +987,6 @@ img {
   text-transform: uppercase;
 }
 
-.condition-menu {
-  position: fixed;
-  z-index: var(--z-condition-menu);
-  top: 116px;
-  left: var(--sp-5);
-  width: 280px;
-  overflow: hidden;
-  background: var(--color-surface);
-  border: var(--border-thin);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-panel);
-}
-
-.condition-menu-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  border-bottom: var(--border-thin);
-}
-
 .material-search {
   display: flex;
   align-items: center;
@@ -1023,7 +1006,8 @@ img {
 
 .material-search:focus-within {
   border-color: var(--color-accent);
-  box-shadow: inset 0 0 0 1px var(--color-accent-border);
+  /* The field inside has no box of its own, so the row carries the 2px focus ring. */
+  box-shadow: inset 0 0 0 2px var(--color-accent);
 }
 
 .material-list-group + .material-list-group h3 {
@@ -1312,8 +1296,12 @@ img {
    bar that fills in as the workflow progresses. It replaced the 124px left rail, so
    the viewer gets that width back. The rail's state rules carry over: a bar means
    present and valid, a warning glyph means blocked, never colour alone. */
+/* The stepper keeps its measured width and the project-name chip (which ellipsizes)
+   gives way. Shrinking alongside the name used to clip the list: the thermal labels
+   ("Temperatures", "Heat loads") overflowed by 7px at 1024px with Temperatures current
+   and by ~32px just above 1180px, where every label shows. */
 .step-nav {
-  flex: 0 1 auto;
+  flex: none;
   min-width: 0;
   margin: 0 auto;
 }
@@ -1367,6 +1355,20 @@ img {
 .step-nav-step.done::after {
   height: 2px;
   background: var(--color-success);
+}
+
+/* The done state's shape cue: a small tick badge in the button's top-right corner, so
+   completion does not rest on the bar's green alone. Absolutely placed so it takes no
+   width: the stepper's tiers are measured to the pixel. */
+.step-nav-check {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 9px;
+  height: 9px;
+  flex: none;
+  color: var(--color-success);
+  pointer-events: none;
 }
 
 .step-nav-step.active {
@@ -1429,7 +1431,8 @@ img {
   }
 }
 
-/* Measured: every label needs ~400px, which the bar has down to 1181px. Below that
+/* Measured: every label needs ~400px (~452px with the thermal labels), which the bar
+   has down to 1181px, the project name giving way for the rest. Below that
    the other steps show an icon over their bar and only the current step keeps its
    name (measured: 247px against 241px at 981px with an icon as well).
    The labels are clipped, not removed, so each keeps its accessible name (and a
@@ -1455,6 +1458,15 @@ img {
     overflow: hidden;
     clip: rect(0 0 0 0);
     white-space: nowrap;
+  }
+
+  /* An icon alone does not say where Tab has landed: the focused step shows its name. */
+  .step-nav-step:not(.active):focus-visible .step-nav-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
   }
 }
 
@@ -1511,7 +1523,7 @@ img {
 }
 
 /* Theme and units moved here from the rail footer. Outside .topbar-tools on
-   purpose: that group is hidden at phone width, and these must stay reachable. */
+   purpose: most of that group is hidden at phone width, and these must stay reachable. */
 .project-menu-anchor {
   position: relative;
 }
@@ -1550,6 +1562,11 @@ img {
 
 .project-menu-row .segmented {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.project-menu-tools .secondary {
+  justify-content: flex-start;
+  gap: var(--sp-2);
 }
 
 .project-menu-row .segmented button {
@@ -2511,6 +2528,8 @@ img {
   overflow: hidden;
   resize: none;
   pointer-events: auto;
+  /* The tick row drops its quarter labels when the legend itself is narrow. */
+  container-type: inline-size;
 }
 
 .analysis-legend-resize {
@@ -2546,8 +2565,18 @@ img {
 }
 
 .analysis-legend-resize:focus-visible {
-  outline: 1px solid var(--color-accent);
+  outline: 2px solid var(--color-accent);
   outline-offset: -3px;
+}
+
+/* Keyboard instructions for the grip, read through aria-describedby only. */
+.analysis-legend .legend-resize-help {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .theme-light .analysis-legend {
@@ -2568,6 +2597,7 @@ img {
 }
 
 .legend-scale {
+  position: relative;
   grid-column: 1 / -1;
   width: 100%;
   height: calc(10px * var(--analysis-legend-scale, 1));
@@ -2575,34 +2605,90 @@ img {
   border: 1px solid rgba(42, 52, 65, 0.7);
 }
 
+/* Quarter ticks hang below the bar so each label has a mark to point at. */
+.legend-tick-mark {
+  position: absolute;
+  top: 100%;
+  width: 1px;
+  height: calc(4px * var(--analysis-legend-scale, 1));
+  background: var(--color-text-muted);
+  transform: translateX(-50%);
+}
+
+/* SF = 1: a full-height line in ink with a ground-coloured keyline, so it reads on every
+   stop of the ramp in both themes. */
+.legend-limit-mark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--color-text);
+  box-shadow: 0 0 0 1px var(--color-bg);
+  transform: translateX(-50%);
+}
+
+.analysis-legend .legend-limit-note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-15);
+  color: var(--color-text-muted);
+  font-family: var(--font-ui);
+}
+
+.analysis-legend .legend-basis {
+  color: var(--color-text-subtle);
+  font-family: var(--font-ui);
+}
+
+.legend-limit-note > i {
+  flex: none;
+  width: 2px;
+  height: 1em;
+  background: var(--color-text);
+}
+
 .theme-light .analysis-legend .legend-scale {
   border-color: rgba(82, 103, 130, 0.24);
 }
 
+/* Five labels placed at their own positions on the bar (0/25/50/75/100%) rather than in
+   equal columns, whose centres would sit at 10/30/50/70/90% and misreport the quarters.
+   The ends align to the bar's edges; the inner three centre on their ticks. */
 .legend-values {
+  position: relative;
   grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: 2px;
+  min-height: 1.15em;
+  margin-top: calc(2px * var(--analysis-legend-scale, 1));
   color: var(--color-text-muted);
   font-size: calc(var(--fs-mini) * var(--analysis-legend-scale, 1));
   line-height: 1.15;
 }
 
 .legend-values span {
-  grid-column: auto;
-  min-width: 0;
-  overflow: hidden;
-  text-align: center;
+  position: absolute;
+  top: 0;
   white-space: nowrap;
+  transform: translateX(-50%);
 }
 
 .legend-values span:first-child {
-  text-align: left;
+  transform: none;
 }
 
 .legend-values span:last-child {
-  text-align: right;
+  transform: translateX(-100%);
+}
+
+/* No result range: one dash, not invented numbers. */
+.legend-values-empty span {
+  position: static;
+  transform: none;
+}
+
+@container (max-width: 300px) {
+  .legend-values .legend-tick-quarter {
+    display: none;
+  }
 }
 
 .legend-heading {
@@ -2672,7 +2758,9 @@ img {
 /* More options sits between the direction and Add load; without this the button
    touched the collapsible's border. */
 .panel-body .collapsible-section + .outline-action,
-.panel-body .collapsible-section + .field-error {
+.panel-body .collapsible-section + .field-error,
+.panel-body .collapsible-help-anchor + .outline-action,
+.panel-body .collapsible-help-anchor + .field-error {
   margin-top: var(--gap-block);
 }
 
@@ -2787,10 +2875,6 @@ img {
 .step-repair-card {
   display: grid;
   gap: var(--sp-2);
-}
-
-.confirm-copy {
-  margin-top: var(--sp-2);
 }
 
 .panel-body {
@@ -3559,13 +3643,25 @@ input {
   grid-template-columns: minmax(0, 1fr) 56px;
   overflow: hidden;
   background: var(--color-bg);
-  border: var(--border-thin);
+  border: var(--border-input);
   border-radius: var(--radius-md);
+}
+
+/* The inner field has no border, and overflow: hidden clips its outline, so the box
+   draws the focus ring for it (a text field matches :focus-visible on any focus, so
+   :focus-within is the same signal). */
+.input-with-unit:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 .input-with-unit input {
   border: 0;
   border-radius: 0;
+}
+
+.input-with-unit input:focus-visible {
+  outline: none;
 }
 
 .input-with-unit > span {
@@ -3915,13 +4011,13 @@ input {
    accent, so the irreversible choice looked like the recommended one. */
 .primary.danger {
   color: #fff;
-  background: var(--color-error);
-  border-color: var(--color-error);
+  background: var(--color-error-fill);
+  border-color: var(--color-error-fill);
 }
 
 .primary.danger:hover,
 .theme-light .primary.danger:hover {
-  background: color-mix(in srgb, var(--color-error) 86%, #000);
+  background: color-mix(in srgb, var(--color-error-fill) 86%, #000);
 }
 
 .secondary {
@@ -4142,7 +4238,7 @@ button:disabled {
 
 .orientation-controls {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-2);
   margin-top: var(--sp-2);
 }
@@ -4350,6 +4446,33 @@ button:disabled {
   transition: transform 0.15s ease;
 }
 
+/* A collapsible with a help trigger: the trigger is a sibling of <details> (never inside
+   the <summary>, which is itself a button) and is overlaid at the right of the summary
+   row, past the chevron. The wrapper takes the section's top margin so the overlay can
+   pin to the row with top: 0. */
+.collapsible-help-anchor {
+  position: relative;
+  margin: 14px 0 0;
+}
+
+.collapsible-help-anchor > .collapsible-section {
+  margin: 0;
+}
+
+.collapsible-help-anchor .collapsible-summary {
+  min-height: 40px;
+  padding-right: calc(var(--sp-2) + var(--control-h-sm) + var(--sp-1));
+}
+
+.collapsible-help {
+  position: absolute;
+  top: 0;
+  right: var(--sp-2);
+  height: 40px;
+  display: flex;
+  align-items: center;
+}
+
 .collapsible-section[open] .collapsible-chevron {
   transform: rotate(180deg);
 }
@@ -4508,6 +4631,21 @@ button:disabled {
 
 .load-case-row > small.load-case-empty {
   color: var(--color-warning);
+}
+
+/* Assembly connection rows: kind, approximation chip (contact), then the face pair. */
+.connection-row > span {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-2);
+  min-width: 0;
+}
+
+.connection-row > span > small {
+  flex-basis: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .load-combination-row {
@@ -5471,6 +5609,23 @@ input[aria-invalid="true"] {
   border-color: var(--color-border);
 }
 
+.log-clear-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
+
+.log-clear-confirm-copy {
+  color: var(--color-text);
+  font-size: var(--fs-xs);
+}
+
+.log-clear-confirm-button {
+  font-weight: var(--fw-medium);
+}
+
 .tips-content {
   display: grid;
   /* Two rows, not three: the drawer used to repeat the top bar's keyboard-shortcut
@@ -5749,8 +5904,11 @@ input[aria-invalid="true"] {
     background: var(--color-surface);
   }
 
+  /* One layer above the sticky step strip (z-index 1, later in the DOM), which
+     otherwise painted over the top bar's Project menu and shortcut popovers. */
   .topbar {
     top: 0;
+    z-index: var(--z-sticky-topbar);
   }
 
   .bottom-panel {
@@ -5881,7 +6039,43 @@ input[aria-invalid="true"] {
     display: none;
   }
 
+  /* Undo and redo stay: hiding the whole group left a phone with no way to take back a
+     change. The validation gallery and keyboard-guide buttons give way and move into
+     the Project menu (ProjectMenuTools); the group's gap goes with them. The guide's
+     popover still lives here, so it is exempt, and it pins to the viewport because the
+     narrowed group no longer reaches the bar's right edge. */
   .topbar-tools {
+    gap: 0;
+  }
+
+  .topbar-tools > :not(.history-tools, .shortcut-popover, .shortcut-popover-backdrop) {
+    display: none;
+  }
+
+  .topbar-tools > .shortcut-popover,
+  .project-menu-popover {
+    position: fixed;
+    top: calc(var(--topbar-h) + var(--sp-2));
+    right: var(--sp-3);
+    left: var(--sp-3);
+    width: auto;
+    max-height: calc(100dvh - var(--topbar-h) - var(--sp-6));
+    overflow-y: auto;
+  }
+
+  .history-tools {
+    gap: 0;
+  }
+
+  /* Undo and redo need ~80px; the wordmark and Beta tag give it back. The mark stays
+     (its svg is sized in px) and the button keeps its "Back to start menu" name. */
+  .brand-button {
+    font-size: 0;
+    gap: 0;
+  }
+
+  .brand-button .beta-tag,
+  .topbar-divider-project {
     display: none;
   }
 
@@ -5957,6 +6151,37 @@ input[aria-invalid="true"] {
     min-height: 0;
   }
 
+  /* The legend and the view cube covered much of a 390px viewer. The legend starts
+     smaller (its content scales with the same variable a resize sets) and the basis
+     line goes; a user resize still overrides both inline. */
+  .analysis-legend {
+    --analysis-legend-scale: 0.82;
+    width: min(250px, calc(100% - 24px));
+  }
+
+  .analysis-legend .legend-basis {
+    display: none;
+  }
+}
+
+/* Phone portrait: scrolling the page to reach the panel carried the 3D view off screen.
+   The shell stops scrolling, the viewer keeps a fixed share of the height and the panel
+   body scrolls on its own beneath it. Gated on height so a short landscape phone keeps
+   the 980px tier's page scroll (whose comment explains the collapse it prevents). */
+@media (max-width: 640px) and (min-height: 560px) {
+  .app-shell {
+    grid-template-rows: var(--topbar-h) minmax(0, 1fr) var(--statusbar-h);
+    overflow: hidden;
+  }
+
+  .workspace {
+    grid-template-rows: auto minmax(240px, 44vh) minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .side-panel {
+    min-height: 0;
+  }
 }
 .validation-gallery-backdrop {
   z-index: var(--z-gallery-backdrop);
@@ -6319,6 +6544,144 @@ input[aria-invalid="true"] {
   line-height: var(--lh-snug);
 }
 
+/* Run opens before setup is complete; each unmet readiness row links to its step. */
+.check-go-to {
+  justify-self: start;
+  padding: 0;
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The status bar's latest message; it gives way before the state word does. */
+.status-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+}
+
+/* Provenance tier beside the result verdict, and the homogenization caveat beside
+   effective material properties. Tiers are labels, never restyled verdicts. */
+.result-tier,
+.material-approximation-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-15) var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+
+.result-tier-chip {
+  flex: none;
+  padding: 1px var(--sp-2);
+  color: var(--color-text);
+  background: var(--color-surface-2);
+  border: var(--border-thin);
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+.result-tier-chip.computed {
+  border-color: var(--color-success);
+}
+
+.result-tier-chip.approximation,
+.result-tier-chip.historical,
+.result-tier-chip.unknown {
+  border-color: var(--color-warning);
+}
+
+/* A readiness row the run itself completes (a mesh built on demand): unticked, not blocking. */
+.check-pending {
+  color: var(--color-text-subtle);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+
+/* Results computed before the latest study change: the verdict and headline stay
+   readable but lose their pass/fail colour, and say they are outdated. */
+.result-outdated-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-15);
+  margin: 0 0 var(--sp-2);
+  color: var(--color-warning);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-snug);
+}
+
+.result-outdated-label span {
+  color: var(--color-text-muted);
+}
+
+.result-answer.outdated .failure-assessment,
+.result-answer.outdated .result-headline {
+  opacity: 0.6;
+  filter: grayscale(1);
+}
+
+/* Solve progress over the viewer on every step; the notice keeps the top-right corner. */
+.solve-progress-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: var(--sp-3);
+  z-index: var(--z-viewer-overlay);
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 2 * var(--sp-3)));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-2) var(--sp-25);
+  align-items: center;
+  padding: var(--sp-2) var(--sp-25);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-panel);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-snug);
+}
+
+.solve-progress-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.solve-progress-copy > span,
+.solve-progress-copy > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+
+.solve-progress-overlay .progress {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin: 0;
+}
+
+.solve-progress-overlay > button {
+  grid-column: 2;
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.validation-metric-grid article .validation-metric-tolerance.outside {
+  color: var(--color-error);
+}
+
 /* 2026-09 review D5: confirm before geometry replacement clears the setup. */
 .geometry-replace-dialog {
   max-width: 480px;
@@ -6536,4 +6899,38 @@ input[aria-invalid="true"] {
   stroke-width: 1;
   stroke-dasharray: 2 2;
   vector-effect: non-scaling-stroke;
+}
+
+/* Touch: a finger needs ~40px where a mouse needs 24px (WCAG 2.5.5 / platform guidance).
+   Keyed on the primary pointer, not the width, so a phone in landscape and a tablet get
+   it and a narrow desktop window does not. */
+@media (pointer: coarse) {
+  .icon-button,
+  .shortcut-popover-close,
+  .remove-glyph {
+    width: var(--control-h-touch);
+    height: var(--control-h-touch);
+  }
+
+  /* The remove glyph sits in a fixed third column of the summary rows. */
+  .editable-summary {
+    grid-template-columns: 24px minmax(0, 1fr) var(--control-h-touch);
+  }
+
+  .load-item .editable-summary {
+    grid-template-columns: 20px minmax(0, 1fr) var(--control-h-touch);
+  }
+
+  /* The box itself grows a little; the label that wraps it carries the full target. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 20px;
+    height: 20px;
+  }
+
+  label:has(> input[type="checkbox"]),
+  label:has(> input[type="radio"]) {
+    min-height: var(--control-h-touch);
+    align-items: center;
+  }
 }

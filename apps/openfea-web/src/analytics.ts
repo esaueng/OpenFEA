@@ -1,4 +1,5 @@
 import { expandedMetric, type Report } from './glimpseContract';
+import { setFailureDiagnosticSink } from './diagnosticSink';
 // Glimpse optional analytics: app-scoped consent preference, never a visitor ID.
 const CONSENT_KEY = 'openfea.glimpse.consent.v1';
 const EVENTS = ['workspace_opened', 'export_completed', 'export_failed', 'solver_completed', 'solver_failed', 'workflow_model', 'workflow_mesh', 'workflow_setup', 'workflow_run', 'workflow_results', 'feature_used', 'operation_latency'] as const;
@@ -103,6 +104,27 @@ export function downloadDiagnosticReport(): void {
   link.href = url; link.download = 'glimpse-diagnostics.json'; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
+// Main-thread watchdog for `error_unresponsive`: one count per Long Task of
+// 5 s or more, reported after the task ends. Only the fixed code is sent; the
+// measured duration never leaves this function. It runs only while optional
+// analytics is enabled, so nothing observes the page without consent. Engines
+// without the Long Tasks API (currently non-Chromium) are not observed; a timer
+// heartbeat fallback was left out to stay within the total JS budget.
+export const UNRESPONSIVE_THRESHOLD_MS = 5000;
+let stopWatchdog: (() => void) | null = null;
+function startUnresponsiveWatchdog(): (() => void) | null {
+  const Observer = (globalThis as { PerformanceObserver?: typeof PerformanceObserver }).PerformanceObserver;
+  if (!Observer?.supportedEntryTypes?.includes('longtask')) return null;
+  const observer = new Observer((list) => {
+    for (const entry of list.getEntries()) if (entry.duration >= UNRESPONSIVE_THRESHOLD_MS) trackDetail('error_unresponsive');
+  });
+  try { observer.observe({ type: 'longtask' }); } catch { return null; }
+  return () => observer.disconnect();
+}
+function syncWatchdog(): void {
+  if (isAnalyticsEnabled()) stopWatchdog ??= startUnresponsiveWatchdog();
+  else { stopWatchdog?.(); stopWatchdog = null; }
+}
 if (typeof window !== 'undefined') {
   window.addEventListener('error', () => trackDetail('error_runtime'));
   window.addEventListener('unhandledrejection', () => trackDetail('error_runtime'));
@@ -112,4 +134,8 @@ if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('glimpse-consent-changed'));
     }
   });
+  window.addEventListener('glimpse-consent-changed', syncWatchdog);
+  // Worker clients report error_worker / error_gpu_lost / error_out_of_memory here.
+  setFailureDiagnosticSink(trackDetail);
+  syncWatchdog();
 }

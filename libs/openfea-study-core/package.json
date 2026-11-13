@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "@openfea/materials": "workspace:*",
-    "@openfea/schema": "workspace:*"
+    "@openfea/schema": "workspace:*",
+    "@openfea/units": "workspace:*"
   },
   "license": "Apache-2.0"
 }

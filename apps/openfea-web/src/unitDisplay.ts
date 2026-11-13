@@ -294,6 +294,32 @@ export function lengthForUnits(value: number, units: string, unitSystem: UnitSys
   return { value, units };
 }
 
+/**
+ * Face areas are measured in the STEP model space (mm^2); US projects read them
+ * in in^2. Display only: stored labels and fingerprints keep their mm^2 source.
+ */
+export function areaForUnits(value: number, units: string, unitSystem: UnitSystem): { value: number; units: string } {
+  if (unitSystem === "US" && units === "mm^2") return { value: value / MM_PER_INCH ** 2, units: "in^2" };
+  if (unitSystem === "SI" && units === "in^2") return { value: value * MM_PER_INCH ** 2, units: "mm^2" };
+  return { value, units };
+}
+
+export function formatArea(value: number, units: string, unitSystem: UnitSystem): string {
+  const converted = areaForUnits(value, units, unitSystem);
+  return `${formatDisplayNumber(converted.value)} ${displayUnitText(converted.units)}`.trim();
+}
+
+/**
+ * Boundary temperatures are stored in °C (the value the solver consumes); US
+ * projects enter and read them in °F. The conversion is affine, so the inverse
+ * is this same function called with the display units and "SI".
+ */
+export function temperatureForUnits(value: number, units: string, unitSystem: UnitSystem): { value: number; units: string } {
+  if (unitSystem === "US" && units === "°C") return { value: value * 9 / 5 + 32, units: "°F" };
+  if (unitSystem === "SI" && units === "°F") return { value: (value - 32) * 5 / 9, units: "°C" };
+  return { value, units };
+}
+
 export function stressForUnits(value: number, units: string, unitSystem: UnitSystem): { value: number; units: string } {
   if (unitSystem === "US" && units === "MPa") return { value: value / MPA_PER_KSI, units: "ksi" };
   if (unitSystem === "SI" && units === "ksi") return { value: value * MPA_PER_KSI, units: "MPa" };

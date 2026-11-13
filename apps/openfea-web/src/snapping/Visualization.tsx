@@ -1,4 +1,5 @@
-import { Billboard, Line, Text } from "@react-three/drei";
+import { Billboard, Line } from "@react-three/drei";
+import { SceneLabelText } from "../components/SceneLabelText";
 import * as THREE from "three";
 import type { HoveredEntity, SnapMeasurement, SnapResult, Vec3 } from "./types";
 
@@ -111,7 +112,7 @@ function EdgeDistanceGuide({ measurement, normal }: { measurement: SnapMeasureme
         <Line key={`tick-${index}`} points={tick} color={ruler.color} lineWidth={ruler.lineWidth} transparent opacity={ruler.opacity} raycast={disableSnapOverlayRaycast} />
       ))}
       <Billboard position={ruler.labelPosition} renderOrder={52}>
-        <Text
+        <SceneLabelText
           anchorX="center"
           anchorY="middle"
           color="#dbeafe"
@@ -127,7 +128,7 @@ function EdgeDistanceGuide({ measurement, normal }: { measurement: SnapMeasureme
           raycast={disableSnapOverlayRaycast}
         >
           {ruler.label}
-        </Text>
+        </SceneLabelText>
       </Billboard>
     </group>
   );
