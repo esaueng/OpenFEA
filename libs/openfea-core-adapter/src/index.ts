@@ -1337,16 +1337,27 @@ function modalDiagnosticSummary(entries: readonly unknown[]): { diagnostics?: Di
   if (!modal) return {};
   const { precisionLimitWarning, meshProjection } = modal as {
     precisionLimitWarning?: string;
-    meshProjection?: { sourceElementOrder: string; solveElementOrder: string; reason: string };
+    meshProjection?: { sourceElementOrder: string; solveElementOrder: string; sourceDofs?: unknown; solveDofs?: unknown; reason: string };
   };
   const diagnostics: Diagnostic[] = [];
   if (precisionLimitWarning) diagnostics.push(solverWarning("modal-precision-limit", precisionLimitWarning));
   if (meshProjection) {
-    const { sourceElementOrder, solveElementOrder, reason } = meshProjection;
-    diagnostics.push(solverWarning("modal-mesh-projection",
-      `Mesh projection for solve: ${sourceElementOrder} → ${solveElementOrder} (${reason}). Results are computed on the projected mesh.`));
+    const { sourceElementOrder, solveElementOrder, sourceDofs, solveDofs, reason } = meshProjection;
+    diagnostics.push({
+      ...solverWarning("modal-mesh-projection",
+        `Mesh projection for solve: ${sourceElementOrder} → ${solveElementOrder} (${reason}). Results are computed on the projected mesh.`),
+      // The structured payload persists with the summary (schema field
+      // `meshProjection`), so a reopened project still knows the solved order.
+      ...(sourceElementOrder === "Tet10" && solveElementOrder === "Tet4" && isNonNegativeInteger(sourceDofs) && isNonNegativeInteger(solveDofs)
+        ? { meshProjection: { sourceElementOrder, solveElementOrder, sourceDofs, solveDofs, reason } }
+        : {})
+    });
   }
   return diagnostics.length ? { diagnostics } : {};
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function runVariantFromCoreResult({ id, name, kind, caseId, combinationId, result, runId, convergenceInputs = [] }: {
