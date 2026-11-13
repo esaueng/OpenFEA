@@ -144,7 +144,8 @@ describe("encrypted cloud backup", () => {
     [null, "after 00:00 UTC."],
     ["soon", "after 00:00 UTC."]
   ])("daily cap message tolerates Retry-After %s", (retryAfter, ending) => {
-    expect(dailyCapReachedMessage(retryAfter)).toMatch(new RegExp(`${ending.replace(/[().]/gu, "\\$&")}$`, "u"));
+    const message = dailyCapReachedMessage(retryAfter);
+    expect(message.endsWith(ending), message).toBe(true);
   });
 
   test("requests persistent local storage when the browser supports it", async () => {
