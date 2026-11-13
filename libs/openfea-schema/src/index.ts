@@ -345,10 +345,33 @@ export const MeshQualityMetricsSchema = z.object({
   worstElements: z.array(z.number().int().min(0)).max(256)
 });
 
+/** Upper bound on local size rules per study; mirrors MAX_LOCAL_MESH_SIZE_RULES in @openfea/mesh-intake. */
+export const MAX_MESH_LOCAL_SIZES = 64;
+
+/**
+ * One local element size on a STEP B-rep face (plan 036 R2.2). `faceId` is
+ * the registry id (`step-face-<k>`) and `fingerprint` its quantized
+ * area/centroid/normal digest (`stepface:...`), so a re-numbered import can
+ * be re-matched and a changed face is reported instead of silently refined.
+ * An empty fingerprint means the registry was unavailable when the rule was
+ * made; it then resolves by face id alone. `sizeMm` is in STEP model space,
+ * which OpenCASCADE always imports in millimetres.
+ */
+export const MeshLocalSizeSchema = z.object({
+  id: z.string().min(1).max(128),
+  faceId: z.string().min(1).max(128),
+  fingerprint: z.string().max(256),
+  label: z.string().max(256).optional(),
+  sizeMm: finiteNumber.positive()
+});
+
 export const MeshSettingsSchema = z.object({
   preset: MeshQualitySchema,
   status: z.enum(["not_started", "ready", "warning", "complete"]),
   meshRef: z.string().optional(),
+  // Optional and additive: projects saved before local sizing have none. An
+  // unreadable list is dropped rather than failing the whole project load.
+  localSizing: z.array(MeshLocalSizeSchema).max(MAX_MESH_LOCAL_SIZES).optional().catch(undefined),
   summary: z
     .object({
       nodes: z.number(),
@@ -916,7 +939,8 @@ export type SimulationFidelity = z.infer<typeof SimulationFidelitySchema>;
 export type DynamicSolverSettings = z.infer<typeof DynamicSolverSettingsSchema>;
 export type ModalSolverSettings = z.infer<typeof ModalSolverSettingsSchema>;
 export type MeshConnection = z.infer<typeof MeshConnectionSchema>;
-export type Material = z.infer<typeof MaterialSchema>;
+export type MeshLocalSize = z.infer<typeof MeshLocalSizeSchema>;
+export type Material =z.infer<typeof MaterialSchema>;
 export type CustomMaterial = z.infer<typeof CustomMaterialSchema>;
 export type GeometryReference = z.infer<typeof GeometryReferenceSchema>;
 export type NamedSelection = z.infer<typeof NamedSelectionSchema>;

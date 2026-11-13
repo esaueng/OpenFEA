@@ -3109,6 +3109,7 @@ export function WorkspaceApp({ initialAction = null, restoredWorkspace: provided
           }
           onGenerateMesh={handleGenerateMesh}
           onConnectionsChange={(contacts) => void updateStudy(saveStudyPatch(study.id, { contacts, meshSettings: { ...study.meshSettings, status: "not_started", meshRef: undefined, summary: undefined } }, "Assembly connections updated. Regenerate the mesh.", study))}
+          onMeshLocalSizingChange={(localSizing) => void updateStudy(saveStudyPatch(study.id, { meshSettings: { ...study.meshSettings, localSizing, status: "not_started", meshRef: undefined, summary: undefined } }, "Local mesh sizing updated. Regenerate the mesh.", study))}
           onCancelMesh={handleCancelMesh}
           meshPhaseProgress={meshPhaseProgress}
           showWorstMeshElements={showWorstMeshElements}

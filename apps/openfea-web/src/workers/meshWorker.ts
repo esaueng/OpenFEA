@@ -111,6 +111,7 @@ async function runOperation(request: MeshWorkerRequest, reportPhase: (phase: Mes
     fuseBodyGroups: request.payload.fuseBodyGroups,
     bodyIdentities: request.payload.bodyIdentities,
     preservePartIdentity: request.payload.preservePartIdentity,
+    ...(request.payload.localSizing?.length ? { localSizing: request.payload.localSizing } : {}),
     onPhase
   });
   reportPhase("parse");
@@ -140,7 +141,8 @@ async function runOperation(request: MeshWorkerRequest, reportPhase: (phase: Mes
     ...(meshed.geometryRepair ? { geometryRepair: meshed.geometryRepair } : {}),
     ...(meshed.multiBodyFusion ? { multiBodyFusion: meshed.multiBodyFusion } : {}),
     ...(meshed.elementOrderFallback ? { elementOrderFallback: meshed.elementOrderFallback } : {}),
-    ...(attribution ? { attribution } : {})
+    ...(attribution ? { attribution } : {}),
+    ...(meshed.localSizing ? { localSizing: meshed.localSizing } : {})
   };
 }
 

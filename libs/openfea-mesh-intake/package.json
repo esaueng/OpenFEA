@@ -8,7 +8,8 @@
     "./bracketGeo": "./src/bracketGeo.ts",
     "./coreModelFromMesh": "./src/coreModelFromMesh.ts",
     "./elevateArtifact": "./src/elevateArtifact.ts",
-    "./facetFaceAttribution": "./src/facetFaceAttribution.ts"
+    "./facetFaceAttribution": "./src/facetFaceAttribution.ts",
+    "./localSizing": "./src/localSizing.ts"
   },
   "dependencies": {
     "@loumalouomega/gmsh-wasm": "0.4.0",
