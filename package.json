@@ -27,13 +27,13 @@
     "audit:dependencies": "pnpm audit --audit-level=high"
   },
   "devDependencies": {
-    "eslint": "^10.14.0",
+    "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.72.2",
+    "typescript-eslint": "^8.73.0",
     "vitest": "^5.1.0",
-    "wrangler": "^4.159.0"
+    "wrangler": "^4.163.0"
   },
   "packageManager": "pnpm@11.7.0",
   "license": "Apache-2.0",
